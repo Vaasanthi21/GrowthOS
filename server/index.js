@@ -3014,6 +3014,8 @@ app.post('/api/generate-image', authRequired, async (req, res) => {
     const topic = String(req.body?.topic || '').trim();
     const contentType = String(req.body?.contentType || '').trim();
     const companyPersona = req.body?.companyPersona || null;
+    const aspectRatio = req.body?.aspectRatio || null;
+    const style = req.body?.style || null;
     const logoPlacement = String(req.body?.logoPlacement || '').trim();
     const useOriginalLogo = req.body?.useOriginalLogo !== false;
     const ragContext = String(req.body?.ragContext || '').trim();
@@ -3118,6 +3120,7 @@ app.get('/api/generate-image/:jobId/status', authRequired, async (req, res) => {
     return res.status(404).json({ message: 'Image generation job not found' });
   }
 
+  console.log("[IMAGE JOB STATUS]", job.id, "status:", job.status, "result:", job.result);
   return res.json(getImageJobStatusPayload(job));
 });
 
