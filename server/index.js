@@ -9,15 +9,17 @@ import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import * as pdfParse from 'pdf-parse';
+import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 import { createWorker } from 'tesseract.js';
 import { v2 as cloudinary } from 'cloudinary';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import {
   buildImagePrompt,
   buildVideoPrompt,
   extractVisualOverrideDirectives,
 } from './prompt-builders-optimized.js';
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,8 +31,16 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
+
 const app = express();
-const port = Number(process.env.PORT || 3000);
+const port = Number(process.env.PORT || 4000);
 const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017';
 const dbName = process.env.MONGODB_DB_NAME || 'creative_studio_os';
 const jwtSecret = process.env.JWT_SECRET || 'creative-studio-dev-secret';
@@ -74,13 +84,12 @@ const uploadArthGangaLogo = async () => {
 const uploadsDir = path.join(__dirname, 'uploads');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
-app.use(cors({
-  origin: 'http://localhost:5173',
-  credentials: true
-}));
+app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 app.use('/uploads', express.static(uploadsDir));
+// Mount sequences API
+// app.use('/api/sequences', sequencesRouter);
 
 const frontendDistDir = path.resolve(__dirname, '../dist');
 app.use(express.static(frontendDistDir, {
@@ -108,6 +117,12 @@ app.get(/^(?!\/api(?:\/|$)).*/, async (_req, res, next) => {
 const createToken = (payload) => jwt.sign(payload, jwtSecret, { expiresIn: '7d' });
 const nowIso = () => new Date().toISOString();
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+const normalizePhone = (value) => String(value || '').trim();
+
+const isValidPhoneNumber = (value) => {
+  const digitsOnly = String(value || '').replace(/\D/g, '');
+  return digitsOnly.length >= 10 && digitsOnly.length <= 15;
+};
 const superAdminEmail = normalizeEmail(process.env.SUPERADMIN_EMAIL);
 const defaultSignupCreditsEnv = Number(process.env.DEFAULT_SIGNUP_CREDITS || 25);
 const defaultTextGenerationCostEnv = Number(process.env.DEFAULT_TEXT_GENERATION_COST || 1);
@@ -140,6 +155,7 @@ const sanitizeUser = (user) => ({
   id: user.id || user._id?.toString?.() || user._id,
   email: user.email,
   full_name: user.full_name || '',
+  phone: user.phone || '',
   company: user.company || '',
   role: user.role || 'user',
   status: user.status || 'active',
@@ -531,22 +547,14 @@ const saveAzureVideoAsset = async ({
 }) => {
   const buffer = await downloadAzureVideoContent({ videoId, variant });
 
-  const uploadResult = await new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      {
-        folder: `${process.env.CLOUDINARY_FOLDER || 'creative-studio-os'}/videos`,
-        resource_type: 'video',
-        public_id: `${videoId}-${variant}`,
-        overwrite: true,
-      },
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
-      }
-    );
-
-    stream.end(buffer);
-  });
+  const uploadResult = {
+  secure_url: await uploadVideoBufferToS3({
+    buffer,
+    mimeType: 'video/mp4',
+    folder: 'videos',
+    fileName: `${videoId}-${variant}.mp4`,
+  }),
+};
 
   if (logoUrl && logoPlacement && logoPlacement !== 'none') {
   const logoPublicId = getCloudinaryPublicIdFromUrl(logoUrl);
@@ -762,8 +770,13 @@ const ocrResultCache = new Map();
 const activeOcrJobs = new Map();
 const OCR_CACHE_LIMIT = 100;
 const OCR_LANGUAGE_ALLOWLIST = new Set(['eng', 'spa', 'fra', 'deu', 'ita', 'por', 'nld']);
-const OCR_AUTO_LANGUAGE = 'eng+spa+fra+deu+ita+por+nld';
-const parsePdf = pdfParse.default || pdfParse;
+const OCR_AUTO_LANGUAGE = 'eng';
+const parsePdf = async (buffer) => {
+  const parser = new PDFParse({ data: buffer });
+  const result = await parser.getText();
+  await parser.destroy?.();
+  return result;
+};
 
 const setOcrCache = (key, value) => {
   if (!key) {
@@ -836,16 +849,55 @@ const parseDataUrlImage = (value) => {
 
 const saveLogoUpload = async (logoFile) => {
   const parsed = parseDataUrlImage(logoFile);
+
   if (!parsed) {
     throw new Error('Invalid logo file payload');
   }
 
-  const uploadResult = await cloudinary.uploader.upload(logoFile, {
-    folder: `${process.env.CLOUDINARY_FOLDER || 'creative-studio-os'}/logos`,
-    resource_type: 'image',
-  });
+  const key = `logos/${Date.now()}.png`;
 
-  return uploadResult.secure_url;
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: key,
+      Body: parsed.buffer,
+      ContentType: parsed.mimeType,
+    })
+  );
+
+  return `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+};
+
+const uploadImageBufferToS3 = async ({ buffer, mimeType = 'image/png', folder = 'images' }) => {
+  const extension = mimeType.includes('jpeg') || mimeType.includes('jpg') ? 'jpg' : 'png';
+  const key = `${folder}/${Date.now()}-${crypto.randomBytes(6).toString('hex')}.${extension}`;
+
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: key,
+      Body: buffer,
+      ContentType: mimeType,
+    })
+  );
+
+  return `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+};
+
+const uploadVideoBufferToS3 = async ({ buffer, mimeType = 'video/mp4', folder = 'videos', fileName = '' }) => {
+  const safeName = fileName || `${Date.now()}-${crypto.randomBytes(6).toString('hex')}.mp4`;
+  const key = `${folder}/${safeName}`;
+
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: key,
+      Body: buffer,
+      ContentType: mimeType,
+    })
+  );
+
+  return `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
 };
 
 const parseDataUrlFile = (value) => {
@@ -1461,15 +1513,11 @@ const generateImageWithAzure = async ({
 
 
 if (!finalImageUrl && b64Json) {
-  uploadResult = await cloudinary.uploader.upload(
-    `data:image/png;base64,${b64Json}`,
-    {
-      folder: `${process.env.CLOUDINARY_FOLDER || 'creative-studio-os'}/images`,
-      resource_type: 'image',
-    }
-  );
-
-  finalImageUrl = uploadResult.secure_url;
+  finalImageUrl = await uploadImageBufferToS3({
+    buffer: Buffer.from(b64Json, 'base64'),
+    mimeType: 'image/png',
+    folder: 'images',
+  });
 }
 
 const enableAzureImageEditMode = process.env.ENABLE_AZURE_IMAGE_EDIT_MODE === 'true';
@@ -1532,15 +1580,11 @@ const enableAzureImageEditMode = process.env.ENABLE_AZURE_IMAGE_EDIT_MODE === 't
     const editedImage = editData?.data?.[0];
 
     if (editedImage?.b64_json) {
-      uploadResult = await cloudinary.uploader.upload(
-        `data:image/png;base64,${editedImage.b64_json}`,
-        {
-          folder: `${process.env.CLOUDINARY_FOLDER || 'creative-studio-os'}/images`,
-          resource_type: 'image',
-        }
-      );
-
-      finalImageUrl = uploadResult.secure_url;
+      finalImageUrl = await uploadImageBufferToS3({
+        buffer: Buffer.from(editedImage.b64_json, 'base64'),
+        mimeType: 'image/png',
+        folder: 'images',
+      });
     }
     if (editedImage?.b64_json) {
       return {
@@ -2141,8 +2185,8 @@ const refundGenerationCredits = async ({ userId, amount, type, note }) => {
 };
 
 const authRequired = async (req, res, next) => {
-  const header = req.headers.authorization || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  const header = req.headers.authorization || req.headers['x-auth-token'] || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : (header || null);
 
   if (!token) {
     return res.status(401).json({ message: 'Authentication required' });
@@ -2164,8 +2208,8 @@ const authRequired = async (req, res, next) => {
 };
 
 const superAdminRequired = async (req, res, next) => {
-  const header = req.headers.authorization || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  const header = req.headers.authorization || req.headers['x-auth-token'] || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : (header || null);
 
   if (!token) {
     return res.status(401).json({ message: 'Authentication required' });
@@ -2190,17 +2234,16 @@ app.get('/api/health', async (_req, res) => {
 });
 
 app.post('/api/auth/register', async (req, res) => {
-  const { email, password, fullName, company } = req.body;
+  const { email, password, fullName, phone, company } = req.body;
   const normalizedEmail = normalizeEmail(email);
+  const normalizedPhone = normalizePhone(phone);
 
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-  if (!emailRegex.test(normalizedEmail)) {
-    return res.status(400).json({ message: 'Invalid email address' });
+  if (!normalizedEmail || !password || !fullName || !normalizedPhone || !company) {
+    return res.status(400).json({ message: 'Missing required fields' });
   }
 
-  if (!normalizedEmail || !password || !fullName || !company) {
-    return res.status(400).json({ message: 'Missing required fields' });
+  if (!isValidPhoneNumber(normalizedPhone)) {
+    return res.status(400).json({ message: 'Enter a valid phone number with 10 to 15 digits' });
   }
 
   const existing = await store.findUserByEmail(normalizedEmail);
@@ -2220,6 +2263,7 @@ app.post('/api/auth/register', async (req, res) => {
   const insertedUser = await store.insertUser({
     email: normalizedEmail,
     full_name: fullName,
+    phone: normalizedPhone,
     company,
     role: 'user',
     status: 'active',
@@ -2310,7 +2354,6 @@ app.post('/api/credits/purchase-request', authRequired, async (req, res) => {
     request: sanitizeCreditTransaction(transaction),
   });
 });
-
 app.post('/api/support-requests', authRequired, async (req, res) => {
   const { type, subject, message } = req.body || {};
 
@@ -2360,7 +2403,6 @@ app.post('/api/support-requests', authRequired, async (req, res) => {
     request,
   });
 });
-
 app.get('/api/user/metrics', authRequired, async (req, res) => {
   const userId = req.user.id || req.user._id.toString();
   const rows = await store.listHistory(
@@ -3247,12 +3289,15 @@ const tryStartMongo = async () => {
   await store.init();
   return client;
 };
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
 
 const start = async () => {
   await tryStartMongo();
   await uploadArthGangaLogo();
-  const server = app.listen(port, () => {
-    console.log(`Mongo API listening on http://localhost:${port}`);
+  const server = app.listen(port, "0.0.0.0", () => {
+    console.log(`Mongo API listening on http://0.0.0.0:${port}`);
     console.log(`Using MongoDB at ${mongoUri}`);
     console.log(`\n✓ MongoDB connected successfully!`);
     console.log(`✓ Open MongoDB Compass and connect to: ${mongoUri}`);
