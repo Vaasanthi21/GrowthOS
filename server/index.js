@@ -2210,6 +2210,57 @@ const authRequired = async (req, res, next) => {
   }
 };
 
+app.get('/api/download-asset', authRequired, async (req, res) => {
+  try {
+    const assetUrl = String(req.query.url || '').trim();
+    const rawFilename = String(req.query.filename || 'download').trim();
+    const filename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, '_') || 'download';
+
+    if (!assetUrl) {
+      return res.status(400).json({ message: 'Asset URL is required' });
+    }
+
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(assetUrl);
+    } catch {
+      return res.status(400).json({ message: 'Invalid asset URL' });
+    }
+
+    const allowedHosts = new Set([
+      `${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`,
+      'res.cloudinary.com',
+    ]);
+
+    if (!allowedHosts.has(parsedUrl.hostname)) {
+      return res.status(400).json({ message: 'Unsupported asset host' });
+    }
+
+    const assetResponse = await fetch(assetUrl);
+
+    if (!assetResponse.ok) {
+      return res.status(502).json({ message: 'Unable to fetch asset' });
+    }
+
+    const contentType = assetResponse.headers.get('content-type') || 'application/octet-stream';
+    const contentLength = assetResponse.headers.get('content-length');
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-store');
+
+    if (contentLength) {
+      res.setHeader('Content-Length', contentLength);
+    }
+
+    const buffer = Buffer.from(await assetResponse.arrayBuffer());
+    return res.send(buffer);
+  } catch (error) {
+    console.error('[DOWNLOAD ASSET FAILED]', error?.message || error);
+    return res.status(500).json({ message: 'Download failed' });
+  }
+});
+
 const superAdminRequired = async (req, res, next) => {
   const header = req.headers.authorization || req.headers['x-auth-token'] || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : (header || null);
