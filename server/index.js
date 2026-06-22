@@ -1372,6 +1372,22 @@ const startVideoGenerationJob = ({ prompt, logoUrl = '', logoPlacement = 'none',
         completedAt,
         result: image,
       });
+      
+      if (store) {
+        try {
+          await store.saveImageGeneration({
+            job_id: jobId,
+            prompt,
+            image_url: image?.image_url || null,
+            revised_prompt: image?.revised_prompt || null,
+            status: 'completed',
+            created_at: nowIso(),
+            completed_at: nowIso(),
+          });
+        } catch (dbError) {
+          console.error('[IMAGE METADATA SAVE FAILED]', dbError);
+        }
+      }
       if (typeof onCompleted === 'function') {
         await onCompleted({ jobId, result: image });
       }
@@ -2147,6 +2163,13 @@ const createMongoStore = (db) => ({
   async deleteKnowledgeSource(id, userId) {
     const result = await db.collection('knowledge_sources').deleteOne({ _id: new ObjectId(id), user_id: userId });
     return result.deletedCount > 0;
+  },
+  async saveImageGeneration(entry) {
+    const result = await db.collection('image_generations').insertOne(entry);
+
+    return await db.collection('image_generations').findOne({
+      _id: result.insertedId,
+    });
   },
 });
 
