@@ -2431,6 +2431,22 @@ app.post('/api/credits/purchase-request', authRequired, async (req, res) => {
     request: sanitizeCreditTransaction(transaction),
   });
 });
+
+app.get('/api/wallet', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+
+  const user = await store.findUserById(userId);
+  const transactions = await store.listCreditTransactions({ userId, limit: 100 });
+
+  res.json({
+    balance: normalizeCreditValue(user?.credits_balance),
+    totalAllocated: normalizeCreditValue(user?.credits_total_allocated),
+    totalPurchased: normalizeCreditValue(user?.credits_total_purchased),
+    totalUsed: normalizeCreditValue(user?.credits_total_used),
+    transactions: transactions.map(sanitizeCreditTransaction),
+  });
+});
+
 app.post('/api/support-requests', authRequired, async (req, res) => {
   const { type, subject, message } = req.body || {};
 
