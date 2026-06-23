@@ -2447,6 +2447,30 @@ app.get('/api/wallet', authRequired, async (req, res) => {
   });
 });
 
+app.post('/api/wallet/recharge', authRequired, async (req, res) => {
+  const { amount, note } = req.body || {};
+  const requestedAmount = normalizeCreditValue(amount);
+
+  if (requestedAmount <= 0) {
+    return res.status(400).json({ message: 'Requested credit amount must be greater than zero' });
+  }
+
+  const transaction = await store.insertCreditTransaction({
+    user_id: req.user.id || req.user._id.toString(),
+    amount: requestedAmount,
+    balance_after: normalizeCreditValue(req.user.credits_balance),
+    type: 'purchase_request',
+    note: String(note || '').trim(),
+    created_at: nowIso(),
+    created_by: req.user.id || req.user._id.toString(),
+  });
+
+  res.status(201).json({
+    message: 'Credit purchase request recorded. Payment gateway is not enabled yet.',
+    request: sanitizeCreditTransaction(transaction),
+  });
+});
+
 app.post('/api/support-requests', authRequired, async (req, res) => {
   const { type, subject, message } = req.body || {};
 
