@@ -1299,6 +1299,21 @@ const startVideoGenerationJob = ({ prompt, logoUrl = '', logoPlacement = 'none',
         result: video,
         error: isSuccess ? null : (video.error || 'Video generation timed out or failed on Azure'),
       });
+      if (isSuccess && store) {
+        try {
+          await store.saveVideoGeneration({
+            job_id: jobId,
+            prompt,
+            video_url: video?.video_url || null,
+            video_id: video?.video_id || jobId,
+            status: 'completed',
+            created_at: nowIso(),
+            completed_at: nowIso(),
+          });
+        } catch (dbError) {
+          console.error('[VIDEO METADATA SAVE FAILED]', dbError);
+        }
+      }
       console.log(`[VIDEO JOB] ${jobId} ${isSuccess ? 'completed' : 'failed'} videoId=${video.video_id || jobId} url=${String(video.video_url).slice(0,120)}`);
       if (isSuccess && typeof onCompleted === 'function') {
         await onCompleted({ jobId, result: video });
@@ -2125,6 +2140,13 @@ const createMongoStore = (db) => ({
     const result = await db.collection('image_generations').insertOne(entry);
 
     return await db.collection('image_generations').findOne({
+      _id: result.insertedId,
+    });
+  },
+  async saveVideoGeneration(entry) {
+    const result = await db.collection('video_generations').insertOne(entry);
+
+    return await db.collection('video_generations').findOne({
       _id: result.insertedId,
     });
   },
