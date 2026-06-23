@@ -14,8 +14,11 @@ import mammoth from 'mammoth';
 import { createWorker } from 'tesseract.js';
 import { v2 as cloudinary } from 'cloudinary';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { Worker } from 'bullmq';
 import jobRoutes from './routes/jobRoutes.js';
 import './queues/mockWorker.js';
+import { imageQueue } from './queues/imageQueue.js';
+import { connection } from './queues/redisConnection.js';
 import {
   buildImagePrompt,
   buildVideoPrompt,
@@ -1339,70 +1342,24 @@ const startVideoGenerationJob = ({ prompt, logoUrl = '', logoPlacement = 'none',
     result: null,
   });
 
-  void (async () => {
-    try {
-      updateImageJob(jobId, {
-        status: 'processing',
-        phase: 'Submitting request to Azure image model',
-        progress: 15,
-      });
+  void imageQueue.add('generate-image', {
+    jobId,
+    prompt,
+    size,
+    logoUrl,
+    logoPlacement,
+  }).catch((error) => {
+    updateImageJob(jobId, {
+      status: 'failed',
+      phase: 'Image queue failed',
+      completedAt: Date.now(),
+      error: error.message || 'Image queue failed',
+    });
 
-      const phaseTimer = setTimeout(() => {
-        updateImageJob(jobId, {
-          status: 'processing',
-          phase: 'Waiting for Azure image model response',
-          progress: 35,
-        });
-      }, 1500);
-
-      const image = await generateImageWithAzure({
-        prompt,
-        size,
-        logoUrl,
-        logoPlacement,
-      });
-      clearTimeout(phaseTimer);
-      const completedAt = Date.now();
-      pushImageGenerationDuration(completedAt - startedAt);
-
-      updateImageJob(jobId, {
-        status: 'completed',
-        phase: 'Image generated',
-        progress: 100,
-        completedAt,
-        result: image,
-      });
-      
-      if (store) {
-        try {
-          await store.saveImageGeneration({
-            job_id: jobId,
-            prompt,
-            image_url: image?.image_url || null,
-            revised_prompt: image?.revised_prompt || null,
-            status: 'completed',
-            created_at: nowIso(),
-            completed_at: nowIso(),
-          });
-        } catch (dbError) {
-          console.error('[IMAGE METADATA SAVE FAILED]', dbError);
-        }
-      }
-      if (typeof onCompleted === 'function') {
-        await onCompleted({ jobId, result: image });
-      }
-    } catch (error) {
-      updateImageJob(jobId, {
-        status: 'failed',
-        phase: 'Image generation failed',
-        completedAt: Date.now(),
-        error: error.message || 'Image generation failed',
-      });
-      if (typeof onFailed === 'function') {
-        await onFailed({ jobId, error });
-      }
+    if (typeof onFailed === 'function') {
+      void onFailed({ jobId, error });
     }
-  })();
+  });
 
   return jobId;
 };
@@ -2781,6 +2738,95 @@ app.post('/api/generate-text', authRequired, async (req, res) => {
     const status = /insufficient credits/i.test(message) ? 402 : 500;
     res.status(status).json({ message });
   }
+});
+
+const imageWorker = new Worker('image-generation-jobs', async (job) => {
+  const {
+    jobId,
+    prompt,
+    size,
+    logoUrl = '',
+    logoPlacement = 'none',
+  } = job.data || {};
+
+  const existingJob = imageGenerationJobs.get(jobId);
+  const startedAt = existingJob?.startedAt || Date.now();
+
+  updateImageJob(jobId, {
+    status: 'processing',
+    phase: 'Submitting request to Azure image model',
+    progress: 15,
+  });
+
+  const phaseTimer = setTimeout(() => {
+    updateImageJob(jobId, {
+      status: 'processing',
+      phase: 'Waiting for Azure image model response',
+      progress: 35,
+    });
+  }, 1500);
+
+  try {
+    const image = await generateImageWithAzure({
+      prompt,
+      size,
+      logoUrl,
+      logoPlacement,
+    });
+
+    clearTimeout(phaseTimer);
+
+    const completedAt = Date.now();
+    pushImageGenerationDuration(completedAt - startedAt);
+
+    updateImageJob(jobId, {
+      status: 'completed',
+      phase: 'Image generated',
+      progress: 100,
+      completedAt,
+      result: image,
+    });
+
+    if (store) {
+      try {
+        await store.saveImageGeneration({
+          job_id: jobId,
+          prompt,
+          image_url: image?.image_url || null,
+          revised_prompt: image?.revised_prompt || null,
+          status: 'completed',
+          created_at: nowIso(),
+          completed_at: nowIso(),
+        });
+      } catch (dbError) {
+        console.error('[IMAGE METADATA SAVE FAILED]', dbError);
+      }
+    }
+
+    return image;
+  } catch (error) {
+    clearTimeout(phaseTimer);
+
+    updateImageJob(jobId, {
+      status: 'failed',
+      phase: 'Image generation failed',
+      completedAt: Date.now(),
+      error: error.message || 'Image generation failed',
+    });
+
+    throw error;
+  }
+}, {
+  connection,
+  concurrency: 1,
+});
+
+imageWorker.on('completed', (job) => {
+  console.log(`[IMAGE WORKER] completed job ${job?.data?.jobId || job?.id}`);
+});
+
+imageWorker.on('failed', (job, error) => {
+  console.error(`[IMAGE WORKER] failed job ${job?.data?.jobId || job?.id}:`, error.message);
 });
 
 app.post('/api/generate-image', authRequired, async (req, res) => {
