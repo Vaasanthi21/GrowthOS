@@ -1367,7 +1367,79 @@ const startVideoGenerationJob = ({ prompt, logoUrl = '', logoPlacement = 'none',
   return jobId;
 };
 
-  const startImageGenerationJob = ({ prompt, size, logoUrl = '', logoPlacement = 'none', onCompleted, onFailed }) => {
+const runImageGenerationJobDirectly = async ({ jobId, prompt, size, logoUrl = '', logoPlacement = 'none', onCompleted, onFailed }) => {
+  const startedAt = Date.now();
+  updateImageJob(jobId, {
+    status: 'processing',
+    phase: 'Submitting request to Azure image model',
+    progress: 15,
+  });
+
+  const phaseTimer = setTimeout(() => {
+    updateImageJob(jobId, {
+      status: 'processing',
+      phase: 'Waiting for Azure image model response',
+      progress: 35,
+    });
+  }, 1500);
+
+  try {
+    const image = await generateImageWithAzure({
+      prompt,
+      size,
+      logoUrl,
+      logoPlacement,
+    });
+
+    clearTimeout(phaseTimer);
+
+    const completedAt = Date.now();
+    pushImageGenerationDuration(completedAt - startedAt);
+
+    updateImageJob(jobId, {
+      status: 'completed',
+      phase: 'Image generated',
+      progress: 100,
+      completedAt,
+      result: image,
+    });
+
+    if (store) {
+      try {
+        await store.saveImageGeneration({
+          job_id: jobId,
+          prompt,
+          image_url: image?.image_url || null,
+          revised_prompt: image?.revised_prompt || null,
+          status: 'completed',
+          created_at: nowIso(),
+          completed_at: nowIso(),
+        });
+      } catch (dbError) {
+        console.error('[IMAGE METADATA SAVE FAILED]', dbError);
+      }
+    }
+
+    if (typeof onCompleted === 'function') {
+      void onCompleted({ jobId, result: image });
+    }
+  } catch (error) {
+    clearTimeout(phaseTimer);
+
+    updateImageJob(jobId, {
+      status: 'failed',
+      phase: 'Image generation failed',
+      completedAt: Date.now(),
+      error: error.message || 'Image generation failed',
+    });
+
+    if (typeof onFailed === 'function') {
+      void onFailed({ jobId, error });
+    }
+  }
+};
+
+const startImageGenerationJob = ({ prompt, size, logoUrl = '', logoPlacement = 'none', onCompleted, onFailed }) => {
   const jobId = createImageJobId();
   const startedAt = Date.now();
   const estimatedTotalMs = getAverageImageGenerationDurationMs();
@@ -1388,24 +1460,40 @@ const startVideoGenerationJob = ({ prompt, logoUrl = '', logoPlacement = 'none',
     result: null,
   });
 
-  void imageQueue.add('generate-image', {
-    jobId,
-    prompt,
-    size,
-    logoUrl,
-    logoPlacement,
-  }).catch((error) => {
-    updateImageJob(jobId, {
-      status: 'failed',
-      phase: 'Image queue failed',
-      completedAt: Date.now(),
-      error: error.message || 'Image queue failed',
-    });
+  const isRedisReady = connection && connection.status === 'ready';
 
-    if (typeof onFailed === 'function') {
-      void onFailed({ jobId, error });
-    }
-  });
+  if (!isRedisReady) {
+    console.log(`[IMAGE JOB] Redis connection not ready (status: ${connection?.status || 'none'}), running image generation directly in-memory for ${jobId}`);
+    void runImageGenerationJobDirectly({
+      jobId,
+      prompt,
+      size,
+      logoUrl,
+      logoPlacement,
+      onCompleted,
+      onFailed
+    });
+  } else {
+    console.log(`[IMAGE JOB] Queueing image generation job ${jobId} via BullMQ`);
+    void imageQueue.add('generate-image', {
+      jobId,
+      prompt,
+      size,
+      logoUrl,
+      logoPlacement,
+    }).catch((error) => {
+      console.warn(`[IMAGE JOB] Failed to add to imageQueue, running directly in-memory:`, error.message);
+      void runImageGenerationJobDirectly({
+        jobId,
+        prompt,
+        size,
+        logoUrl,
+        logoPlacement,
+        onCompleted,
+        onFailed
+      });
+    });
+  }
 
   return jobId;
 };
