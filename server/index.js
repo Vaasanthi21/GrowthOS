@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
@@ -49,6 +50,10 @@ const port = Number(process.env.PORT || 4000);
 const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017';
 const dbName = process.env.MONGODB_DB_NAME || 'creative_studio_os';
 const jwtSecret = process.env.JWT_SECRET || 'creative-studio-dev-secret';
+
+const linkedinClientId = process.env.LINKEDIN_CLIENT_ID || '';
+const linkedinClientSecret = process.env.LINKEDIN_CLIENT_SECRET || '';
+const linkedinRedirectUri = process.env.LINKEDIN_REDIRECT_URI || '';
 const azureImageApiKey = process.env.AZURE_OPENAI_IMAGE_API_KEY || '';
 const azureImageEndpoint = process.env.AZURE_OPENAI_IMAGE_ENDPOINT || '';
 const azureImageDeployment = process.env.AZURE_OPENAI_IMAGE_DEPLOYMENT || 'gpt-image-2';
@@ -1788,6 +1793,7 @@ const createMongoStore = (db) => ({
     const history = db.collection('content_history');
     const creditTransactions = db.collection('credit_transactions');
     const appSettings = db.collection('app_settings');
+    const plansCollection = db.collection('plans');
 
     await Promise.all([
       users.createIndex({ email: 1 }, { unique: true }),
@@ -1799,6 +1805,7 @@ const createMongoStore = (db) => ({
       history.createIndex({ user_id: 1, session_root_history_id: 1 }),
       creditTransactions.createIndex({ user_id: 1, created_at: -1 }),
       appSettings.createIndex({ key: 1 }, { unique: true }),
+      plansCollection.createIndex({ name: 1 }, { unique: true }),
     ]);
 
     await users.updateMany(
@@ -1842,6 +1849,35 @@ const createMongoStore = (db) => ({
       },
       { upsert: true }
     );
+
+    // Seed default plans if not present
+    const planCount = await plansCollection.countDocuments();
+    if (planCount === 0) {
+      await plansCollection.insertMany([
+        {
+          name: 'Free',
+          price: 0,
+          credits: 25,
+          persona_limit: 1,
+          created_at: nowIso(),
+        },
+        {
+          name: 'Pro',
+          price: 49,
+          credits: 500,
+          persona_limit: 5,
+          created_at: nowIso(),
+        },
+        {
+          name: 'Enterprise',
+          price: 199,
+          credits: 2500,
+          persona_limit: 20,
+          created_at: nowIso(),
+        }
+      ]);
+      console.log('Seeded default plans (Free, Pro, Enterprise) into MongoDB.');
+    }
 
     if (!superAdminEmail) {
       console.warn('SUPERADMIN_EMAIL is not set; superadmin login will remain unavailable until configured.');
@@ -3657,6 +3693,589 @@ app.patch('/api/superadmin/users/:id/persona-limit', superAdminRequired, async (
 app.get('/api/superadmin/plans', superAdminRequired, async (_req, res) => {
   const plans = await store.listPlans();
   res.json(plans.map((plan) => ({ ...plan, id: plan.id || plan._id?.toString?.() })));
+});
+
+// ─── LinkedIn Ads Campaign Tracker Endpoints ─────────────────────────────────
+
+function getMockLinkedInAnalytics(range) {
+  let days = 30;
+  if (range === '7d') days = 7;
+  else if (range === '90d') days = 90;
+
+  const campaigns = [
+    { name: 'LinkedIn - Brand Awareness Q2', cplTarget: 320 },
+    { name: 'LinkedIn - Lead Generation Tech Specs', cplTarget: 680 }, // Exceeds ₹500 to trigger alert
+    { name: 'LinkedIn - Product Demo Video Ads', cplTarget: 410 },
+    { name: 'LinkedIn - Retargeting Website Visitors', cplTarget: 220 }
+  ];
+
+  const rows = [];
+  const now = new Date();
+
+  for (let i = 0; i < days; i++) {
+    const dateObj = new Date(now);
+    dateObj.setDate(now.getDate() - i);
+    const dateString = dateObj.toISOString().slice(0, 10);
+
+    campaigns.forEach((camp) => {
+      const baseImpressions = camp.name.includes('Brand') ? 8000 : 3000;
+      const randFactor = 0.7 + Math.random() * 0.6;
+      const impressions = Math.floor(baseImpressions * randFactor);
+
+      const baseCtr = camp.name.includes('Video') ? 0.025 : 0.012;
+      const ctrVal = parseFloat((baseCtr * (0.8 + Math.random() * 0.4) * 100).toFixed(2));
+      const clicks = Math.floor(impressions * (ctrVal / 100));
+
+      const baseCpc = camp.name.includes('Retargeting') ? 45 : 85;
+      const spend = parseFloat((clicks * baseCpc * (0.9 + Math.random() * 0.2)).toFixed(2));
+
+      const leadsRaw = spend / camp.cplTarget;
+      const leads = Math.floor(leadsRaw * (0.8 + Math.random() * 0.4));
+      const cpl = leads > 0 ? parseFloat((spend / leads).toFixed(2)) : null;
+
+      rows.push({
+        campaign: camp.name,
+        date: dateString,
+        creative: `${camp.name} - Ad Creative ${Math.floor(i / 10) + 1}`,
+        imageUrl: '',
+        impressions,
+        clicks,
+        ctr: ctrVal,
+        spend,
+        leads,
+        cpl,
+      });
+    });
+  }
+
+  rows.sort((a, b) => a.date.localeCompare(b.date));
+  return rows;
+}
+
+function getMockLinkedInCreatives() {
+  const images = [
+    'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&auto=format&fit=crop&q=60',
+    'https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=400&auto=format&fit=crop&q=60',
+    'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=400&auto=format&fit=crop&q=60',
+    'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=400&auto=format&fit=crop&q=60'
+  ];
+
+  return {
+    creatives: [
+      {
+        name: 'Tech Specs Infographic',
+        campaign: 'LinkedIn - Lead Generation Tech Specs',
+        imageUrl: images[0],
+        impressions: 45000,
+        clicks: 810,
+        ctr: 1.8,
+        spend: 68850,
+        leads: 102,
+        cpl: 675
+      },
+      {
+        name: 'Platform Demo Video Highlight',
+        campaign: 'LinkedIn - Product Demo Video Ads',
+        imageUrl: images[1],
+        impressions: 120000,
+        clicks: 3240,
+        ctr: 2.7,
+        spend: 113400,
+        leads: 270,
+        cpl: 420
+      },
+      {
+        name: 'Growth Office Culture Image',
+        campaign: 'LinkedIn - Brand Awareness Q2',
+        imageUrl: images[2],
+        impressions: 88000,
+        clicks: 1056,
+        ctr: 1.2,
+        spend: 42240,
+        leads: 132,
+        cpl: 320
+      },
+      {
+        name: 'Website Retargeting Carousel',
+        campaign: 'LinkedIn - Retargeting Website Visitors',
+        imageUrl: images[3],
+        impressions: 32000,
+        clicks: 768,
+        ctr: 2.4,
+        spend: 26880,
+        leads: 128,
+        cpl: 210
+      }
+    ]
+  };
+}
+
+app.get('/api/linkedin/status', authRequired, async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id.toString();
+    const user = await store.findUserById(userId);
+    if (user && user.linkedin_connected) {
+      return res.json({
+        connected: true,
+        accountName: user.linkedin_account_name || 'Connected User',
+        adAccountName: user.linkedin_ad_account_name || 'Default Ad Account'
+      });
+    }
+    res.json({ connected: false });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to check LinkedIn status' });
+  }
+});
+
+app.post('/api/linkedin/disconnect', authRequired, async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id.toString();
+    await store.updateUserById(userId, {
+      linkedin_connected: false,
+      linkedin_access_token: null,
+      linkedin_account_name: null,
+      linkedin_ad_account_name: null
+    });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to disconnect LinkedIn' });
+  }
+});
+
+app.post('/api/linkedin/simulate-connect', authRequired, async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id.toString();
+    await store.updateUserById(userId, {
+      linkedin_connected: true,
+      linkedin_access_token: 'mock_token',
+      linkedin_account_name: 'Acme Corp (Simulated)',
+      linkedin_ad_account_name: 'Acme Leads Campaign (Simulated)'
+    });
+    res.json({
+      success: true,
+      connected: true,
+      accountName: 'Acme Corp (Simulated)',
+      adAccountName: 'Acme Leads Campaign (Simulated)'
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to simulate connection' });
+  }
+});
+
+app.get('/api/linkedin/callback', async (req, res) => {
+  const { code, state: userId, error, error_description } = req.query;
+  const frontendUrl = process.env.PUBLIC_BASE_URL || 'http://localhost:5173';
+
+  if (error || !code || !userId) {
+    console.error('LinkedIn OAuth Callback Error:', error, error_description);
+    return res.redirect(`${frontendUrl}/linkedinads?linkedin=error`);
+  }
+
+  try {
+    const redirectUri = linkedinRedirectUri || `${req.protocol}://${req.get('host')}/api/linkedin/callback`;
+    
+    const tokenResponse = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: redirectUri,
+        client_id: linkedinClientId,
+        client_secret: linkedinClientSecret,
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      const errorText = await tokenResponse.text();
+      throw new Error(`Token exchange failed: ${errorText}`);
+    }
+
+    const tokenData = await tokenResponse.json();
+    const accessToken = tokenData.access_token;
+
+    let accountName = 'LinkedIn Member';
+    let adAccountName = 'Ad Account';
+    let personUrn = '';
+
+    try {
+      const profileRes = await fetch('https://api.linkedin.com/v2/userinfo', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (profileRes.ok) {
+        const profile = await profileRes.json();
+        accountName = `${profile.given_name || ''} ${profile.family_name || ''}`.trim() || profile.name || accountName;
+        if (profile.sub) {
+          personUrn = `urn:li:person:${profile.sub}`;
+        }
+      }
+
+      const adAccountsRes = await fetch('https://api.linkedin.com/v2/adAccounts?q=search', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (adAccountsRes.ok) {
+        const adAccounts = await adAccountsRes.json();
+        if (adAccounts.elements && adAccounts.elements.length > 0) {
+          adAccountName = adAccounts.elements[0].name || adAccountName;
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to fetch LinkedIn profile details:', err);
+    }
+
+    await store.updateUserById(userId, {
+      linkedin_connected: true,
+      linkedin_access_token: accessToken,
+      linkedin_account_name: accountName,
+      linkedin_ad_account_name: adAccountName,
+      linkedin_person_urn: personUrn
+    });
+
+    res.redirect(`${frontendUrl}/linkedinads?linkedin=connected`);
+  } catch (err) {
+    console.error('LinkedIn OAuth Callback exception:', err);
+    res.redirect(`${frontendUrl}/linkedinads?linkedin=error`);
+  }
+});
+
+app.get('/api/linkedin/analytics', authRequired, async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id.toString();
+    const user = await store.findUserById(userId);
+    if (!user || !user.linkedin_connected) {
+      return res.status(400).json({ message: 'LinkedIn account is not connected' });
+    }
+
+    const range = req.query.range || '30d';
+
+    let rows = [];
+    if (user.linkedin_access_token === 'mock_token') {
+      rows = getMockLinkedInAnalytics(range);
+    }
+    
+    const totals = rows.reduce(
+      (acc, r) => {
+        acc.impressions += r.impressions;
+        acc.clicks += r.clicks;
+        acc.spend += r.spend;
+        acc.leads += r.leads;
+        return acc;
+      },
+      { impressions: 0, clicks: 0, spend: 0, leads: 0 }
+    );
+
+    totals.ctr = totals.impressions > 0 ? parseFloat(((totals.clicks / totals.impressions) * 100).toFixed(2)) : 0;
+    totals.cpl = totals.leads > 0 ? parseFloat((totals.spend / totals.leads).toFixed(2)) : null;
+    totals.spend = parseFloat(totals.spend.toFixed(2));
+
+    res.json({ rows, totals });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to fetch analytics' });
+  }
+});
+
+app.get('/api/linkedin/creatives', authRequired, async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id.toString();
+    const user = await store.findUserById(userId);
+    if (!user || !user.linkedin_connected) {
+      return res.status(400).json({ message: 'LinkedIn account is not connected' });
+    }
+
+    let creatives = [];
+    if (user.linkedin_access_token === 'mock_token') {
+      const data = getMockLinkedInCreatives();
+      creatives = data.creatives || [];
+    }
+    res.json({ creatives });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to fetch creatives' });
+  }
+});
+
+function getMockLinkedInOrganicPosts(range) {
+  let days = 30;
+  if (range === '7d') days = 7;
+  else if (range === '90d') days = 90;
+
+  const postsPool = [
+    {
+      text: "🚀 We are thrilled to launch Uden AI! Our new AI-driven marketing platform is designed to help growth managers scale campaigns effortlessly. Check out our website to learn more! #AI #Marketing #Growth",
+      baseLikes: 120, baseComments: 24, baseShares: 15, baseImpressions: 5400
+    },
+    {
+      text: "📊 5 Tips to Optimize your Paid Ad Campaigns: \n1. Refine target audience demographics\n2. Run dynamic A/B creatives\n3. Set automated budget alerts\n4. Benchmark CPC vs CPL\n5. Iterate weekly.\nRead more on our blog! #PaidAds #MarketingTips #Performance",
+      baseLikes: 95, baseComments: 18, baseShares: 8, baseImpressions: 3800
+    },
+    {
+      text: "🤝 Celebrating our new partnership with Creative Studio! Together, we're building the future of automated creative generation. Exciting features dropping next week! #CreativeOS #AI #BusinessDevelopment",
+      baseLikes: 160, baseComments: 35, baseShares: 22, baseImpressions: 7200
+    },
+    {
+      text: "💡 Why keeping a close eye on your Cost Per Lead (CPL) is crucial for startup growth. Read our latest thought leadership piece on how scaling companies manage ad spends without breaking the bank. #Startup #CPL #Finance",
+      baseLikes: 78, baseComments: 12, baseShares: 5, baseImpressions: 2900
+    },
+    {
+      text: "🏆 We are proud to be named one of the Top 10 Growth Marketing Tools of 2026! A huge thank you to our team and our amazing customers. We couldn't have done it without you! #Milestone #ThankYou #TeamUden",
+      baseLikes: 210, baseComments: 45, baseShares: 30, baseImpressions: 9500
+    }
+  ];
+
+  const now = new Date();
+  const posts = [];
+
+  let postCount = 5;
+  if (days === 7) postCount = 2;
+  else if (days === 90) postCount = 12;
+
+  for (let i = 0; i < postCount; i++) {
+    const postTemplate = postsPool[i % postsPool.length];
+    
+    const dateObj = new Date(now);
+    const dayOffset = Math.floor((days / postCount) * i) + Math.floor(Math.random() * 2);
+    dateObj.setDate(now.getDate() - dayOffset);
+    const dateString = dateObj.toISOString().slice(0, 10);
+
+    const randFactor = 0.8 + Math.random() * 0.4;
+    const likes = Math.floor(postTemplate.baseLikes * randFactor);
+    const comments = Math.floor(postTemplate.baseComments * randFactor);
+    const shares = Math.floor(postTemplate.baseShares * randFactor);
+    const impressions = Math.floor(postTemplate.baseImpressions * randFactor);
+    
+    const engagements = likes + comments + shares;
+    const engagementRate = impressions > 0 ? parseFloat(((engagements / impressions) * 100).toFixed(2)) : 0;
+
+    posts.push({
+      id: `organic_${i}`,
+      text: postTemplate.text,
+      date: dateString,
+      likes,
+      comments,
+      shares,
+      impressions,
+      engagementRate
+    });
+  }
+
+  posts.sort((a, b) => b.date.localeCompare(a.date));
+  return posts;
+}
+
+app.get('/api/linkedin/organic-posts', authRequired, async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id.toString();
+    const user = await store.findUserById(userId);
+    if (!user || !user.linkedin_connected) {
+      return res.status(400).json({ message: 'LinkedIn account is not connected' });
+    }
+
+    const range = req.query.range || '30d';
+
+    let userPosts = user.linkedin_posts || [];
+    let accessToken = user.linkedin_access_token;
+    let hasUpdates = false;
+
+    // Try to update post stats if using a real connection
+    if (accessToken && accessToken !== 'mock_token') {
+      for (let i = 0; i < userPosts.length; i++) {
+        const post = userPosts[i];
+        if (post.id && !post.id.includes('mock_')) {
+          try {
+            const socialRes = await fetch(`https://api.linkedin.com/v2/socialActions/${encodeURIComponent(post.id)}`, {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'X-Restli-Protocol-Version': '2.0.0'
+              }
+            });
+            if (socialRes.ok) {
+              const socialData = await socialRes.json();
+              const likes = socialData.likesSummary?.totalLikes || 0;
+              const comments = socialData.commentsSummary?.totalComments || 0;
+              
+              if (post.likes !== likes || post.comments !== comments) {
+                post.likes = likes;
+                post.comments = comments;
+                const engagements = likes + comments + (post.shares || 0);
+                post.impressions = Math.max(post.impressions || 1, engagements);
+                post.engagementRate = post.impressions > 0 
+                  ? parseFloat(((engagements / post.impressions) * 100).toFixed(2)) 
+                  : 0;
+                hasUpdates = true;
+              }
+            } else {
+              const errText = await socialRes.text();
+              console.warn(`Failed to fetch social actions for post ${post.id}:`, errText);
+            }
+          } catch (err) {
+            console.warn(`Error fetching social actions for post ${post.id}:`, err.message);
+          }
+        }
+      }
+
+      if (hasUpdates) {
+        await store.updateUserById(userId, { linkedin_posts: userPosts });
+      }
+    }
+
+    let posts = [];
+    if (accessToken === 'mock_token') {
+      const mockPosts = getMockLinkedInOrganicPosts(range);
+      posts = [...userPosts, ...mockPosts];
+    } else {
+      posts = userPosts;
+    }
+    
+    const totals = posts.reduce(
+      (acc, p) => {
+        acc.postsCount += 1;
+        acc.likes += p.likes;
+        acc.comments += p.comments;
+        acc.shares += p.shares;
+        acc.impressions += p.impressions;
+        return acc;
+      },
+      { postsCount: 0, likes: 0, comments: 0, shares: 0, impressions: 0 }
+    );
+
+    const totalEngagements = totals.likes + totals.comments + totals.shares;
+    totals.engagementRate = totals.impressions > 0 ? parseFloat(((totalEngagements / totals.impressions) * 100).toFixed(2)) : 0;
+
+    res.json({ posts, totals });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to fetch organic posts' });
+  }
+});
+
+app.post('/api/linkedin/share', authRequired, async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id.toString();
+    const user = await store.findUserById(userId);
+    if (!user || !user.linkedin_connected) {
+      return res.status(400).json({ message: 'LinkedIn account is not connected' });
+    }
+
+    const { text } = req.body;
+    if (!text || !text.trim()) {
+      return res.status(400).json({ message: 'Post text is required' });
+    }
+
+    let accessToken = user.linkedin_access_token;
+    let personUrn = user.linkedin_person_urn;
+
+    // Fallback: fetch Person URN if missing
+    if (!personUrn && accessToken && accessToken !== 'mock_token') {
+      try {
+        const profileRes = await fetch('https://api.linkedin.com/v2/userinfo', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (profileRes.ok) {
+          const profile = await profileRes.json();
+          if (profile.sub) {
+            personUrn = `urn:li:person:${profile.sub}`;
+            await store.updateUserById(userId, { linkedin_person_urn: personUrn });
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to retrieve profile URN on share fallback:', err);
+      }
+    }
+
+    let postUrn = `urn:li:share:mock_${Date.now()}`;
+    let isSimulated = true;
+
+    if (accessToken && accessToken !== 'mock_token' && personUrn) {
+      const ugcResponse = await fetch('https://api.linkedin.com/v2/ugcPosts', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'X-Restli-Protocol-Version': '2.0.0',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          author: personUrn,
+          lifecycleState: 'PUBLISHED',
+          specificContent: {
+            'com.linkedin.ugc.ShareContent': {
+              shareCommentary: { text },
+              shareMediaCategory: 'NONE',
+            },
+          },
+          visibility: {
+            'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC',
+          },
+        }),
+      });
+
+      if (!ugcResponse.ok) {
+        const errText = await ugcResponse.text();
+        console.error('LinkedIn UGC Post API error:', errText);
+        throw new Error(`LinkedIn share failed: ${errText}`);
+      }
+
+      const ugcData = await ugcResponse.json();
+      postUrn = ugcData.id || postUrn;
+      isSimulated = false;
+    }
+
+    const newPost = {
+      id: postUrn,
+      text,
+      date: new Date().toISOString().slice(0, 10),
+      likes: 0,
+      comments: 0,
+      shares: 0,
+      impressions: 1,
+      engagementRate: 0.0,
+      isReal: !isSimulated,
+    };
+
+    const currentPosts = user.linkedin_posts || [];
+    currentPosts.unshift(newPost);
+    await store.updateUserById(userId, { linkedin_posts: currentPosts });
+
+    res.json({ success: true, post: newPost });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to post on LinkedIn' });
+  }
+});
+
+app.post('/api/linkedin/post/stats', authRequired, async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id.toString();
+    const user = await store.findUserById(userId);
+    if (!user || !user.linkedin_connected) {
+      return res.status(400).json({ message: 'LinkedIn account is not connected' });
+    }
+
+    const { postId, likes, comments, impressions } = req.body;
+    if (!postId) {
+      return res.status(400).json({ message: 'Post ID is required' });
+    }
+
+    const currentPosts = user.linkedin_posts || [];
+    const post = currentPosts.find(p => p.id === postId);
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    // Update stats
+    post.likes = Math.max(0, parseInt(likes, 10) || 0);
+    post.comments = Math.max(0, parseInt(comments, 10) || 0);
+    post.impressions = Math.max(1, parseInt(impressions, 10) || 1);
+    
+    // Recalculate engagement rate
+    const engagements = post.likes + post.comments + (post.shares || 0);
+    post.impressions = Math.max(post.impressions, engagements); // Imp should be >= engagements
+    post.engagementRate = post.impressions > 0 
+      ? parseFloat(((engagements / post.impressions) * 100).toFixed(2)) 
+      : 0;
+
+    await store.updateUserById(userId, { linkedin_posts: currentPosts });
+
+    res.json({ success: true, post });
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to update post stats' });
+  }
 });
 
 const tryStartMongo = async () => {
