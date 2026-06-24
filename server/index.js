@@ -2450,6 +2450,43 @@ app.post('/api/wallet/recharge', authRequired, async (req, res) => {
   });
 });
 
+app.post('/api/wallet/webhook', async (req, res) => {
+  const { userId, amount, paymentId, status } = req.body || {};
+  const normalizedAmount = normalizeCreditValue(amount);
+
+  if (String(status || '').toLowerCase() !== 'success') {
+    return res.status(400).json({ message: 'Payment status is not successful' });
+  }
+
+  if (!String(userId || '').trim()) {
+    return res.status(400).json({ message: 'User id is required' });
+  }
+
+  if (normalizedAmount <= 0) {
+    return res.status(400).json({ message: 'Credit amount must be greater than zero' });
+  }
+
+  try {
+    const result = await store.allocateCredits({
+      userId: String(userId).trim(),
+      amount: normalizedAmount,
+      type: 'purchase',
+      note: `Payment successful${paymentId ? `: ${paymentId}` : ''}`,
+      createdBy: 'wallet_webhook',
+    });
+
+    res.json({
+      message: 'Credits added successfully',
+      user: sanitizeUser(result.user),
+      transaction: sanitizeCreditTransaction(result.transaction),
+    });
+  } catch (error) {
+    const message = error.message || 'Unable to process wallet webhook';
+    const responseStatus = /not found/i.test(message) ? 404 : 400;
+    res.status(responseStatus).json({ message });
+  }
+});
+
 app.post('/api/support-requests', authRequired, async (req, res) => {
   const { type, subject, message } = req.body || {};
 
