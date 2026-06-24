@@ -3445,6 +3445,54 @@ app.get('/api/superadmin/support-requests', superAdminRequired, async (req, res)
   });
 });
 
+app.get('/api/admin/users', superAdminRequired, async (_req, res) => {
+  const users = await store.listUsers((user) => user.role !== 'superadmin');
+  res.json({ users: users.map(sanitizeUser) });
+});
+
+app.get('/api/admin/tickets', superAdminRequired, async (req, res) => {
+  const status = String(req.query.status || '').trim();
+  const requests = await store.listSupportRequests({ status, limit: 100 });
+
+  res.json({
+    items: requests.map((request) => ({
+      id: request._id?.toString?.() || request.id,
+      type: request.type || '',
+      subject: request.subject || '',
+      message: request.message || '',
+      status: request.status || 'open',
+      userName: request.user_name || '',
+      userEmail: request.user_email || '',
+      company: request.company || '',
+      createdAt: request.created_at || '',
+      updatedAt: request.updated_at || '',
+    })),
+  });
+});
+
+app.put('/api/admin/users/:id/credits', superAdminRequired, async (req, res) => {
+  const { amount, note, type } = req.body || {};
+
+  try {
+    const result = await store.allocateCredits({
+      userId: String(req.params.id || '').trim(),
+      amount,
+      note,
+      type: String(type || 'manual_adjustment').trim() || 'manual_adjustment',
+      createdBy: req.superAdmin.email || 'superadmin',
+    });
+
+    res.json({
+      user: sanitizeUser(result.user),
+      transaction: sanitizeCreditTransaction(result.transaction),
+    });
+  } catch (error) {
+    const message = error.message || 'Unable to update user credits';
+    const status = /not found/i.test(message) ? 404 : /insufficient/i.test(message) ? 400 : 400;
+    res.status(status).json({ message });
+  }
+});
+
 app.patch('/api/superadmin/users/:id/persona-limit', superAdminRequired, async (req, res) => {
   const { persona_limit: personaLimit } = req.body || {};
 
