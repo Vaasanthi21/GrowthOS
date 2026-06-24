@@ -2487,6 +2487,50 @@ app.post('/api/wallet/webhook', async (req, res) => {
   }
 });
 
+app.post('/api/contact', authRequired, async (req, res) => {
+  const { subject, message } = req.body || {};
+
+  req.body = {
+    type: 'general_support',
+    subject,
+    message,
+  };
+
+  const requestType = 'general_support';
+  const requestSubject = String(subject || '').trim();
+  const requestMessage = String(message || '').trim();
+
+  if (!requestSubject) {
+    return res.status(400).json({ message: 'Subject is required' });
+  }
+
+  if (!requestMessage) {
+    return res.status(400).json({ message: 'Message is required' });
+  }
+
+  const now = nowIso();
+  const userId = req.user.id || req.user._id.toString();
+
+  const request = await store.insertSupportRequest({
+    user_id: userId,
+    user_name: req.user.full_name || req.user.email || '',
+    user_email: req.user.email || '',
+    company: req.user.company || '',
+    type: requestType,
+    subject: requestSubject,
+    message: requestMessage,
+    status: 'open',
+    created_at: now,
+    updated_at: now,
+    created_by: userId,
+  });
+
+  res.status(201).json({
+    message: 'Message submitted successfully. Our team will review it shortly.',
+    request,
+  });
+});
+
 app.post('/api/support-requests', authRequired, async (req, res) => {
   const { type, subject, message } = req.body || {};
 
