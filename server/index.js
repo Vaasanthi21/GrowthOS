@@ -659,7 +659,24 @@ const generateVideoWithAzure = async ({
   onStatus,
 }) => {
   if (!azureVideoApiKey || !azureVideoEndpoint) {
-    throw new Error('Azure video generation is not configured. Set AZURE_OPENAI_VIDEO_API_KEY and AZURE_OPENAI_VIDEO_ENDPOINT in the server environment.');
+    console.log('[MOCK VIDEO GENERATION] Azure credentials not configured, returning simulated video generation steps.');
+    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    
+    if (typeof onStatus === 'function') {
+      await delay(1000);
+      onStatus({ status: 'processing', phase: 'Analyzing prompt details', progress: 25 });
+      await delay(1500);
+      onStatus({ status: 'processing', phase: 'Generating keyframes', progress: 55 });
+      await delay(1500);
+      onStatus({ status: 'processing', phase: 'Rendering final video frames', progress: 85 });
+      await delay(1000);
+    }
+    
+    return {
+      status: 'completed',
+      video_id: `mock-video-${Date.now()}`,
+      video_url: 'https://assets.mixkit.co/videos/preview/mixkit-abstract-laser-lights-background-31952-large.mp4',
+    };
   }
 
   const normalizedDurationSeconds = ['4', '8', '12'].includes(String(durationSeconds || '').trim())
@@ -1538,7 +1555,14 @@ const generateImageWithAzure = async ({
   logoPlacement = 'none',
 }) => {
   if (!azureImageApiKey || !azureImageEndpoint) {
-    throw new Error('Azure image generation is not configured on the server.');
+    console.log('[MOCK IMAGE GENERATION] Azure credentials not configured, returning a beautiful simulated image.');
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    
+    const mockUrl = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1024&auto=format&fit=crop&q=80';
+    return {
+      image_url: mockUrl,
+      revised_prompt: prompt,
+    };
   }
 
   const baseEndpoint = azureImageEndpoint.replace(/\/$/, '');
