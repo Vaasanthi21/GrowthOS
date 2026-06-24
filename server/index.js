@@ -865,6 +865,32 @@ const saveLogoUpload = async (logoFile) => {
     throw new Error('Invalid logo file payload');
   }
 
+  // Fallback to local storage if AWS S3 is not configured
+  if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY || !process.env.AWS_BUCKET_NAME || !process.env.AWS_REGION) {
+    try {
+      await fs.mkdir(uploadsDir, { recursive: true });
+      let ext = '.png';
+      if (parsed.mimeType === 'image/jpeg' || parsed.mimeType === 'image/jpg') {
+        ext = '.jpg';
+      } else if (parsed.mimeType === 'image/gif') {
+        ext = '.gif';
+      } else if (parsed.mimeType === 'image/svg+xml') {
+        ext = '.svg';
+      } else if (parsed.mimeType === 'image/webp') {
+        ext = '.webp';
+      }
+
+      const filename = `logo-${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`;
+      const filePath = path.join(uploadsDir, filename);
+      await fs.writeFile(filePath, parsed.buffer);
+      console.log(`[LOGO UPLOAD] Saved logo locally: /uploads/${filename}`);
+      return `/uploads/${filename}`;
+    } catch (err) {
+      console.error('[LOGO UPLOAD] Local save failed:', err);
+      throw new Error(`Failed to save logo locally: ${err.message}`);
+    }
+  }
+
   const key = `logos/${Date.now()}.png`;
 
   await s3Client.send(
