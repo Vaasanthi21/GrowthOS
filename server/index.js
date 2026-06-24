@@ -2558,6 +2558,114 @@ app.post('/api/company-personas/logo', authRequired, async (req, res) => {
   }
 });
 
+app.post('/api/brand/logo', authRequired, async (req, res) => {
+  const { fileName, fileData } = req.body || {};
+
+  if (!fileName || !fileData) {
+    return res.status(400).json({ message: 'Logo file is required' });
+  }
+
+  try {
+    const logoUrl = await saveLogoUpload(fileData);
+    res.status(201).json({ logoUrl, fileName });
+  } catch (error) {
+    res.status(400).json({ message: error.message || 'Unable to upload logo' });
+  }
+});
+
+app.get('/api/personas', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+  const rows = await store.listCompanyPersonas(userId);
+  const user = await store.findUserById(userId);
+  const planName = user?.plan_name || req.user.plan_name || 'Free';
+  const personaLimit = normalizeCreditValue(user?.persona_limit, getPersonaLimitForPlan(planName));
+
+  res.json({
+    items: rows.map(sanitizeCompanyPersona),
+    meta: {
+      count: rows.length,
+      limit: personaLimit,
+      planName,
+    },
+  });
+});
+
+app.post('/api/personas', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+  const {
+    name,
+    company,
+    description,
+    base_image_url,
+    tagline,
+    logo_url,
+    logo_placement,
+    preserve_original_logo,
+    audience,
+    voice,
+    goals,
+    notes,
+    visual_style_instructions,
+    brand_primary_color,
+    brand_secondary_color,
+    brand_accent_color,
+    tuning_prompt,
+  } = req.body || {};
+
+  const resolvedCompany = String(company || name || '').trim();
+  const resolvedNotes = String(notes || description || '').trim();
+
+  if (!name || !resolvedCompany) {
+    return res.status(400).json({ message: 'Persona name and company are required' });
+  }
+
+  const existingCount = await store.countCompanyPersonas(userId);
+  const user = await store.findUserById(userId);
+  const planName = user?.plan_name || req.user.plan_name || 'Free';
+  const personaLimit = normalizeCreditValue(user?.persona_limit, getPersonaLimitForPlan(planName));
+
+  if (existingCount >= personaLimit) {
+    return res.status(403).json({ message: `Your ${planName} plan allows up to ${personaLimit} company persona${personaLimit > 1 ? 's' : ''}.` });
+  }
+
+  const timestamp = nowIso();
+  const persona = await store.insertCompanyPersona({
+    user_id: userId,
+    company: resolvedCompany,
+    name: String(name).trim(),
+    tagline: String(tagline || '').trim(),
+    logo_url: String(logo_url || base_image_url || '').trim(),
+    logo_placement: String(logo_placement || 'none').trim() || 'none',
+    preserve_original_logo: preserve_original_logo !== false,
+    audience: String(audience || '').trim(),
+    voice: String(voice || '').trim(),
+    goals: String(goals || '').trim(),
+    notes: resolvedNotes,
+    visual_style_instructions: String(visual_style_instructions || '').trim(),
+    brand_primary_color: String(brand_primary_color || '').trim(),
+    brand_secondary_color: String(brand_secondary_color || '').trim(),
+    brand_accent_color: String(brand_accent_color || '').trim(),
+    tuning_prompt: String(tuning_prompt || '').trim(),
+    learning_summary: '',
+    learning_count: 0,
+    analysis: buildPersonaAnalysis({
+      name,
+      company: resolvedCompany,
+      tagline,
+      audience,
+      voice,
+      goals,
+      notes: resolvedNotes,
+      visual_style_instructions,
+      tuning_prompt,
+    }),
+    created_at: timestamp,
+    updated_at: timestamp,
+  });
+
+  res.status(201).json(sanitizeCompanyPersona(persona));
+});
+
 app.post('/api/company-personas', authRequired, async (req, res) => {
   const userId = req.user.id || req.user._id.toString();
   const {
@@ -2637,6 +2745,43 @@ app.patch('/api/company-personas/:id', authRequired, async (req, res) => {
     voice: String(req.body.voice ?? existing.voice).trim(),
     goals: String(req.body.goals ?? existing.goals).trim(),
     notes: String(req.body.notes ?? existing.notes).trim(),
+    visual_style_instructions: String(req.body.visual_style_instructions ?? existing.visual_style_instructions).trim(),
+    brand_primary_color: String(req.body.brand_primary_color ?? existing.brand_primary_color ?? '').trim(),
+    brand_secondary_color: String(req.body.brand_secondary_color ?? existing.brand_secondary_color ?? '').trim(),
+    brand_accent_color: String(req.body.brand_accent_color ?? existing.brand_accent_color ?? '').trim(),
+    tuning_prompt: String(req.body.tuning_prompt ?? existing.tuning_prompt).trim(),
+    learning_summary: String(req.body.learning_summary ?? existing.learning_summary).trim(),
+    learning_count: Number(req.body.learning_count ?? existing.learning_count ?? 0),
+  };
+
+  const updated = await store.updateCompanyPersona(req.params.id, userId, {
+    ...nextValues,
+    analysis: buildPersonaAnalysis(nextValues),
+    updated_at: nowIso(),
+  });
+
+  res.json(sanitizeCompanyPersona(updated));
+});
+
+app.put('/api/personas/:id', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+  const existing = await store.findCompanyPersonaById(req.params.id, userId);
+
+  if (!existing) {
+    return res.status(404).json({ message: 'Company persona not found' });
+  }
+
+  const nextValues = {
+    name: String(req.body.name ?? existing.name).trim(),
+    company: String(req.body.company ?? existing.company ?? req.body.name ?? existing.name).trim(),
+    tagline: String(req.body.tagline ?? existing.tagline).trim(),
+    logo_url: String(req.body.logo_url ?? req.body.base_image_url ?? existing.logo_url).trim(),
+    logo_placement: String(req.body.logo_placement ?? existing.logo_placement ?? 'none').trim() || 'none',
+    preserve_original_logo: req.body.preserve_original_logo !== undefined ? req.body.preserve_original_logo !== false : existing.preserve_original_logo !== false,
+    audience: String(req.body.audience ?? existing.audience).trim(),
+    voice: String(req.body.voice ?? existing.voice).trim(),
+    goals: String(req.body.goals ?? existing.goals).trim(),
+    notes: String(req.body.notes ?? req.body.description ?? existing.notes).trim(),
     visual_style_instructions: String(req.body.visual_style_instructions ?? existing.visual_style_instructions).trim(),
     brand_primary_color: String(req.body.brand_primary_color ?? existing.brand_primary_color ?? '').trim(),
     brand_secondary_color: String(req.body.brand_secondary_color ?? existing.brand_secondary_color ?? '').trim(),
