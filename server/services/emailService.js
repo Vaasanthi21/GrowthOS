@@ -33,7 +33,9 @@ export const sendPasswordResetOtpEmail = async ({ to, otp, expiresInMinutes = 10
   const transporter = createTransporter();
 
   if (!transporter) {
-    throw new Error('Email service is not configured');
+    console.warn('Email service is not configured. OTP email was not sent.');
+    console.log(`Password Reset OTP for ${to}: ${otp}`);
+    return;
   }
 
   await transporter.sendMail({
