@@ -130,6 +130,19 @@ const nowIso = () => new Date().toISOString();
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const normalizePhone = (value) => String(value || '').trim();
 
+const passwordResetOtpExpiryMinutes = Number(process.env.PASSWORD_RESET_OTP_EXPIRY_MINUTES || 10);
+
+const createPasswordResetOtp = () => {
+  const otp = String(crypto.randomInt(100000, 1000000));
+  const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+  const expiresAt = new Date(Date.now() + passwordResetOtpExpiryMinutes * 60 * 1000).toISOString();
+
+  return { otp, otpHash, expiresAt };
+};
+
+const hashPasswordResetOtp = (otp) =>
+  crypto.createHash('sha256').update(String(otp || '').trim()).digest('hex');
+
 const isValidPhoneNumber = (value) => {
   const digitsOnly = String(value || '').replace(/\D/g, '');
   return digitsOnly.length >= 10 && digitsOnly.length <= 15;
@@ -2540,6 +2553,78 @@ app.post('/api/auth/login', async (req, res) => {
 
   const token = createToken({ sub: user.id || user._id.toString(), role: user.role, email: user.email });
   res.json({ token, user: sanitizeUser(user) });
+});
+
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const { email } = req.body || {};
+  const normalizedEmail = normalizeEmail(email);
+
+  if (!normalizedEmail) {
+    return res.status(400).json({ message: 'Email is required' });
+  }
+
+  const user = await store.findUserByEmail(normalizedEmail);
+
+  if (!user) {
+    return res.json({
+      message: 'If an account exists for this email, an OTP has been generated.',
+    });
+  }
+
+  const { otp, otpHash, expiresAt } = createPasswordResetOtp();
+
+  await store.updateUserById(user.id || user._id.toString(), {
+    password_reset_otp_hash: otpHash,
+    password_reset_otp_expires_at: expiresAt,
+    password_reset_requested_at: nowIso(),
+  });
+
+  res.json({
+    message: 'OTP generated successfully.',
+    otp,
+    expiresAt,
+  });
+});
+
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { email, otp, newPassword } = req.body || {};
+  const normalizedEmail = normalizeEmail(email);
+
+  if (!normalizedEmail || !otp || !newPassword) {
+    return res.status(400).json({ message: 'Email, OTP, and new password are required' });
+  }
+
+  if (String(newPassword).length < 6) {
+    return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+  }
+
+  const user = await store.findUserByEmail(normalizedEmail);
+
+  if (!user || !user.password_reset_otp_hash || !user.password_reset_otp_expires_at) {
+    return res.status(400).json({ message: 'Invalid or expired OTP' });
+  }
+
+  if (new Date(user.password_reset_otp_expires_at).getTime() < Date.now()) {
+    return res.status(400).json({ message: 'Invalid or expired OTP' });
+  }
+
+  const incomingOtpHash = hashPasswordResetOtp(otp);
+
+  if (incomingOtpHash !== user.password_reset_otp_hash) {
+    return res.status(400).json({ message: 'Invalid or expired OTP' });
+  }
+
+  const password_hash = await bcrypt.hash(newPassword, 10);
+
+  await store.updateUserById(user.id || user._id.toString(), {
+    password_hash,
+    password_reset_otp_hash: null,
+    password_reset_otp_expires_at: null,
+    password_reset_requested_at: null,
+    password_reset_completed_at: nowIso(),
+  });
+
+  res.json({ message: 'Password reset successful. Please sign in with your new password.' });
 });
 
 app.get('/api/auth/session', authRequired, async (req, res) => {
