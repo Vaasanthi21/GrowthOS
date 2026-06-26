@@ -1133,7 +1133,23 @@ const buildRagContext = ({ knowledgeItems, query, limit = 4 }) => {
     .join('\n');
 };
 
-const selectAzureImageSize = ({ platform, contentType }) => {
+const selectAzureImageSize = ({ platform, contentType, aspectRatio, width, height }) => {
+  const normalizedAspectRatio = String(aspectRatio || '').trim();
+
+  if (width && height) {
+    return `${width}x${height}`;
+  }
+
+  const aspectRatioSizeMap = {
+    '1:1': '1024x1024',
+    '9:16': '1024x1792',
+    '16:9': '1792x1024',
+  };
+
+  if (aspectRatioSizeMap[normalizedAspectRatio]) {
+    return aspectRatioSizeMap[normalizedAspectRatio];
+  }
+
   const normalizedPlatform = String(platform?.label || '').trim().toLowerCase();
   const normalizedContentType = String(contentType || '').trim().toLowerCase();
   const isImageOnly = normalizedContentType === 'image' || normalizedContentType === 'image-only';
@@ -3360,7 +3376,9 @@ app.post('/api/generate-image', authRequired, async (req, res) => {
     const topic = String(req.body?.topic || '').trim();
     const contentType = String(req.body?.contentType || '').trim();
     const companyPersona = req.body?.companyPersona || null;
-    const aspectRatio = req.body?.aspectRatio || null;
+    const aspectRatio = req.body?.aspectRatio || req.body?.aspect_ratio || null;
+    const width = req.body?.width || null;
+    const height = req.body?.height || null;
     const style = req.body?.style || null;
     const logoPlacement = String(req.body?.logoPlacement || '').trim();
     const useOriginalLogo = req.body?.useOriginalLogo !== false;
@@ -3390,7 +3408,7 @@ app.post('/api/generate-image', authRequired, async (req, res) => {
       variantContent,
     });
 
-    const size = selectAzureImageSize({ platform, contentType });
+    const size = selectAzureImageSize({ platform, contentType, aspectRatio, width, height });
 
     if (req.body?.async !== false) {
       const resolvedLogoPlacement =
