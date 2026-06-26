@@ -17,6 +17,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { Worker } from 'bullmq';
 import jobRoutes from './routes/jobRoutes.js';
+import { sendPasswordResetOtpEmail } from './services/emailService.js';
 import './queues/mockWorker.js';
 import { imageQueue } from './queues/imageQueue.js';
 import { connection } from './queues/redisConnection.js';
@@ -2573,6 +2574,12 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
   const { otp, otpHash, expiresAt } = createPasswordResetOtp();
 
+  await sendPasswordResetOtpEmail({
+    to: user.email,
+    otp,
+    expiresInMinutes: passwordResetOtpExpiryMinutes,
+  });
+
   await store.updateUserById(user.id || user._id.toString(), {
     password_reset_otp_hash: otpHash,
     password_reset_otp_expires_at: expiresAt,
@@ -2580,8 +2587,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   });
 
   res.json({
-    message: 'OTP generated successfully.',
-    otp,
+    message: 'If an account exists for this email, an OTP has been sent.',
     expiresAt,
   });
 });
