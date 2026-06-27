@@ -1622,13 +1622,35 @@ const overlayLogoOnImage = async ({
     center: 'center',
   };
 
+  const resizedLogoMetadata = await sharp(resizedLogo).metadata();
+  const imageWidth = metadata.width || 1024;
+  const imageHeight = metadata.height || 1024;
+  const overlayWidth = resizedLogoMetadata.width || logoWidth;
+  const overlayHeight = resizedLogoMetadata.height || logoWidth;
+  const margin = 24;
+
+  const positionMap = {
+    'top-left': { left: margin, top: margin },
+    'top-right': { left: imageWidth - overlayWidth - margin, top: margin },
+    'bottom-left': { left: margin, top: imageHeight - overlayHeight - margin },
+    'bottom-right': {
+      left: imageWidth - overlayWidth - margin,
+      top: imageHeight - overlayHeight - margin,
+    },
+    center: {
+      left: Math.round((imageWidth - overlayWidth) / 2),
+      top: Math.round((imageHeight - overlayHeight) / 2),
+    },
+  };
+
+  const overlayPosition = positionMap[resolvedPlacement] || positionMap['bottom-right'];
+
   const outputBuffer = await image
     .composite([
       {
         input: resizedLogo,
-        gravity: gravityMap[resolvedPlacement] || 'southeast',
-        top: undefined,
-        left: undefined,
+        left: overlayPosition.left,
+        top: overlayPosition.top,
       },
     ])
     .png()
