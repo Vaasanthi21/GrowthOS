@@ -1604,6 +1604,16 @@ const overlayLogoOnImage = async ({
     .png()
     .toBuffer();
 
+    const normalizedPlacement = String(logoPlacement || 'bottom-right')
+      .trim()
+      .replace(/_/g, '-')
+      .toLowerCase();
+
+  const resolvedPlacement =
+    normalizedPlacement === 'persona-default'
+      ? 'bottom-right'
+      : normalizedPlacement;
+
   const gravityMap = {
     'top-left': 'northwest',
     'top-right': 'northeast',
@@ -1616,7 +1626,7 @@ const overlayLogoOnImage = async ({
     .composite([
       {
         input: resizedLogo,
-        gravity: gravityMap[logoPlacement] || 'southeast',
+        gravity: gravityMap[resolvedPlacement] || 'southeast',
         top: undefined,
         left: undefined,
       },
