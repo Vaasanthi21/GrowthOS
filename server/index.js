@@ -748,6 +748,16 @@ const generateVideoWithAzure = async ({
     ? String(durationSeconds).trim()
     : '12';
 
+  const normalizedAspectRatio = String(aspectRatio || '').trim();
+
+  const aspectRatioToSoraSize = {
+    '16:9': '1280x720',
+    '9:16': '720x1280',
+    '1:1': '720x720',
+  };
+
+  const soraSize = aspectRatioToSoraSize[normalizedAspectRatio] || '720x1280';
+
   const requestVideo = async (body) => {
     const response = await fetch(normalizeAzureVideoEndpoint(azureVideoEndpoint), {
       method: 'POST',
@@ -765,8 +775,8 @@ const generateVideoWithAzure = async ({
   let requestBody = {
     model: azureVideoModel,
     prompt,
-    duration: normalizedDurationSeconds,
-    aspect_ratio: aspectRatio || undefined,
+    seconds: Number(normalizedDurationSeconds),
+    size: soraSize,
   };
 
   let { response, data } = await requestVideo(requestBody);
@@ -775,8 +785,8 @@ const generateVideoWithAzure = async ({
     requestBody = {
       model: azureVideoModel,
       prompt,
-      seconds: normalizedDurationSeconds,
-      aspect_ratio: aspectRatio || undefined,
+      seconds: Number(normalizedDurationSeconds),
+      size: soraSize,
     };
     ({ response, data } = await requestVideo(requestBody));
   }
