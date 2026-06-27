@@ -6,6 +6,7 @@ import multer from 'multer';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { MongoClient, ObjectId } from 'mongodb';
+import sharp from 'sharp';
 import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
@@ -1582,6 +1583,54 @@ const fetchImageBufferFromUrl = async (url) => {
   return Buffer.from(arrayBuffer);
 };
 
+const overlayLogoOnImage = async ({
+  imageUrl,
+  logoUrl,
+  logoPlacement = 'bottom-right',
+}) => {
+  const imageBuffer = await fetchImageBufferFromUrl(imageUrl);
+  const logoBuffer = await fetchImageBufferFromUrl(logoUrl);
+
+  const image = sharp(imageBuffer);
+  const metadata = await image.metadata();
+
+  const logoWidth = Math.round((metadata.width || 1024) * 0.18);
+
+  const resizedLogo = await sharp(logoBuffer)
+    .resize({
+      width: logoWidth,
+      withoutEnlargement: true,
+    })
+    .png()
+    .toBuffer();
+
+  const gravityMap = {
+    'top-left': 'northwest',
+    'top-right': 'northeast',
+    'bottom-left': 'southwest',
+    'bottom-right': 'southeast',
+    center: 'center',
+  };
+
+  const outputBuffer = await image
+    .composite([
+      {
+        input: resizedLogo,
+        gravity: gravityMap[logoPlacement] || 'southeast',
+        top: undefined,
+        left: undefined,
+      },
+    ])
+    .png()
+    .toBuffer();
+
+  return await uploadImageBufferToS3({
+    buffer: outputBuffer,
+    mimeType: 'image/png',
+    folder: 'images',
+  });
+};
+
 const generateImageWithAzure = async ({
   prompt,
   size = '1024x1024',
@@ -1771,68 +1820,15 @@ if (logoUrl && (logoUrl.includes('/home/ec2-user') || logoUrl.includes('Arth Gan
   activeLogoUrl = arthGangaLogoUrl;
 }
 
-// Ensure activeLogoUrl is from OUR Cloudinary account, otherwise upload it
-// This prevents 400 errors when using logos from other Cloudinary accounts or external URLs
-if (activeLogoUrl && activeLogoUrl.startsWith('http') && !activeLogoUrl.includes(`/${process.env.CLOUDINARY_CLOUD_NAME}/`)) {
+if (finalImageUrl && activeLogoUrl && logoPlacement && logoPlacement !== 'none') {
   try {
-    console.log('[IMAGE OVERLAY] Logo is external or from another account, uploading to our account:', activeLogoUrl);
-    const logoUpload = await cloudinary.uploader.upload(activeLogoUrl, {
-      folder: `${process.env.CLOUDINARY_FOLDER || 'creative-studio-os'}/logos`,
-      resource_type: 'image'
+    finalImageUrl = await overlayLogoOnImage({
+      imageUrl: finalImageUrl,
+      logoUrl: activeLogoUrl,
+      logoPlacement,
     });
-    activeLogoUrl = logoUpload.secure_url;
-    console.log('[IMAGE OVERLAY] Logo re-hosted successfully:', activeLogoUrl);
   } catch (err) {
-    console.warn('[IMAGE OVERLAY] Failed to re-host external logo:', err.message);
-  }
-}
-
-// If we need to overlay but don't have a Cloudinary uploadResult yet (e.g. Azure returned a raw URL)
-if (finalImageUrl && activeLogoUrl && logoPlacement && logoPlacement !== 'none' && !uploadResult) {
-  try {
-    uploadResult = await cloudinary.uploader.upload(finalImageUrl, {
-      folder: `${process.env.CLOUDINARY_FOLDER || 'creative-studio-os'}/images`,
-      resource_type: 'image',
-    });
-    finalImageUrl = uploadResult.secure_url;
-  } catch (err) {
-    console.warn('[IMAGE OVERLAY] Failed to upload Azure URL to Cloudinary', err);
-  }
-}
-
-if (
-  finalImageUrl &&
-  activeLogoUrl &&
-  logoPlacement &&
-  logoPlacement !== 'none' &&
-  uploadResult?.public_id
-) {
-  const gravityMap = {
-    'top-left': 'north_west',
-    'top-right': 'north_east',
-    'bottom-left': 'south_west',
-    'bottom-right': 'south_east',
-  };
-  const gravity = gravityMap[logoPlacement] || 'south_east';
-  const logoPublicId = getCloudinaryPublicIdFromUrl(activeLogoUrl);
-
-  if (logoPublicId) {
-    finalImageUrl = cloudinary.url(uploadResult.public_id, {
-      secure: true,
-      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-      transformation: [
-        {
-          overlay: logoPublicId,
-          width: 180,
-          opacity: 100,
-          gravity,
-          x: 24,
-          y: 24,
-        },
-      ],
-    });
-  } else {
-    console.warn('[IMAGE OVERLAY] Invalid Cloudinary logo URL, skipping overlay:', activeLogoUrl);
+    console.warn('[IMAGE OVERLAY] Sharp overlay failed:', err);
   }
 }
 
