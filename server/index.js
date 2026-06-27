@@ -668,6 +668,7 @@ const normalizeAzureVideoResult = async ({
 const generateVideoWithAzure = async ({
   prompt,
   durationSeconds = azureVideoDurationSeconds,
+  aspectRatio = '',
   logoUrl = '',
   logoPlacement = 'none',
   onStatus,
@@ -715,6 +716,7 @@ const generateVideoWithAzure = async ({
     model: azureVideoModel,
     prompt,
     duration: normalizedDurationSeconds,
+    aspect_ratio: aspectRatio || undefined,
   };
 
   let { response, data } = await requestVideo(requestBody);
@@ -724,6 +726,7 @@ const generateVideoWithAzure = async ({
       model: azureVideoModel,
       prompt,
       seconds: normalizedDurationSeconds,
+      aspect_ratio: aspectRatio || undefined,
     };
     ({ response, data } = await requestVideo(requestBody));
   }
@@ -1316,7 +1319,7 @@ const updateVideoJob = (jobId, updates) => {
   return nextJob;
 };
 
-const startVideoGenerationJob = ({ prompt, logoUrl = '', logoPlacement = 'none', onCompleted, onFailed }) => {
+const startVideoGenerationJob = ({ prompt, aspectRatio = '', logoUrl = '', logoPlacement = 'none', onCompleted, onFailed }) => {
   const jobId = createImageJobId();
   const startedAt = Date.now();
   const estimatedTotalMs = getAverageVideoGenerationDurationMs();
@@ -1351,6 +1354,7 @@ const startVideoGenerationJob = ({ prompt, logoUrl = '', logoPlacement = 'none',
 
       const video = await generateVideoWithAzure({
         prompt,
+        aspectRatio,
         logoUrl,
         logoPlacement,
         onStatus: ({ status, phase, progress, videoId }) => {
@@ -3506,6 +3510,7 @@ app.post('/api/generate-video', authRequired, async (req, res) => {
     const topic = String(req.body?.topic || '').trim();
     const contentType = String(req.body?.contentType || '').trim();
     const companyPersona = req.body?.companyPersona || null;
+    const aspectRatio = req.body?.aspectRatio || req.body?.aspect_ratio || '';
     const logoPlacement = String(req.body?.logoPlacement || '').trim();
     const useOriginalLogo = req.body?.useOriginalLogo !== false;
     const ragContext = String(req.body?.ragContext || '').trim();
@@ -3541,6 +3546,7 @@ app.post('/api/generate-video', authRequired, async (req, res) => {
 
     const jobId = startVideoGenerationJob({
       prompt,
+      aspectRatio,
       logoUrl: companyPersona?.logoUrl || companyPersona?.logo_url || '',
       logoPlacement: resolvedLogoPlacement,
       onFailed: async ({ error }) => {
