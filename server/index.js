@@ -775,7 +775,7 @@ const generateVideoWithAzure = async ({
   let requestBody = {
     model: azureVideoModel,
     prompt,
-    seconds: Number(normalizedDurationSeconds),
+    seconds: normalizedDurationSeconds,
     size: soraSize,
   };
 
@@ -785,7 +785,7 @@ const generateVideoWithAzure = async ({
     requestBody = {
       model: azureVideoModel,
       prompt,
-      seconds: Number(normalizedDurationSeconds),
+      seconds: normalizedDurationSeconds,
       size: soraSize,
     };
     ({ response, data } = await requestVideo(requestBody));
