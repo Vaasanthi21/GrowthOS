@@ -608,8 +608,13 @@ const overlayLogoOnVideo = async ({
       '-y',
       '-i', inputVideoPath,
       '-i', inputLogoPath,
-      '-filter_complex', `[1:v]scale=180:-1[logo];[0:v][logo]overlay=${overlayPosition}`,
+      '-filter_complex', `[1:v]scale=180:-1[logo];[0:v][logo]overlay=${overlayPosition}:format=auto`,
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-crf', '23',
+      '-pix_fmt', 'yuv420p',
       '-c:a', 'copy',
+      '-movflags', '+faststart',
       outputVideoPath,
     ]);
 
