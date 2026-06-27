@@ -14,6 +14,7 @@ import { fileURLToPath } from 'url';
 import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 import { createWorker } from 'tesseract.js';
+import { spawn } from 'child_process';
 import { v2 as cloudinary } from 'cloudinary';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { Worker } from 'bullmq';
@@ -565,6 +566,82 @@ const downloadAzureVideoContent = async ({ videoId, variant = azureVideoDownload
   return Buffer.from(arrayBuffer);
 };
 
+const overlayLogoOnVideo = async ({
+  videoBuffer,
+  logoUrl,
+  logoPlacement = 'bottom-right',
+  fileNamePrefix = `video-${Date.now()}`,
+}) => {
+  const normalizedPlacement = String(logoPlacement || 'bottom-right')
+    .trim()
+    .replace(/_/g, '-')
+    .toLowerCase();
+
+  const resolvedPlacement =
+    normalizedPlacement === 'persona-default'
+      ? 'bottom-right'
+      : normalizedPlacement;
+
+  const positionMap = {
+    'top-left': '24:24',
+    'top-right': 'main_w-overlay_w-24:24',
+    'bottom-left': '24:main_h-overlay_h-24',
+    'bottom-right': 'main_w-overlay_w-24:main_h-overlay_h-24',
+    center: '(main_w-overlay_w)/2:(main_h-overlay_h)/2',
+  };
+
+  const overlayPosition = positionMap[resolvedPlacement] || positionMap['bottom-right'];
+  const logoBuffer = await fetchImageBufferFromUrl(logoUrl);
+
+  const tempDir = path.join(process.cwd(), 'tmp');
+  await fs.mkdir(tempDir, { recursive: true });
+
+  const inputVideoPath = path.join(tempDir, `${fileNamePrefix}-input.mp4`);
+  const inputLogoPath = path.join(tempDir, `${fileNamePrefix}-logo.png`);
+  const outputVideoPath = path.join(tempDir, `${fileNamePrefix}-output.mp4`);
+
+  await fs.writeFile(inputVideoPath, videoBuffer);
+  await fs.writeFile(inputLogoPath, logoBuffer);
+
+  await new Promise((resolve, reject) => {
+    const ffmpeg = spawn('ffmpeg', [
+      '-y',
+      '-i', inputVideoPath,
+      '-i', inputLogoPath,
+      '-filter_complex', `[1:v]scale=180:-1[logo];[0:v][logo]overlay=${overlayPosition}`,
+      '-c:a', 'copy',
+      outputVideoPath,
+    ]);
+
+    let stderr = '';
+
+    ffmpeg.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    ffmpeg.on('error', reject);
+
+    ffmpeg.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      reject(new Error(stderr || `ffmpeg exited with code ${code}`));
+    });
+  });
+
+  try {
+    return await fs.readFile(outputVideoPath);
+  } finally {
+    await Promise.allSettled([
+      fs.unlink(inputVideoPath),
+      fs.unlink(inputLogoPath),
+      fs.unlink(outputVideoPath),
+    ]);
+  }
+};
+
 const saveAzureVideoAsset = async ({
   videoId,
   variant = azureVideoDownloadVariant,
@@ -573,60 +650,27 @@ const saveAzureVideoAsset = async ({
 }) => {
   const buffer = await downloadAzureVideoContent({ videoId, variant });
 
-  const uploadResult = {
-  secure_url: await uploadVideoBufferToS3({
-    buffer,
-    mimeType: 'video/mp4',
-    folder: 'videos',
-    fileName: `${videoId}-${variant}.mp4`,
-  }),
-};
+  let outputBuffer = buffer;
 
   if (logoUrl && logoPlacement && logoPlacement !== 'none') {
-  const logoPublicId = getCloudinaryPublicIdFromUrl(logoUrl);
-  const gravity = cloudinaryGravityMap[logoPlacement] || 'south_east';
-
-  if (logoPublicId) {
-  let videoLogoPublicId = logoPublicId;
-
-  if (!logoUrl.includes(`/${process.env.CLOUDINARY_CLOUD_NAME}/`)) {
     try {
-      console.log('[VIDEO OVERLAY] Logo is external or from another account, uploading to our account:', logoUrl);
-
-      const logoUpload = await cloudinary.uploader.upload(logoUrl, {
-        folder: `${process.env.CLOUDINARY_FOLDER || 'creative-studio-os'}/logos`,
-        resource_type: 'image',
+      outputBuffer = await overlayLogoOnVideo({
+        videoBuffer: buffer,
+        logoUrl,
+        logoPlacement,
+        fileNamePrefix: `${videoId}-${variant}`,
       });
-
-      videoLogoPublicId = logoUpload.public_id.replace(/\//g, ':');
-
-      console.log('[VIDEO OVERLAY] Logo re-hosted successfully:', logoUpload.secure_url);
     } catch (err) {
-      console.warn('[VIDEO OVERLAY] Failed to re-host external logo:', err.message);
-      return uploadResult.secure_url;
+      console.warn('[VIDEO OVERLAY] FFmpeg overlay failed:', err?.message || err);
     }
   }
 
-  return cloudinary.url(uploadResult.public_id, {
-    resource_type: 'video',
-    secure: true,
-    transformation: [
-      {
-        overlay: videoLogoPublicId,
-        gravity,
-        width: 180,
-        opacity: 100,
-        x: 24,
-        y: 24,
-      },
-    ],
+  return await uploadVideoBufferToS3({
+    buffer: outputBuffer,
+    mimeType: 'video/mp4',
+    folder: 'videos',
+    fileName: `${videoId}-${variant}.mp4`,
   });
-}
-
-  console.warn('[VIDEO OVERLAY] Invalid Cloudinary logo URL, skipping overlay:', logoUrl);
-}
-
-return uploadResult.secure_url;
 };
 
 const normalizeAzureVideoResult = async ({
