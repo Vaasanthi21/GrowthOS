@@ -2168,6 +2168,29 @@ const createMongoStore = (db) => ({
     );
     return await db.collection('users').findOne({ _id: new ObjectId(id) });
   },
+  async getCompanyByUserId(userId) {
+    return await db.collection('companies').findOne({ user_id: String(userId) });
+  },
+  async upsertCompany(userId, companyData) {
+    const collection = db.collection('companies');
+
+    await collection.updateOne(
+      { user_id: String(userId) },
+      {
+        $set: {
+          ...companyData,
+          user_id: String(userId),
+          updated_at: nowIso(),
+        },
+        $setOnInsert: {
+          created_at: nowIso(),
+        },
+      },
+      { upsert: true }
+    );
+
+    return await collection.findOne({ user_id: String(userId) });
+  },
   async countUsers() {
     return await db.collection('users').countDocuments();
   },
@@ -2978,7 +3001,117 @@ app.get('/api/user/metrics', authRequired, async (req, res) => {
     companyPersonaLimit: personaLimit,
   });
 });
+app.get('/api/company', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+  const company = await store.getCompanyByUserId(userId);
 
+  if (!company) {
+    return res.status(404).json({
+      success: false,
+      error: 'No company associated with this user',
+    });
+  }
+
+  res.json({
+    success: true,
+    data: company,
+  });
+});
+app.post('/api/company', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+
+  const company = await store.upsertCompany(userId, req.body);
+
+  res.status(201).json({
+    success: true,
+    data: company,
+  });
+});
+app.put('/api/company/:id', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+
+  const existing = await store.getCompanyByUserId(userId);
+
+  if (!existing) {
+    return res.status(404).json({
+      success: false,
+      error: 'Company not found',
+    });
+  }
+
+  const updated = await store.upsertCompany(userId, {
+    ...existing,
+    ...req.body,
+  });
+
+  res.json({
+    success: true,
+    data: updated,
+  });
+});
+app.delete('/api/company/delete-logo', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+
+  const existing = await store.getCompanyByUserId(userId);
+
+  if (!existing) {
+    return res.status(404).json({
+      success: false,
+      error: 'Company not found',
+    });
+  }
+
+  const updated = await store.upsertCompany(userId, {
+    ...existing,
+    logo: '',
+    brandColors: [],
+    brandColorsDescription: '',
+  });
+
+  res.json({
+    success: true,
+    data: updated,
+  });
+});
+app.post('/api/company/upload-logo', authRequired, upload.single('logo'), async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+
+  const existing = await store.getCompanyByUserId(userId);
+
+  if (!existing) {
+    return res.status(404).json({
+      success: false,
+      error: 'Company not found',
+    });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      error: 'No logo image file provided',
+    });
+  }
+
+  try {
+    const fileData = req.file.buffer.toString('base64');
+    const logoUrl = await saveLogoUpload(fileData);
+
+    const updated = await store.upsertCompany(userId, {
+      ...existing,
+      logo: logoUrl,
+    });
+
+    res.json({
+      success: true,
+      data: updated,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      error: error.message || 'Unable to upload logo',
+    });
+  }
+});
 app.get('/api/company-personas', authRequired, async (req, res) => {
   const userId = req.user.id || req.user._id.toString();
   const rows = await store.listCompanyPersonas(userId);
@@ -3034,7 +3167,8 @@ app.get('/api/personas', authRequired, async (req, res) => {
   const personaLimit = normalizeCreditValue(user?.persona_limit, getPersonaLimitForPlan(planName));
 
   res.json({
-    items: rows.map(sanitizeCompanyPersona),
+    success: true,
+    data: rows.map(sanitizeCompanyPersona),
     meta: {
       count: rows.length,
       limit: personaLimit,
@@ -3116,7 +3250,10 @@ app.post('/api/personas', authRequired, async (req, res) => {
     updated_at: timestamp,
   });
 
-  res.status(201).json(sanitizeCompanyPersona(persona));
+  res.status(201).json({
+    success: true,
+    data: sanitizeCompanyPersona(persona),
+  });
 });
 
 app.post('/api/company-personas', authRequired, async (req, res) => {
@@ -3250,7 +3387,10 @@ app.put('/api/personas/:id', authRequired, async (req, res) => {
     updated_at: nowIso(),
   });
 
-  res.json(sanitizeCompanyPersona(updated));
+  res.json({
+    success: true,
+    data: sanitizeCompanyPersona(updated),
+  });
 });
 
 app.delete('/api/company-personas/:id', authRequired, async (req, res) => {
@@ -3262,6 +3402,23 @@ app.delete('/api/company-personas/:id', authRequired, async (req, res) => {
   }
 
   res.json({ ok: true });
+});
+
+app.delete('/api/personas/:id', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+  const deleted = await store.deleteCompanyPersona(req.params.id, userId);
+
+  if (!deleted) {
+    return res.status(404).json({
+      success: false,
+      error: 'Persona not found',
+    });
+  }
+
+  res.json({
+    success: true,
+    data: null,
+  });
 });
 
 app.post('/api/company-personas/:id/learn', authRequired, async (req, res) => {
@@ -3713,6 +3870,170 @@ app.post('/api/debug/trigger-video', async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: error.message || 'Unable to trigger debug video job' });
   }
+});
+
+app.get('/api/knowledge', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+
+  const rows = await store.listKnowledgeSources(userId);
+
+  res.json({
+    success: true,
+    data: rows,
+  });
+});
+
+app.delete('/api/knowledge/:id', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+  const deleted = await store.deleteKnowledgeSource(req.params.id, userId);
+
+  if (!deleted) {
+    return res.status(404).json({
+      success: false,
+      error: 'Knowledge document not found',
+    });
+  }
+
+  res.json({
+    success: true,
+    data: null,
+  });
+});
+
+app.put('/api/knowledge/:id/summary', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+
+  const existing = await store.findKnowledgeSourceById(req.params.id, userId);
+
+  if (!existing) {
+    return res.status(404).json({
+      success: false,
+      error: 'Knowledge document not found',
+    });
+  }
+
+  const updated = await store.updateKnowledgeSource(req.params.id, userId, {
+    summary: req.body.summaryText || '',
+    updated_at: nowIso(),
+  });
+
+  res.json({
+    success: true,
+    data: updated,
+  });
+});
+
+app.post('/api/knowledge/upload', authRequired, upload.single('file'), async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      error: 'No file provided',
+    });
+  }
+
+  const source = await store.insertKnowledgeSource({
+    user_id: userId,
+    title: req.file.originalname,
+    type: 'file',
+    source_type: 'file',
+    file_name: req.file.originalname,
+    mime_type: req.file.mimetype,
+    size: req.file.size,
+    summary: '',
+    status: 'uploaded',
+    created_at: nowIso(),
+    updated_at: nowIso(),
+  });
+
+  res.status(201).json({
+    success: true,
+    data: source,
+  });
+});
+
+app.post('/api/knowledge/crawl', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+  const url = String(req.body?.url || '').trim();
+
+  if (!url) {
+    return res.status(400).json({
+      success: false,
+      error: 'URL is required',
+    });
+  }
+
+  try {
+    const extracted = await extractTextFromUrl(url);
+
+    if (!extracted.content) {
+      return res.status(400).json({
+        success: false,
+        error: 'No readable content found at the URL',
+      });
+    }
+
+    const timestamp = nowIso();
+
+    const source = await store.insertKnowledgeSource({
+      user_id: userId,
+      title: String(extracted.title || url).trim(),
+      content: extracted.content,
+      source_type: 'website',
+      tags: [],
+      source_url: url,
+      ingestion_method: 'url',
+      chunks: buildKnowledgeChunks(extracted.content),
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        ...source,
+        id: source.id || source._id?.toString?.(),
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      error: error.message || 'Unable to crawl website',
+    });
+  }
+});
+
+app.post('/api/knowledge/:id/extract', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+
+  const existing = await store.findKnowledgeSourceById(req.params.id, userId);
+
+  if (!existing) {
+    return res.status(404).json({
+      success: false,
+      error: 'Knowledge document not found',
+    });
+  }
+
+  const content = String(existing.content || '').trim();
+
+  if (!content) {
+    return res.status(400).json({
+      success: false,
+      error: 'No readable content available for extraction',
+    });
+  }
+
+  const updated = await store.updateKnowledgeSource(req.params.id, userId, {
+    summary: content.slice(0, 1000),
+    updated_at: nowIso(),
+  });
+
+  res.json({
+    success: true,
+    data: updated,
+  });
 });
 
 app.get('/api/knowledge-sources', authRequired, async (req, res) => {
