@@ -1103,7 +1103,42 @@ const extractTextFromUrl = async (url) => {
   }
 
   const html = await response.text();
+  const decodeHtml = (value) => String(value || '')
+  .replace(/&nbsp;/gi, ' ')
+  .replace(/&amp;/gi, '&')
+  .replace(/&quot;/gi, '"')
+  .replace(/&#39;/gi, "'")
+  .replace(/&lt;/gi, '<')
+  .replace(/&gt;/gi, '>')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+  const getMetaContent = (name) => {
+    const escapedName = String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const patterns = [
+      new RegExp(`<meta[^>]+(?:name|property)=["']${escapedName}["'][^>]+content=["']([^"']*)["'][^>]*>`, 'i'),
+      new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+(?:name|property)=["']${escapedName}["'][^>]*>`, 'i'),
+    ];
+
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+      if (match?.[1]) return decodeHtml(match[1]);
+    }
+
+    return '';
+  };
+
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+
+  const metaText = [
+    titleMatch ? decodeHtml(titleMatch[1]) : '',
+    getMetaContent('description'),
+    getMetaContent('og:title'),
+    getMetaContent('og:description'),
+    getMetaContent('twitter:title'),
+    getMetaContent('twitter:description'),
+  ].filter(Boolean).join(' ');
+
   const bodyText = html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -1115,7 +1150,7 @@ const extractTextFromUrl = async (url) => {
 
   return {
     title: titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim() : '',
-    content: bodyText,
+    content: [metaText, bodyText].filter(Boolean).join(' '),
   };
 };
 
