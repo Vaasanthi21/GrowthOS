@@ -3923,24 +3923,52 @@ app.post('/api/knowledge/upload', authRequired, upload.single('file'), async (re
     });
   }
 
-  const source = await store.insertKnowledgeSource({
-    user_id: userId,
-    title: req.file.originalname,
-    type: 'file',
-    source_type: 'file',
-    file_name: req.file.originalname,
-    mime_type: req.file.mimetype,
-    size: req.file.size,
-    summary: '',
-    status: 'uploaded',
-    created_at: nowIso(),
-    updated_at: nowIso(),
-  });
+  try {
+    const timestamp = nowIso();
+    const fileName = req.file.originalname;
+    const content = await extractTextFromBuffer({
+      buffer: req.file.buffer,
+      mimeType: req.file.mimetype,
+      fileName,
+    });
 
-  res.status(201).json({
-    success: true,
-    data: source,
-  });
+    if (!content) {
+      return res.status(400).json({
+        success: false,
+        error: 'No readable content found in the uploaded file',
+      });
+    }
+
+    const source = await store.insertKnowledgeSource({
+      user_id: userId,
+      title: fileName,
+      content,
+      type: 'file',
+      source_type: 'file',
+      file_name: fileName,
+      mime_type: req.file.mimetype,
+      size: req.file.size,
+      summary: content.slice(0, 1000),
+      status: 'uploaded',
+      ingestion_method: 'file',
+      chunks: buildKnowledgeChunks(content),
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        ...source,
+        id: source.id || source._id?.toString?.(),
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      error: error.message || 'Unable to upload document',
+    });
+  }
 });
 
 app.post('/api/knowledge/crawl', authRequired, async (req, res) => {
