@@ -4085,6 +4085,23 @@ app.post('/api/knowledge/:id/extract', authRequired, async (req, res) => {
   });
 });
 
+app.get('/api/blogs', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+
+  const blogs = await db.collection('blogs')
+    .find({ user_id: String(userId) })
+    .sort({ updated_at: -1, created_at: -1 })
+    .toArray();
+
+  res.json({
+    success: true,
+    data: blogs.map((blog) => ({
+      ...blog,
+      id: blog.id || blog._id?.toString?.(),
+    })),
+  });
+});
+
 app.get('/api/knowledge-sources', authRequired, async (req, res) => {
   const userId = req.user.id || req.user._id.toString();
   const rows = await store.listKnowledgeSources(userId);
