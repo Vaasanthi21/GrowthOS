@@ -3040,7 +3040,6 @@ app.put('/api/company/:id', authRequired, async (req, res) => {
   }
 
   const updated = await store.upsertCompany(userId, {
-    ...existing,
     ...req.body,
   });
 
@@ -3062,7 +3061,6 @@ app.delete('/api/company/delete-logo', authRequired, async (req, res) => {
   }
 
   const updated = await store.upsertCompany(userId, {
-    ...existing,
     logo: '',
     brandColors: [],
     brandColorsDescription: '',
