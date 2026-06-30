@@ -3981,6 +3981,65 @@ app.post('/api/knowledge/crawl', authRequired, async (req, res) => {
       updated_at: timestamp,
     });
 
+      const cleanDomain = url
+      .replace(/^https?:\/\//i, '')
+      .replace(/^www\./i, '')
+      .split('/')[0];
+
+    const companyName = cleanDomain
+      .split('.')[0]
+      .replace(/[-_]/g, ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+
+    const existingCompany = await store.getCompanyByUserId(userId);
+
+    const company = await store.upsertCompany(userId, {
+      companyName: existingCompany?.companyName || companyName,
+      website: url,
+      productDescription: existingCompany?.productDescription || String(extracted.content || '').slice(0, 1000),
+      targetAudience: existingCompany?.targetAudience || '',
+      brandVoice: existingCompany?.brandVoice || '',
+      competitors: existingCompany?.competitors || [],
+      brandColors: existingCompany?.brandColors || [],
+      brandColorsDescription: existingCompany?.brandColorsDescription || '',
+    });
+
+    const existingPersonas = await store.listCompanyPersonas(userId);
+
+    if (!existingPersonas.length) {
+      const timestampForPersona = nowIso();
+
+      await store.insertCompanyPersona({
+        user_id: userId,
+        company: company.companyName || companyName,
+        name: `${company.companyName || companyName} Brand Persona`,
+        tagline: '',
+        logo_url: company.logo || '',
+        logo_placement: 'none',
+        preserve_original_logo: true,
+        audience: company.targetAudience || '',
+        voice: company.brandVoice || '',
+        goals: 'Create brand-aligned content based on the crawled website context.',
+        notes: String(extracted.content || '').slice(0, 1000),
+        visual_style_instructions: '',
+        brand_primary_color: '',
+        brand_secondary_color: '',
+        brand_accent_color: '',
+        tuning_prompt: '',
+        learning_summary: '',
+        learning_count: 0,
+        analysis: buildPersonaAnalysis({
+          company: company.companyName || companyName,
+          audience: company.targetAudience || '',
+          voice: company.brandVoice || '',
+          goals: 'Create brand-aligned content based on the crawled website context.',
+          notes: String(extracted.content || '').slice(0, 1000),
+        }),
+        created_at: timestampForPersona,
+        updated_at: timestampForPersona,
+      });
+    }
+
     res.status(201).json({
       success: true,
       data: {
