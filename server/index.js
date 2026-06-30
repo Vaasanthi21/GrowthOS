@@ -3086,7 +3086,7 @@ app.post('/api/company/upload-logo', authRequired, upload.single('logo'), async 
   }
 
   try {
-    const fileData = req.file.buffer.toString('base64');
+    const fileData = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
     const logoUrl = await saveLogoUpload(fileData);
 
     const updated = await store.upsertCompany(userId, {
