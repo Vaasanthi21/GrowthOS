@@ -3090,7 +3090,6 @@ app.post('/api/company/upload-logo', authRequired, upload.single('logo'), async 
     const logoUrl = await saveLogoUpload(fileData);
 
     const updated = await store.upsertCompany(userId, {
-      ...(existing || {}),
       logo: logoUrl,
     });
 
