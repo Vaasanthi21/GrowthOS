@@ -3078,13 +3078,6 @@ app.post('/api/company/upload-logo', authRequired, upload.single('logo'), async 
 
   const existing = await store.getCompanyByUserId(userId);
 
-  if (!existing) {
-    return res.status(404).json({
-      success: false,
-      error: 'Company not found',
-    });
-  }
-
   if (!req.file) {
     return res.status(400).json({
       success: false,
@@ -3097,7 +3090,7 @@ app.post('/api/company/upload-logo', authRequired, upload.single('logo'), async 
     const logoUrl = await saveLogoUpload(fileData);
 
     const updated = await store.upsertCompany(userId, {
-      ...existing,
+      ...(existing || {}),
       logo: logoUrl,
     });
 
