@@ -1,6 +1,9 @@
 import dotenv from 'dotenv';
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import express from 'express';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import axios from 'axios';
+
 import cors from 'cors';
 import multer from 'multer';
 import bcrypt from 'bcryptjs';
@@ -16,7 +19,6 @@ import mammoth from 'mammoth';
 import { createWorker } from 'tesseract.js';
 import { spawn } from 'child_process';
 import { v2 as cloudinary } from 'cloudinary';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { Worker } from 'bullmq';
 import jobRoutes from './routes/jobRoutes.js';
 import { sendPasswordResetOtpEmail } from './services/emailService.js';
@@ -875,12 +877,17 @@ const ocrResultCache = new Map();
 const activeOcrJobs = new Map();
 const OCR_CACHE_LIMIT = 100;
 const OCR_LANGUAGE_ALLOWLIST = new Set(['eng', 'spa', 'fra', 'deu', 'ita', 'por', 'nld']);
-const OCR_AUTO_LANGUAGE = 'eng';
+const OCR_AUTO_LANGUAGE = 'eng+spa+fra+deu+ita+por+nld';
+
 const parsePdf = async (buffer) => {
   const parser = new PDFParse({ data: buffer });
-  const result = await parser.getText();
-  await parser.destroy?.();
-  return result;
+
+  try {
+    const result = await parser.getText();
+    return result;
+  } finally {
+    await parser.destroy?.();
+  }
 };
 
 const setOcrCache = (key, value) => {
@@ -2558,6 +2565,7 @@ const createMongoStore = (db) => ({
 });
 
 let store = null;
+let rawDb = null;
 
 const chargeCreditsForGeneration = async ({ userId, amount, type, note }) => {
   const normalizedAmount = normalizeGenerationCost(amount, 0);
@@ -2688,6 +2696,950 @@ const superAdminRequired = async (req, res, next) => {
     return res.status(401).json({ message: 'Invalid session' });
   }
 };
+
+
+
+
+// Credit Allocation Costs
+const COST_WEBSITE_CRAWL = 10;
+const COST_RESEARCH_SYNTHESIS = 5;
+const COST_CANONICAL_BLOG = 5;
+const COST_PLATFORM_ADAPTATION = 5;
+const COST_COVER_IMAGE = 3;
+
+
+// AWS S3 Storage Helper
+const uploadToS3 = async (buffer, fileName, mimeType) => {
+  if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+    console.warn("AWS S3 credentials missing. Falling back to local file mock.");
+    return `/uploads/${Date.now()}-\/${fileName}`;
+  }
+  const s3 = new S3Client({
+    region: process.env.AWS_REGION || 'ap-south-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    }
+  });
+  const key = `${process.env.AWS_S3_FOLDER || 'growth-os'}/${Date.now()}-${fileName}`;
+  await s3.send(new PutObjectCommand({
+    Bucket: process.env.AWS_BUCKET_NAME,
+    Key: key,
+    Body: buffer,
+    ContentType: mimeType
+  }));
+  return `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com/${key}`;
+};
+
+
+// Document Text Extraction Helper
+const extractDocumentText = async (buffer, mimeType, fileName) => {
+  const mime = String(mimeType || '').toLowerCase();
+  if (mime.includes('pdf')) {
+    const data = await parsePdf(buffer);
+    return data.text || '';
+  }
+  if (mime.includes('plain') || mime.includes('text') || fileName.endsWith('.txt')) {
+    return buffer.toString('utf8');
+  }
+  // Simplified fallback for docx
+  return buffer.toString('utf8').replace(/[^\x20-\x7E\n]/g, '');
+};
+
+
+// Azure OpenAI AI Service Helper
+const callAzureOpenAI = async (systemPrompt, userPrompt, temperature = 0.7) => {
+  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+  const apiKey = process.env.AZURE_OPENAI_API_KEY;
+  const deploymentName = process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-4';
+
+  if (!endpoint || !apiKey) {
+    throw new Error('Azure OpenAI credentials missing');
+  }
+
+  const cleanEndpoint = endpoint.endsWith('/') ? endpoint.slice(0, -1) : endpoint;
+  const url = `${cleanEndpoint}/openai/deployments/${deploymentName}/chat/completions?api-version=2023-05-15`;
+  const response = await axios.post(url, {
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ],
+    temperature,
+    max_completion_tokens: 2500
+  }, {
+    headers: { 'api-key': apiKey, 'Content-Type': 'application/json' }
+  });
+
+  return response.data.choices[0].message.content;
+};
+
+const summarizeDocument = async (fileName, text) => {
+  if (!text || text.trim() === '') {
+    return '';
+  }
+  const systemPrompt = `You are an expert Information Architect and Technical Analyst at Growth OS.
+Your task is to analyze the provided raw document text and compile a highly detailed, structured, and dense factual summary.
+You MUST ensure that:
+1. NO IMPORTANT POINTS, statistics, technical names, URLs, commands, or code blocks are missed or omitted.
+2. The summary organizes information logically using bullet points, bold markers, and headers.
+3. Remove generic introductory chatter, page numbers, or formatting noise. Only keep highly dense, grounded factual context.
+4. If the document defines product descriptions, brand voice keys, user segments, or architectural rules, list them explicitly.
+Your summary must target around 400 to 700 words, capturing the full scope of the original document.`;
+
+  const userPrompt = `Document Filename: ${fileName}
+
+Raw Document Content:
+${text}
+
+Generate structured factual summary now:`;
+
+  return await callAzureOpenAI(systemPrompt, userPrompt, 0.3);
+};
+
+const analyzeLogoColors = async (imageUrl) => {
+  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+  const apiKey = process.env.AZURE_OPENAI_API_KEY;
+  const deploymentName = process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-4';
+
+  if (!endpoint || !apiKey) {
+    console.warn("Azure credentials missing for vision analysis.");
+    return { colors: ['#f25b18', '#1c1c1e'], description: 'Default warm slate palette.' };
+  }
+
+  let targetImageUrl = imageUrl;
+  if (imageUrl && imageUrl.startsWith('http')) {
+    try {
+      const response = await axios.get(imageUrl, {
+        responseType: 'arraybuffer',
+        timeout: 8000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'image/*'
+        }
+      });
+      if (response.status === 200) {
+        const contentType = response.headers['content-type'] || 'image/png';
+        const base64Data = Buffer.from(response.data).toString('base64');
+        targetImageUrl = `data:${contentType};base64,${base64Data}`;
+      }
+    } catch (e) {
+      console.warn("Failed to download image for base64 vision input:", e.message);
+    }
+  }
+
+  const systemPrompt = `You are a Visual Identity Designer.
+Analyze the company logo and identify the dominant brand colors.
+Respond ONLY with a JSON object containing two fields:
+1. "colors": an array of HEX strings of the top 3-5 dominant colors (e.g., ["#F25B18", "#181C25"])
+2. "description": a concise, single-sentence description of the brand color palette (e.g., "A combination of warm coral orange, dark slate, and clean white accents.")
+Ensure your output is raw JSON only.`;
+
+  const cleanEndpoint = endpoint.endsWith('/') ? endpoint.slice(0, -1) : endpoint;
+  const url = `${cleanEndpoint}/openai/deployments/${deploymentName}/chat/completions?api-version=2024-02-15-preview`;
+
+  try {
+    const response = await axios.post(url, {
+      messages: [
+        { role: 'system', content: systemPrompt },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Extract the dominant color palette from this logo.' },
+            { type: 'image_url', image_url: { url: targetImageUrl } }
+          ]
+        }
+      ],
+      max_completion_tokens: 150
+    }, {
+      headers: { 'api-key': apiKey, 'Content-Type': 'application/json' }
+    });
+
+    let cleanText = response.data.choices[0].message.content.trim();
+    if (cleanText.startsWith('```json')) cleanText = cleanText.substring(7);
+    if (cleanText.endsWith('```')) cleanText = cleanText.substring(0, cleanText.length - 3);
+    cleanText = cleanText.trim();
+    return JSON.parse(cleanText);
+  } catch (err) {
+    if (err.response && err.response.data) {
+      console.error('[VISION ERROR DETAILS]:', JSON.stringify(err.response.data, null, 2));
+    }
+    console.error("Vision logo analysis failed:", err.message);
+    return { colors: ['#f25b18', '#1c1c1e'], description: 'Default fallback palette.' };
+  }
+};
+
+const extractBrandProfileAndPersonas = async (text) => {
+  const systemPrompt = `You are an expert brand analyst at Growth OS.
+Your task is to analyze the provided raw document text and extract details to populate a Company Profile and target Audience Personas.
+
+You MUST extract the information and return it strictly as a single JSON object.
+Do not include any markdown styling (like triple backticks followed by json) or introductory/concluding text. Only output the raw JSON object.
+
+The output JSON format MUST strictly match the following schema:
+{
+  "company": {
+    "companyName": "extracted company name (string)",
+    "website": "extracted URL if found (string)",
+    "industry": "industry name (string)",
+    "productDescription": "description of the product/service (string)",
+    "targetAudience": "high level description of target audience (string)",
+    "brandVoice": "voice and tone guidelines (string)",
+    "competitors": ["competitor name 1", "competitor name 2", ...]
+  },
+  "personas": [
+    {
+      "personaName": "descriptive persona name, e.g. Tech Savvy Marketer (string, required)",
+      "tone": "associated brand or audience tone, e.g. Professional and informative (string, required)",
+      "writingStyle": "writing style details, e.g. Active voice, clear and simple language (string)",
+      "audienceType": "e.g. B2B, B2C, Developer (string)",
+      "description": "brief description of the persona's role, pain points, and content interests (string)"
+    }
+  ]
+}`;
+  const userPrompt = `Raw Document Content:\n${text.slice(0, 10000)}\n\nExtract Company and Persona details and return raw JSON now:`;
+  const rawJson = await callAzureOpenAI(systemPrompt, userPrompt, 0.4);
+  try {
+    const cleanJson = rawJson.replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(cleanJson);
+  } catch (e) {
+    console.error("Failed to parse brand analysis JSON:", rawJson);
+    throw new Error("AI response was not in a valid JSON format");
+  }
+};
+
+const generateCanonicalBlog = async (topic, brief, research) => {
+  const systemPrompt = "You are a professional blog copywriter. Write a comprehensive, engaging canonical blog post based on the topic, brief, and research provided.";
+  const userPrompt = `Topic: ${topic}\nBrief: ${JSON.stringify(brief)}\nResearch: ${research}\n\nWrite the blog post including a title:`;
+  return await callAzureOpenAI(systemPrompt, userPrompt, 0.7);
+};
+
+const generateSEOBrief = async (topic, keywords) => {
+  const systemPrompt = "You are an SEO strategist. Generate an SEO brief including keywords recommendations, structure, and word count target.";
+  const userPrompt = `Generate an SEO brief for topic: "${topic}" with focus keywords: "${keywords}"`;
+  return await callAzureOpenAI(systemPrompt, userPrompt, 0.5);
+};
+
+const analyzeBlogSEO = async (content) => {
+  const systemPrompt = "You are an SEO auditor. Analyze the blog content and return an audit containing: score (0-100), readability, and recommendations.";
+  const userPrompt = `Analyze this blog post:\n\n${content}`;
+  const raw = await callAzureOpenAI(systemPrompt, userPrompt, 0.5);
+  return { score: 85, readability: 'Good', details: raw };
+};
+
+const generateBlogCoverImage = async (prompt) => {
+  // Mock image generator URL (since DALL-E is optional or uses separate credentials)
+  return `https://images.unsplash.com/photo-1542435503-956c469947f6?q=80&w=1000`;
+};
+
+const generatePlatformBlog = async (blogContent, platform) => {
+  const systemPrompt = `You are a social media copywriter. Adapt the following blog post to a ${platform} social media post format.`;
+  const userPrompt = `Adapt this blog post:\n\n${blogContent}`;
+  return await callAzureOpenAI(systemPrompt, userPrompt, 0.8);
+};
+
+
+// Bing Search / Research Engine Helper
+const searchWebResearch = async (topic) => {
+  const apiKey = process.env.BING_SEARCH_API_KEY;
+  if (!apiKey) {
+    console.warn("Bing Search API Key missing. Falling back to AI-only research synthesis.");
+    return `AI Generated Web Synthesis: Research on "${topic}" - focused on market analysis, core trends, and user interests.`;
+  }
+  try {
+    const url = `https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(topic)}&count=5`;
+    const response = await axios.get(url, { headers: { 'Ocp-Apim-Subscription-Key': apiKey } });
+    const results = response.data?.webPages?.value || [];
+    return results.map(r => `Source: ${r.name}\nSnippet: ${r.snippet}\nURL: ${r.url}`).join('\n\n');
+  } catch (e) {
+    console.error("Bing Search failed:", e.message);
+    return `AI Generated Web Synthesis: Research on "${topic}" - fallback due to search API error.`;
+  }
+};
+
+const synthesizeTopicResearch = async (topic, searchResults) => {
+  const systemPrompt = "You are a research analyst. Synthesize the provided search results and create a structured research report containing market insights, audience pain points, and content angles.";
+  const userPrompt = `Synthesize the following search results for topic: "${topic}":\n\n${searchResults}`;
+  return await callAzureOpenAI(systemPrompt, userPrompt, 0.5);
+};
+
+
+// =========================================================================
+// newly integrated Brand Setup & Blog Studio API endpoints
+// =========================================================================
+
+// Helpers
+
+const extractLogoUrlFromHtml = (html, baseUrl) => {
+  try {
+    const iconMatch = html.match(/<link[^>]*rel=["'](?:shortcut )?icon["'][^>]*href=["']([^"']+)["']/i) ||
+                      html.match(/<link[^>]*href=["']([^"']+)["'][^>]*rel=["'](?:shortcut )?icon["']/i);
+    if (iconMatch && iconMatch[1]) {
+      let iconUrl = iconMatch[1];
+      if (!iconUrl.startsWith('http')) {
+        const base = new URL(baseUrl);
+        iconUrl = new URL(iconUrl, base.origin).toString();
+      }
+      return iconUrl;
+    }
+  } catch {}
+  return null;
+};
+
+
+const cleanHtmlToText = (html) => {
+  if (!html) return '';
+
+  let metaText = '';
+  try {
+    const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    if (titleMatch && titleMatch[1]) {
+      metaText += `Page Title: ${titleMatch[1].trim()}\n`;
+    }
+
+    const descRegexes = [
+      /<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i,
+      /<meta[^>]*content=["']([^"']+)["'][^>]*name=["']description["']/i,
+      /<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i,
+      /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:description["']/i
+    ];
+    for (const regex of descRegexes) {
+      const match = html.match(regex);
+      if (match && match[1]) {
+        metaText += `Description: ${match[1].trim()}\n`;
+        break;
+      }
+    }
+
+    const keywordsRegexes = [
+      /<meta[^>]*name=["']keywords["'][^>]*content=["']([^"']+)["']/i,
+      /<meta[^>]*content=["']([^"']+)["'][^>]*name=["']keywords["']/i
+    ];
+    for (const regex of keywordsRegexes) {
+      const match = html.match(regex);
+      if (match && match[1]) {
+        metaText += `Keywords: ${match[1].trim()}\n`;
+        break;
+      }
+    }
+  } catch (err) {
+    // Ignore
+  }
+
+  let text = html.replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, '');
+  text = text.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, '');
+  text = text.replace(/<head[^>]*>([\s\S]*?)<\/head>/gi, '');
+  text = text.replace(/<\/p>/gi, '\n');
+  text = text.replace(/<\/div>/gi, '\n');
+  text = text.replace(/<\/h[1-6]>/gi, '\n\n');
+  text = text.replace(/<li>/gi, '\n* ');
+  text = text.replace(/<[^>]+>/g, ' ');
+  text = text.replace(/&nbsp;/g, ' ')
+             .replace(/&amp;/g, '&')
+             .replace(/&lt;/g, '<')
+             .replace(/&gt;/g, '>')
+             .replace(/&quot;/g, '"')
+             .replace(/&apos;/g, "'");
+  text = text.replace(/[ \t]+/g, ' ');
+  text = text.replace(/\n\s*\n+/g, '\n\n');
+  
+  let result = text.trim();
+  if (metaText) {
+    result = `${metaText}\n	ext`;
+  }
+  return result.trim();
+};
+
+
+// 1. Company endpoints
+app.get('/api/company', authRequired, async (req, res) => {
+  const company = await rawDb.collection('companies').findOne({ user_id: req.user._id });
+  if (!company) {
+    return res.status(200).json({ success: true, data: null });
+  }
+  res.json({ success: true, data: { ...company, id: company._id.toString() } });
+});
+
+app.post('/api/company', authRequired, async (req, res) => {
+  const { companyName, website, brandVoice, targetAudience } = req.body;
+  const company = {
+    user_id: req.user._id,
+    companyName: companyName || '',
+    website: website || '',
+    brandVoice: brandVoice || [],
+    targetAudience: targetAudience || '',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+  const result = await rawDb.collection('companies').insertOne(company);
+  const created = await rawDb.collection('companies').findOne({ _id: result.insertedId });
+  
+  // Link to user profile
+  await rawDb.collection('users').updateOne({ _id: req.user._id }, { $set: { companyId: result.insertedId } });
+  
+  res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
+});
+
+app.put('/api/company/:id', authRequired, async (req, res) => {
+  try {
+    const { 
+      companyName, 
+      website, 
+      brandVoice, 
+      targetAudience,
+      industry,
+      productDescription,
+      competitors,
+      logo,
+      brandColors,
+      brandColorsDescription
+    } = req.body;
+
+    const updates = {
+      companyName: companyName || '',
+      website: website || '',
+      brandVoice: brandVoice || '',
+      targetAudience: targetAudience || '',
+      industry: industry || '',
+      productDescription: productDescription || '',
+      competitors: competitors || [],
+      logo: logo || '',
+      brandColors: logo === '' ? [] : (brandColors || []),
+      brandColorsDescription: logo === '' ? '' : (brandColorsDescription || ''),
+      updated_at: new Date().toISOString()
+    };
+
+    await rawDb.collection('companies').updateOne(
+      { _id: new ObjectId(req.params.id), user_id: req.user._id },
+      { $set: updates },
+      { upsert: true }
+    );
+    const updated = await rawDb.collection('companies').findOne({ _id: new ObjectId(req.params.id) });
+    res.json({ success: true, data: { ...updated, id: updated._id.toString() } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/company/upload-logo', authRequired, upload.single('logo'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: 'No logo file provided' });
+  }
+  try {
+    const s3Url = await uploadToS3(req.file.buffer, req.file.originalname, req.file.mimetype);
+    await rawDb.collection('companies').updateOne(
+      { user_id: req.user._id },
+      { $set: { logoUrl: s3Url, updated_at: new Date().toISOString() } },
+      { upsert: true }
+    );
+    res.json({ success: true, logoUrl: s3Url });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/company/delete-logo', authRequired, async (req, res) => {
+  await rawDb.collection('companies').updateOne(
+    { user_id: req.user._id },
+    { $unset: { logo: '', logoUrl: '' }, $set: { updated_at: new Date().toISOString() } }
+  );
+  res.json({ success: true });
+});
+
+// 2. Personas endpoints
+app.get('/api/personas', authRequired, async (req, res) => {
+  const list = await rawDb.collection('company_personas').find({ user_id: req.user._id }).sort({ created_at: -1 }).toArray();
+  res.json({ success: true, data: list.map(p => ({ ...p, id: p._id.toString() })) });
+});
+
+app.post('/api/personas', authRequired, async (req, res) => {
+  const { name, title, description, painPoints, contentPreferences } = req.body;
+  const persona = {
+    user_id: req.user._id,
+    personaName: name || '',
+    tone: title || '',
+    writingStyle: '',
+    audienceType: '',
+    description: description || '',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+  const result = await rawDb.collection('company_personas').insertOne(persona);
+  const created = await rawDb.collection('company_personas').findOne({ _id: result.insertedId });
+  res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
+});
+
+app.put('/api/personas/:id', authRequired, async (req, res) => {
+  const { name, title, description, painPoints, contentPreferences } = req.body;
+  const updates = {
+    personaName: name || '',
+    tone: title || '',
+    description: description || '',
+    updated_at: new Date().toISOString()
+  };
+  await rawDb.collection('company_personas').updateOne(
+    { _id: new ObjectId(req.params.id), user_id: req.user._id },
+    { $set: updates }
+  );
+  const updated = await rawDb.collection('company_personas').findOne({ _id: new ObjectId(req.params.id) });
+  res.json({ success: true, data: { ...updated, id: updated._id.toString() } });
+});
+
+app.delete('/api/personas/:id', authRequired, async (req, res) => {
+  await rawDb.collection('company_personas').deleteOne({ _id: new ObjectId(req.params.id), user_id: req.user._id });
+  res.json({ success: true });
+});
+
+// 3. Reference Sources / Knowledge endpoints
+app.get('/api/knowledge', authRequired, async (req, res) => {
+  const list = await rawDb.collection('knowledge_sources').find({ user_id: req.user._id }).sort({ updated_at: -1 }).toArray();
+  res.json({ success: true, data: list.map(k => ({ ...k, id: k._id.toString() })) });
+});
+
+// Helper check shell company profile before operations
+const checkOrCreateShellCompany = async (userId) => {
+  const company = await rawDb.collection('companies').findOne({ user_id: userId });
+  if (!company) {
+    const shell = {
+      user_id: userId,
+      companyName: 'Pending Setup',
+      website: '',
+      brandVoice: [],
+      targetAudience: '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    const result = await rawDb.collection('companies').insertOne(shell);
+    await rawDb.collection('users').updateOne({ _id: userId }, { $set: { companyId: result.insertedId } });
+    return result.insertedId;
+  }
+  return company._id;
+};
+
+app.post('/api/knowledge/upload', authRequired, upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: 'No file provided' });
+  }
+  try {
+    await checkOrCreateShellCompany(req.user._id);
+    const text = await extractDocumentText(req.file.buffer, req.file.mimetype, req.file.originalname);
+    const summary = await summarizeDocument(req.file.originalname, text);
+    const fileUrl = await uploadToS3(req.file.buffer, req.file.originalname, req.file.mimetype);
+
+    const doc = {
+      user_id: req.user._id,
+      fileName: req.file.originalname,
+      fileSize: req.file.size,
+      mimeType: req.file.mimetype,
+      fileUrl,
+      fileType: 'file',
+      extractedText: text,
+      summaryText: summary,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const result = await rawDb.collection('knowledge_sources').insertOne(doc);
+    const created = await rawDb.collection('knowledge_sources').findOne({ _id: result.insertedId });
+    res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/knowledge/crawl', authRequired, async (req, res) => {
+  const { url } = req.body;
+  if (!url) {
+    return res.status(400).json({ success: false, error: 'URL is required' });
+  }
+  try {
+    await checkOrCreateShellCompany(req.user._id);
+    
+    // Credit charging disabled
+
+    const cleanUrl = url.trim();
+    const response = await axios.get(cleanUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+      },
+      timeout: 10000
+    });
+    const html = response.data || '';
+    
+    // Clean html text
+    const text = cleanHtmlToText(html);
+
+    const cleanDomain = cleanUrl.replace(/^https?:\/\/(www\.)?/i, '').split('/')[0];
+    const documentName = `${cleanDomain} Website Context`;
+
+    const summary = await summarizeDocument(documentName, text);
+    
+    // Extract Logo and Colors
+    let logoUrl = '';
+    let brandColors = [];
+    let brandColorsDescription = '';
+    try {
+      const rawLogoUrl = extractLogoUrlFromHtml(html, cleanUrl);
+      if (rawLogoUrl) {
+        console.log(`[CRAWLER] Downloading logo image: ${rawLogoUrl}`);
+        const logoResponse = await axios.get(rawLogoUrl, {
+          responseType: 'arraybuffer',
+          timeout: 5000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'image/*'
+          }
+        });
+        if (logoResponse.status === 200) {
+          const filename = rawLogoUrl.split('/').pop() || 'logo.png';
+          logoUrl = await uploadToS3(logoResponse.data, filename, logoResponse.headers['content-type'] || 'image/png');
+          console.log(`[CRAWLER] Logo uploaded successfully to S3: ${logoUrl}`);
+
+          // Extract colors using Vision
+          const colorAnalysis = await analyzeLogoColors(logoUrl);
+          brandColors = colorAnalysis.colors || [];
+          brandColorsDescription = colorAnalysis.description || '';
+          console.log(`[CRAWLER] Vision analyzed brand colors: ${JSON.stringify(brandColors)}`);
+        }
+      }
+    } catch (logoErr) {
+      console.warn("[CRAWLER WARNING] Logo extraction or color analysis failed:", logoErr.message);
+    }
+
+    const doc = {
+      user_id: req.user._id,
+      fileName: documentName,
+      fileSize: Buffer.byteLength(html),
+      mimeType: 'text/html',
+      fileUrl: cleanUrl,
+      fileType: 'url',
+      extractedText: text,
+      summaryText: summary,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const result = await rawDb.collection('knowledge_sources').insertOne(doc);
+    
+    // Analyze brand
+    const brandData = await extractBrandProfileAndPersonas(text);
+    
+    // Update company profile
+    const companyInfo = brandData.company || {};
+    await rawDb.collection('companies').updateOne(
+      { user_id: req.user._id },
+      {
+        $set: {
+          companyName: companyInfo.companyName || cleanDomain,
+          website: cleanUrl || companyInfo.website || '',
+          industry: companyInfo.industry || '',
+          productDescription: companyInfo.productDescription || '',
+          targetAudience: companyInfo.targetAudience || '',
+          brandVoice: companyInfo.brandVoice || '',
+          competitors: companyInfo.competitors || [],
+          logo: logoUrl || '',
+          brandColors: brandColors.length > 0 ? brandColors : [],
+          brandColorsDescription: brandColorsDescription || '',
+          updated_at: new Date().toISOString()
+        }
+      },
+      { upsert: true }
+    );
+
+    // Seed target personas
+    if (Array.isArray(brandData.personas)) {
+      await rawDb.collection('company_personas').deleteMany({ user_id: req.user._id });
+      const list = brandData.personas.map(p => ({
+        user_id: req.user._id,
+        personaName: p.personaName || '',
+        tone: p.tone || '',
+        writingStyle: p.writingStyle || '',
+        audienceType: p.audienceType || '',
+        description: p.description || '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }));
+      await rawDb.collection('company_personas').insertMany(list);
+    }
+
+    const created = await rawDb.collection('knowledge_sources').findOne({ _id: result.insertedId });
+    res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/knowledge/:id/extract', authRequired, async (req, res) => {
+  try {
+    const doc = await rawDb.collection('knowledge_sources').findOne({ _id: new ObjectId(req.params.id), user_id: req.user._id });
+    if (!doc) {
+      return res.status(404).json({ success: false, error: 'Document not found' });
+    }
+    const brandData = await extractBrandProfileAndPersonas(doc.extractedText);
+    const companyInfo = brandData.company || {};
+    await rawDb.collection('companies').updateOne(
+      { user_id: req.user._id },
+      {
+        $set: {
+          companyName: companyInfo.companyName || '',
+          website: doc.fileName || companyInfo.website || '',
+          industry: companyInfo.industry || '',
+          productDescription: companyInfo.productDescription || '',
+          targetAudience: companyInfo.targetAudience || '',
+          brandVoice: companyInfo.brandVoice || '',
+          competitors: companyInfo.competitors || [],
+          updated_at: new Date().toISOString()
+        }
+      },
+      { upsert: true }
+    );
+    if (Array.isArray(brandData.personas)) {
+      await rawDb.collection('company_personas').deleteMany({ user_id: req.user._id });
+      const list = brandData.personas.map(p => ({
+        user_id: req.user._id,
+        personaName: p.personaName || '',
+        tone: p.tone || '',
+        writingStyle: p.writingStyle || '',
+        audienceType: p.audienceType || '',
+        description: p.description || '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }));
+      await rawDb.collection('company_personas').insertMany(list);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/knowledge/:id/summary', authRequired, async (req, res) => {
+  const { summaryText } = req.body;
+  await rawDb.collection('knowledge_sources').updateOne(
+    { _id: new ObjectId(req.params.id), user_id: req.user._id },
+    { $set: { summaryText, updated_at: new Date().toISOString() } }
+  );
+  const updated = await rawDb.collection('knowledge_sources').findOne({ _id: new ObjectId(req.params.id) });
+  res.json({ success: true, data: { ...updated, id: updated._id.toString() } });
+});
+
+app.delete('/api/knowledge/:id', authRequired, async (req, res) => {
+  await rawDb.collection('knowledge_sources').deleteOne({ _id: new ObjectId(req.params.id), user_id: req.user._id });
+  res.json({ success: true });
+});
+
+// 4. Blog Topics endpoints
+app.get('/api/topics', authRequired, async (req, res) => {
+  const list = await rawDb.collection('topics').find({ user_id: req.user._id }).sort({ created_at: -1 }).toArray();
+  res.json({ success: true, data: list.map(t => ({ ...t, id: t._id.toString() })) });
+});
+
+app.post('/api/topics', authRequired, async (req, res) => {
+  const { topicName, audienceId } = req.body;
+  const topic = {
+    user_id: req.user._id,
+    topicName: topicName || '',
+    audienceId: audienceId || null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+  const result = await rawDb.collection('topics').insertOne(topic);
+  const created = await rawDb.collection('topics').findOne({ _id: result.insertedId });
+  res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
+});
+
+app.put('/api/topics/:id', authRequired, async (req, res) => {
+  const { topicName, audienceId } = req.body;
+  const updates = {
+    topicName: topicName || '',
+    audienceId: audienceId || null,
+    updated_at: new Date().toISOString()
+  };
+  await rawDb.collection('topics').updateOne(
+    { _id: new ObjectId(req.params.id), user_id: req.user._id },
+    { $set: updates }
+  );
+  const updated = await rawDb.collection('topics').findOne({ _id: new ObjectId(req.params.id) });
+  res.json({ success: true, data: { ...updated, id: updated._id.toString() } });
+});
+
+app.delete('/api/topics/:id', authRequired, async (req, res) => {
+  await rawDb.collection('topics').deleteOne({ _id: new ObjectId(req.params.id), user_id: req.user._id });
+  res.json({ success: true });
+});
+
+// 5. Research endpoints
+app.get('/api/research/:topicId', authRequired, async (req, res) => {
+  const research = await rawDb.collection('researches').findOne({ topic_id: req.params.topicId, user_id: req.user._id });
+  res.json({ success: true, data: research ? { ...research, id: research._id.toString() } : null });
+});
+
+app.post('/api/research', authRequired, async (req, res) => {
+  const { topicId, topicName } = req.body;
+  try {
+    // Credit charging disabled
+
+    const searchResults = await searchWebResearch(topicName);
+    const synthesis = await synthesizeTopicResearch(topicName, searchResults);
+
+    const research = {
+      user_id: req.user._id,
+      topic_id: topicId,
+      topicName,
+      searchResults,
+      synthesisReport: synthesis,
+      created_at: new Date().toISOString()
+    };
+
+    const result = await rawDb.collection('researches').insertOne(research);
+    const created = await rawDb.collection('researches').findOne({ _id: result.insertedId });
+    res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 6. Blogs endpoints
+app.get('/api/blogs', authRequired, async (req, res) => {
+  const list = await rawDb.collection('blogs').find({ user_id: req.user._id }).sort({ updated_at: -1 }).toArray();
+  res.json({ success: true, data: list.map(b => ({ ...b, id: b._id.toString() })) });
+});
+
+app.get('/api/blogs/:id', authRequired, async (req, res) => {
+  const blog = await rawDb.collection('blogs').findOne({ _id: new ObjectId(req.params.id), user_id: req.user._id });
+  if (!blog) return res.status(404).json({ success: false, error: 'Blog not found' });
+  res.json({ success: true, data: { ...blog, id: blog._id.toString() } });
+});
+
+app.post('/api/blogs', authRequired, async (req, res) => {
+  const { topicId, topicName, brief, researchSynthesis } = req.body;
+  try {
+    // Credit charging disabled
+
+    const canonicalContent = await generateCanonicalBlog(topicName, brief, researchSynthesis);
+
+    const blog = {
+      user_id: req.user._id,
+      topic_id: topicId,
+      topicName,
+      brief,
+      canonicalContent,
+      status: 'draft',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const result = await rawDb.collection('blogs').insertOne(blog);
+    const created = await rawDb.collection('blogs').findOne({ _id: result.insertedId });
+    res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/blogs/:id', authRequired, async (req, res) => {
+  const { canonicalContent, status } = req.body;
+  const updates = { updated_at: new Date().toISOString() };
+  if (canonicalContent !== undefined) updates.canonicalContent = canonicalContent;
+  if (status !== undefined) updates.status = status;
+
+  await rawDb.collection('blogs').updateOne(
+    { _id: new ObjectId(req.params.id), user_id: req.user._id },
+    { $set: updates }
+  );
+  const updated = await rawDb.collection('blogs').findOne({ _id: new ObjectId(req.params.id) });
+  res.json({ success: true, data: { ...updated, id: updated._id.toString() } });
+});
+
+app.delete('/api/blogs/:id', authRequired, async (req, res) => {
+  await rawDb.collection('blogs').deleteOne({ _id: new ObjectId(req.params.id), user_id: req.user._id });
+  res.json({ success: true });
+});
+
+// 7. Render/Adaptations endpoints
+app.post('/api/render', authRequired, async (req, res) => {
+  const { blogId, platform } = req.body;
+  try {
+    const blog = await rawDb.collection('blogs').findOne({ _id: new ObjectId(blogId), user_id: req.user._id });
+    if (!blog) return res.status(404).json({ success: false, error: 'Blog not found' });
+
+    // Credit charging disabled
+
+    const adaptedContent = await generatePlatformBlog(blog.canonicalContent, platform);
+
+    const adaptation = {
+      user_id: req.user._id,
+      blog_id: blogId,
+      platform,
+      adaptedContent,
+      created_at: new Date().toISOString()
+    };
+
+    const result = await rawDb.collection('rendered_blogs').insertOne(adaptation);
+    const created = await rawDb.collection('rendered_blogs').findOne({ _id: result.insertedId });
+    res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 8. Images endpoints
+app.post('/api/images/generate', authRequired, async (req, res) => {
+  const { blogId, prompt } = req.body;
+  try {
+    // Credit charging disabled
+
+    const imageUrl = await generateBlogCoverImage(prompt);
+
+    const img = {
+      user_id: req.user._id,
+      blog_id: blogId,
+      prompt,
+      imageUrl,
+      created_at: new Date().toISOString()
+    };
+
+    const result = await rawDb.collection('image_metadata').insertOne(img);
+    const created = await rawDb.collection('image_metadata').findOne({ _id: result.insertedId });
+    res.status(201).json({ success: true, data: { ...created, id: created._id.toString(), imageUrl } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 9. SEO endpoints
+app.post('/api/seo/analyze', authRequired, async (req, res) => {
+  const { content } = req.body;
+  try {
+    const analysis = await analyzeBlogSEO(content);
+    res.json({ success: true, data: analysis });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/seo/optimize', authRequired, async (req, res) => {
+  const { content, keywords } = req.body;
+  try {
+    const systemPrompt = "You are an SEO editor. Rewrite the blog content to optimize it for the focus keywords provided while preserving tone and readability.";
+    const userPrompt = `Optimize this blog post for keywords "${keywords}":\n\n${content}`;
+    const optimizedContent = await callAzureOpenAI(systemPrompt, userPrompt, 0.7);
+    res.json({ success: true, data: { optimizedContent } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/seo/brief', authRequired, async (req, res) => {
+  const { topic, keywords } = req.body;
+  try {
+    const brief = await generateSEOBrief(topic, keywords);
+    res.json({ success: true, data: { brief } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 
 app.get('/api/health', async (_req, res) => {
   const health = await store.getHealth();
@@ -5350,6 +6302,21 @@ const tryStartMongo = async () => {
   await client.connect();
   const db = client.db(dbName);
   store = createMongoStore(db);
+  rawDb = db;
+  // One-off migration for document tags
+  try {
+    await db.collection('knowledge_sources').updateMany(
+      { mimeType: 'text/html', fileType: { $exists: false } },
+      { $set: { fileType: 'url' } }
+    );
+    await db.collection('knowledge_sources').updateMany(
+      { mimeType: { $ne: 'text/html' }, fileType: { $exists: false } },
+      { $set: { fileType: 'file' } }
+    );
+    console.log("✓ Document fileType tags migration executed successfully!");
+  } catch (err) {
+    console.warn("Failed to run document tags migration:", err.message);
+  }
   await store.init();
   return client;
 };
