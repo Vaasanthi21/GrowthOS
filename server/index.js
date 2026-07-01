@@ -2238,6 +2238,10 @@ const createMongoStore = (db) => ({
       .sort({ updated_at: -1, created_at: -1 })
       .toArray();
   },
+  async insertTopic(topic) {
+    const result = await db.collection('topics').insertOne(topic);
+    return await db.collection('topics').findOne({ _id: result.insertedId });
+  },
   async findResearchByTopicId(userId, topicId) {
     return await db.collection('research')
       .findOne({ user_id: String(userId), topic_id: String(topicId) });
@@ -4196,6 +4200,26 @@ app.get('/api/topics', authRequired, async (req, res) => {
       ...topic,
       id: topic.id || topic._id?.toString?.(),
     })),
+  });
+});
+
+app.post('/api/topics', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+  const timestamp = nowIso();
+
+  const topic = await store.insertTopic({
+    user_id: String(userId),
+    ...req.body,
+    created_at: timestamp,
+    updated_at: timestamp,
+  });
+
+  res.status(201).json({
+    success: true,
+    data: {
+      ...topic,
+      id: topic.id || topic._id?.toString?.(),
+    },
   });
 });
 
