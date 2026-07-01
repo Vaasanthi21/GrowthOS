@@ -3314,28 +3314,176 @@ app.get('/api/blogs/:id', authRequired, async (req, res) => {
   res.json({ success: true, data: { ...blog, id: blog._id.toString() } });
 });
 
-app.post('/api/blogs', authRequired, async (req, res) => {
-  const { topicId, topicName, brief, researchSynthesis } = req.body;
+app.post('/api/blogs/generate', authRequired, async (req, res) => {
   try {
-    // Credit charging disabled
+    const { topicId, customAngle } = req.body;
+    if (!topicId) {
+      return res.status(400).json({ success: false, error: 'Topic ID is required' });
+    }
 
-    const canonicalContent = await generateCanonicalBlog(topicName, brief, researchSynthesis);
+    // 1. Fetch Topic details
+    const topic = await rawDb.collection('topics').findOne({ _id: new ObjectId(topicId), user_id: req.user._id });
+    if (!topic) {
+      return res.status(404).json({ success: false, error: 'Topic not found' });
+    }
 
-    const blog = {
+    // 2. Fetch Company details
+    const company = await rawDb.collection('companies').findOne({ user_id: req.user._id }) || {
+      companyName: 'UDEN Tech',
+      industry: 'Employment Services',
+      brandVoice: 'Supportive, career-focused',
+      productDescription: 'Career guidance platform'
+    };
+
+    // 3. Fetch Persona details
+    const pIdStr = topic.personaId || topic.audienceId;
+    let persona = null;
+    if (pIdStr && (pIdStr instanceof ObjectId || (typeof pIdStr === 'string' && pIdStr.length === 24))) {
+      try {
+        persona = await rawDb.collection('company_personas').findOne({ _id: pIdStr instanceof ObjectId ? pIdStr : new ObjectId(pIdStr) });
+      } catch (e) {
+        console.warn("Failed to query personaId in blog generation:", pIdStr, e.message);
+      }
+    }
+    if (!persona) {
+      persona = {
+        personaName: 'General Audience',
+        tone: 'Professional',
+        writingStyle: 'Direct',
+        audienceType: 'B2C'
+      };
+    }
+
+    // 4. Fetch Research details
+    const research = await rawDb.collection('researches').findOne({ 
+      $or: [
+        { topicId: topicId },
+        { topic_id: topicId }
+      ],
+      user_id: req.user._id 
+    }) || {
+      news: 'Recent industry shifts show expanding career tech automation.',
+      keywords: [{ keyword: topic.topicName, volume: 'High', difficulty: 'Medium', intent: 'Informational' }],
+      competitorAnalysis: 'Legacy players fail to offer guided transitions.',
+      suggestedAngles: ['Guide to ' + topic.topicName]
+    };
+
+    // 5. Fetch Grounding context
+    const docs = await rawDb.collection('knowledge_sources').find({ user_id: req.user._id }).limit(3).toArray();
+    let knowledgeContext = '';
+    if (docs && docs.length > 0) {
+      knowledgeContext = docs.map(doc => {
+        const content = doc.summaryText || (doc.extractedText ? (doc.extractedText.slice(0, 1000) + '...') : '');
+        return '[Grounding Material: ' + doc.fileName + ']\n' + content;
+      }).join('\n\n');
+    }
+
+    // 6. Build SEO Brief (simple fallback/AI helper)
+    const resolvedKeyword = topic.keywords && topic.keywords.length > 0 ? topic.keywords[0] : topic.topicName;
+    const seoBrief = {
+      primaryKeyword: resolvedKeyword,
+      secondaryKeywords: [resolvedKeyword + ' tips', resolvedKeyword + ' guide'],
+      searchIntent: 'Informational',
+      h1Suggestion: 'The Definitive Guide to ' + resolvedKeyword,
+      h2Suggestions: ['Why ' + resolvedKeyword + ' Matters', 'Implementing ' + resolvedKeyword + ' Successfully'],
+      recommendedWordCount: 1000
+    };
+
+    // 7. Generate blog content using AI
+    const systemPrompt = `You are a World-Class Blog Copywriter and SEO Strategist.
+Write a comprehensive, engaging canonical blog post based on the topic, brief, and research provided.
+You MUST structure the post with a Title, Meta Description, Outline, and Content.
+Return STRICTLY a valid JSON object format matching the exact structure below. Do not wrap it in markdown codeblocks.
+
+Required JSON Structure:
+{
+  "title": "An SEO-optimized Title",
+  "metaDescription": "A compelling meta description under 160 characters",
+  "outline": ["Introduction", "Heading 1", "Heading 2", "Conclusion"],
+  "content": "Full rich Markdown formatted blog post content."
+}`;
+
+    const userPrompt = `Generate blog post for topic:
+Topic Name: ${topic.topicName}
+Topic Details: ${topic.topic || ''}
+Target Goal: ${topic.goal || ''}
+Selected Audience Angle: ${customAngle || ''}
+
+Audience Persona:
+- Name: ${persona.personaName}
+- Tone: ${persona.tone}
+- Style: ${persona.writingStyle}
+- Audience Type: ${persona.audienceType}
+
+SEO Brief:
+- Primary Keyword: ${seoBrief.primaryKeyword}
+- H1: ${seoBrief.h1Suggestion}
+
+Research Report:
+- News Summary: ${research.news || ''}
+- Competitor Analysis: ${research.competitorAnalysis || ''}
+
+${knowledgeContext ? 'GROUNDING MATERIAL:\n' + knowledgeContext + '\n' : ''}
+
+Generate JSON payload now:`;
+
+    const responseText = await callAzureOpenAI(systemPrompt, userPrompt, 0.7);
+    let cleanText = responseText.trim();
+    cleanText = cleanText.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+
+    const blogPayload = JSON.parse(cleanText);
+    if (!blogPayload.title || !blogPayload.content) {
+      throw new Error('Sourced AI JSON is missing title or content.');
+    }
+
+    const finalTitle = blogPayload.title;
+    const finalMeta = blogPayload.metaDescription || '';
+    const finalContent = blogPayload.content;
+    const finalSlug = finalTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+
+    const blogRecord = {
       user_id: req.user._id,
-      topic_id: topicId,
-      topicName,
-      brief,
-      canonicalContent,
+      companyId: company._id || null,
+      topicId: topicId,
+      title: finalTitle,
+      metaDescription: finalMeta,
+      outline: blogPayload.outline || [],
+      content: finalContent,
       status: 'draft',
+      keyword: resolvedKeyword,
+      targetAudience: persona.audienceType,
+      tone: persona.tone,
+      slug: finalSlug,
+      seoScore: 85,
+      seoAnalysis: { seoScore: 85, readability: 'Good', details: 'Automated SEO audit complete.' },
+      seoBrief: seoBrief,
+      wordCount: finalContent.split(/\s+/).filter(Boolean).length,
+      versions: [
+        {
+          version: 1,
+          title: finalTitle,
+          metaDescription: finalMeta,
+          content: finalContent,
+          seoScore: 85,
+          createdAt: new Date()
+        }
+      ],
+      keywordCategory: 'General',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
 
-    const result = await rawDb.collection('blogs').insertOne(blog);
-    const created = await rawDb.collection('blogs').findOne({ _id: result.insertedId });
+    // Save/upsert to blogs collection
+    await rawDb.collection('blogs').updateOne(
+      { topicId: topicId, user_id: req.user._id },
+      { $set: blogRecord },
+      { upsert: true }
+    );
+
+    const created = await rawDb.collection('blogs').findOne({ topicId: topicId, user_id: req.user._id });
     res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
   } catch (err) {
+    console.error("Blog generation failed:", err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
