@@ -3090,7 +3090,7 @@ app.get('/api/topics', authRequired, async (req, res) => {
     const populated = await Promise.all(list.map(async (t) => {
       let persona = null;
       const pId = t.personaId || t.audienceId;
-      if (pId) {
+      if (pId && (pId instanceof ObjectId || (typeof pId === 'string' && pId.length === 24))) {
         try {
           persona = await rawDb.collection('company_personas').findOne({ _id: new ObjectId(pId) });
           if (persona) {
@@ -3132,10 +3132,14 @@ app.post('/api/topics', authRequired, async (req, res) => {
     // Populate personaId for response
     let persona = null;
     const pId = created.personaId;
-    if (pId) {
-      persona = await rawDb.collection('company_personas').findOne({ _id: new ObjectId(pId) });
-      if (persona) {
-        persona = { ...persona, id: persona._id.toString() };
+    if (pId && (pId instanceof ObjectId || (typeof pId === 'string' && pId.length === 24))) {
+      try {
+        persona = await rawDb.collection('company_personas').findOne({ _id: new ObjectId(pId) });
+        if (persona) {
+          persona = { ...persona, id: persona._id.toString() };
+        }
+      } catch (e) {
+        console.warn("Failed to populate personaId in post topic:", pId, e.message);
       }
     }
     
@@ -3184,10 +3188,14 @@ app.put('/api/topics/:id', authRequired, async (req, res) => {
     // Populate personaId for response
     let persona = null;
     const pId = updated.personaId;
-    if (pId) {
-      persona = await rawDb.collection('company_personas').findOne({ _id: new ObjectId(pId) });
-      if (persona) {
-        persona = { ...persona, id: persona._id.toString() };
+    if (pId && (pId instanceof ObjectId || (typeof pId === 'string' && pId.length === 24))) {
+      try {
+        persona = await rawDb.collection('company_personas').findOne({ _id: new ObjectId(pId) });
+        if (persona) {
+          persona = { ...persona, id: persona._id.toString() };
+        }
+      } catch (e) {
+        console.warn("Failed to populate personaId in put topic:", pId, e.message);
       }
     }
     
@@ -3230,12 +3238,23 @@ app.post('/api/research/generate', authRequired, async (req, res) => {
     };
 
     // 3. Fetch Persona details
-    const persona = await rawDb.collection('company_personas').findOne({ _id: new ObjectId(topic.audienceId) }) || {
-      personaName: 'General Audience',
-      tone: 'Professional',
-      writingStyle: 'Direct',
-      audienceType: 'B2C'
-    };
+    const pIdStr = topic.personaId || topic.audienceId;
+    let persona = null;
+    if (pIdStr && (pIdStr instanceof ObjectId || (typeof pIdStr === 'string' && pIdStr.length === 24))) {
+      try {
+        persona = await rawDb.collection('company_personas').findOne({ _id: new ObjectId(pIdStr) });
+      } catch (e) {
+        console.warn("Failed to query personaId in research:", pIdStr, e.message);
+      }
+    }
+    if (!persona) {
+      persona = {
+        personaName: 'General Audience',
+        tone: 'Professional',
+        writingStyle: 'Direct',
+        audienceType: 'B2C'
+      };
+    }
 
     // 4. Fetch Knowledge Base files
     const docs = await rawDb.collection('knowledge_sources').find({ user_id: req.user._id }).limit(3).toArray();
