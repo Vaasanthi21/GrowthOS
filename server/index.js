@@ -4183,6 +4183,46 @@ app.get('/api/topics', authRequired, async (req, res) => {
   });
 });
 
+app.get('/api/research/:topicId', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+
+  const research = await db.collection('research')
+    .findOne({ user_id: String(userId), topic_id: String(req.params.topicId) });
+
+  if (!research) {
+    return res.status(404).json({
+      success: false,
+      error: 'No research report found for this topic context. Synthesize one first.',
+    });
+  }
+
+  res.json({
+    success: true,
+    data: {
+      ...research,
+      id: research.id || research._id?.toString?.(),
+    },
+  });
+});
+
+app.get('/api/research', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+
+  const records = await db.collection('research')
+    .find({ user_id: String(userId) })
+    .sort({ updated_at: -1, created_at: -1 })
+    .toArray();
+
+  res.json({
+    success: true,
+    count: records.length,
+    data: records.map((record) => ({
+      ...record,
+      id: record.id || record._id?.toString?.(),
+    })),
+  });
+});
+
 app.get('/api/knowledge-sources', authRequired, async (req, res) => {
   const userId = req.user.id || req.user._id.toString();
   const rows = await store.listKnowledgeSources(userId);
