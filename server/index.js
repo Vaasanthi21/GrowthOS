@@ -2226,15 +2226,27 @@ const uploadToS3 = async (buffer, fileName, mimeType) => {
 // Document Text Extraction Helper
 const extractDocumentText = async (buffer, mimeType, fileName) => {
   const mime = String(mimeType || '').toLowerCase();
-  if (mime.includes('pdf')) {
+  const name = String(fileName || '').toLowerCase();
+
+  if (mime.includes('pdf') || name.endsWith('.pdf')) {
     const data = await parsePdf(buffer);
     return data.text || '';
   }
-  if (mime.includes('plain') || mime.includes('text') || fileName.endsWith('.txt')) {
+  if (mime.includes('word') || mime.includes('officedocument') || name.endsWith('.docx')) {
+    const result = await mammoth.extractRawText({ buffer });
+    return result.value || '';
+  }
+  if (mime.includes('plain') || mime.includes('text') || name.endsWith('.txt')) {
     return buffer.toString('utf8');
   }
-  // Simplified fallback for docx
-  return buffer.toString('utf8').replace(/[^\x20-\x7E\n]/g, '');
+  
+  // Resilient fallback: try mammoth first, then stringify
+  try {
+    const result = await mammoth.extractRawText({ buffer });
+    return result.value || '';
+  } catch (err) {
+    return buffer.toString('utf8').replace(/[^\x20-\x7E\n]/g, '');
+  }
 };
 
 
