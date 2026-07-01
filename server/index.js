@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
@@ -19,6 +20,16 @@ import {
   extractVisualOverrideDirectives,
 } from './prompt-builders-optimized.js';
 
+import companyRoutes from './routes/company.js';
+import personaRoutes from './routes/persona.js';
+import topicRoutes from './routes/topic.js';
+import knowledgeRoutes from './routes/knowledge.js';
+import researchRoutes from './routes/research.js';
+import blogRoutes from './routes/blog.js';
+import renderRoutes from './routes/render.js';
+import imageRoutes from './routes/image.js';
+import seoRoutes from './routes/seo.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
@@ -33,6 +44,12 @@ const app = express();
 const port = Number(process.env.PORT || 3000);
 const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017';
 const dbName = process.env.MONGODB_DB_NAME || 'creative_studio_os';
+
+// Connect Mongoose
+mongoose.connect(mongoUri)
+  .then(() => console.log('✓ Mongoose connected successfully to', mongoUri))
+  .catch((err) => console.error('✗ Mongoose connection failed:', err.message));
+
 const jwtSecret = process.env.JWT_SECRET || 'creative-studio-dev-secret';
 const azureImageApiKey = process.env.AZURE_OPENAI_IMAGE_API_KEY || '';
 const azureImageEndpoint = process.env.AZURE_OPENAI_IMAGE_ENDPOINT || '';
