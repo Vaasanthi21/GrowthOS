@@ -2232,6 +2232,10 @@ const createMongoStore = (db) => ({
       .sort({ updated_at: -1, created_at: -1 })
       .toArray();
   },
+  async insertBlog(blog) {
+    const result = await db.collection('blogs').insertOne(blog);
+    return await db.collection('blogs').findOne({ _id: result.insertedId });
+  },
   async listTopics(userId) {
     return await db.collection('topics')
       .find({ user_id: String(userId) })
@@ -4207,6 +4211,47 @@ app.get('/api/blogs', authRequired, async (req, res) => {
       ...blog,
       id: blog.id || blog._id?.toString?.(),
     })),
+  });
+});
+
+app.post('/api/blogs/generate', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+  const timestamp = nowIso();
+
+  const title = req.body.topicName || req.body.title || 'Generated SEO Blog';
+  const topic = req.body.topic || req.body.topicDetails || req.body.goal || '';
+  const keywords = Array.isArray(req.body.keywords) ? req.body.keywords : [];
+
+  const content = `# ${title}
+
+This blog draft is generated from the selected brand setup, topic context, research angle, and grounding knowledge.
+
+## Topic Focus
+${topic}
+
+## SEO Keywords
+${keywords.join(', ')}
+
+## Draft
+A complete SEO blog draft can now be generated and refined from this saved Blog Studio context.`;
+
+  const blog = await store.insertBlog({
+    user_id: String(userId),
+    topic_id: req.body.topicId || req.body.topic_id || '',
+    title,
+    content,
+    keywords,
+    status: 'draft',
+    created_at: timestamp,
+    updated_at: timestamp,
+  });
+
+  res.status(201).json({
+    success: true,
+    data: {
+      ...blog,
+      id: blog.id || blog._id?.toString?.(),
+    },
   });
 });
 
