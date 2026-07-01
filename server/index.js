@@ -3085,22 +3085,64 @@ app.delete('/api/knowledge/:id', authRequired, async (req, res) => {
 
 // 4. Blog Topics endpoints
 app.get('/api/topics', authRequired, async (req, res) => {
-  const list = await rawDb.collection('topics').find({ user_id: req.user._id }).sort({ created_at: -1 }).toArray();
-  res.json({ success: true, data: list.map(t => ({ ...t, id: t._id.toString() })) });
+  try {
+    const list = await rawDb.collection('topics').find({ user_id: req.user._id }).sort({ created_at: -1 }).toArray();
+    const populated = await Promise.all(list.map(async (t) => {
+      let persona = null;
+      const pId = t.personaId || t.audienceId;
+      if (pId) {
+        try {
+          persona = await rawDb.collection('company_personas').findOne({ _id: new ObjectId(pId) });
+          if (persona) {
+            persona = { ...persona, id: persona._id.toString() };
+          }
+        } catch (e) {
+          console.warn("Failed to populate personaId:", pId, e.message);
+        }
+      }
+      return {
+        ...t,
+        id: t._id.toString(),
+        personaId: persona,
+        audienceId: pId
+      };
+    }));
+    res.json({ success: true, data: populated });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.post('/api/topics', authRequired, async (req, res) => {
-  const { topicName, audienceId } = req.body;
-  const topic = {
-    user_id: req.user._id,
-    topicName: topicName || '',
-    audienceId: audienceId || null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  };
-  const result = await rawDb.collection('topics').insertOne(topic);
-  const created = await rawDb.collection('topics').findOne({ _id: result.insertedId });
-  res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
+  try {
+    const { topicName, topic, keywords, goal, personaId, audienceId } = req.body;
+    const newTopic = {
+      user_id: req.user._id,
+      topicName: topicName || '',
+      topic: topic || '',
+      keywords: keywords || [],
+      goal: goal || '',
+      personaId: personaId || audienceId || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    const result = await rawDb.collection('topics').insertOne(newTopic);
+    const created = await rawDb.collection('topics').findOne({ _id: result.insertedId });
+    
+    // Populate personaId for response
+    let persona = null;
+    const pId = created.personaId;
+    if (pId) {
+      persona = await rawDb.collection('company_personas').findOne({ _id: new ObjectId(pId) });
+      if (persona) {
+        persona = { ...persona, id: persona._id.toString() };
+      }
+    }
+    
+    res.status(201).json({ success: true, data: { ...created, id: created._id.toString(), personaId: persona } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.post('/api/topics/suggest-keywords', authRequired, async (req, res) => {
@@ -3123,18 +3165,36 @@ app.post('/api/topics/suggest-keywords', authRequired, async (req, res) => {
 });
 
 app.put('/api/topics/:id', authRequired, async (req, res) => {
-  const { topicName, audienceId } = req.body;
-  const updates = {
-    topicName: topicName || '',
-    audienceId: audienceId || null,
-    updated_at: new Date().toISOString()
-  };
-  await rawDb.collection('topics').updateOne(
-    { _id: new ObjectId(req.params.id), user_id: req.user._id },
-    { $set: updates }
-  );
-  const updated = await rawDb.collection('topics').findOne({ _id: new ObjectId(req.params.id) });
-  res.json({ success: true, data: { ...updated, id: updated._id.toString() } });
+  try {
+    const { topicName, topic, keywords, goal, personaId, audienceId } = req.body;
+    const updates = {
+      topicName: topicName || '',
+      topic: topic || '',
+      keywords: keywords || [],
+      goal: goal || '',
+      personaId: personaId || audienceId || null,
+      updated_at: new Date().toISOString()
+    };
+    await rawDb.collection('topics').updateOne(
+      { _id: new ObjectId(req.params.id), user_id: req.user._id },
+      { $set: updates }
+    );
+    const updated = await rawDb.collection('topics').findOne({ _id: new ObjectId(req.params.id) });
+    
+    // Populate personaId for response
+    let persona = null;
+    const pId = updated.personaId;
+    if (pId) {
+      persona = await rawDb.collection('company_personas').findOne({ _id: new ObjectId(pId) });
+      if (persona) {
+        persona = { ...persona, id: persona._id.toString() };
+      }
+    }
+    
+    res.json({ success: true, data: { ...updated, id: updated._id.toString(), personaId: persona } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.delete('/api/topics/:id', authRequired, async (req, res) => {
