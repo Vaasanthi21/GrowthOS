@@ -766,15 +766,7 @@ const activeOcrJobs = new Map();
 const OCR_CACHE_LIMIT = 100;
 const OCR_LANGUAGE_ALLOWLIST = new Set(['eng', 'spa', 'fra', 'deu', 'ita', 'por', 'nld']);
 const OCR_AUTO_LANGUAGE = 'eng+spa+fra+deu+ita+por+nld';
-const parsePdf = async (buffer) => {
-  const parser = new pdfParse.PDFParse({ data: buffer });
-  try {
-    const result = await parser.getText();
-    return result;
-  } finally {
-    await parser.destroy();
-  }
-};
+const parsePdf = pdfParse.default || pdfParse;
 
 const setOcrCache = (key, value) => {
   if (!key) {
@@ -2651,36 +2643,71 @@ app.get('/api/personas', authRequired, async (req, res) => {
 });
 
 app.post('/api/personas', authRequired, async (req, res) => {
-  const { name, title, description, painPoints, contentPreferences } = req.body;
-  const persona = {
-    user_id: req.user._id,
-    personaName: name || '',
-    tone: title || '',
-    writingStyle: '',
-    audienceType: '',
-    description: description || '',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  };
-  const result = await rawDb.collection('company_personas').insertOne(persona);
-  const created = await rawDb.collection('company_personas').findOne({ _id: result.insertedId });
-  res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
+  try {
+    const { 
+      name, 
+      personaName, 
+      tone, 
+      voice, 
+      title, 
+      writingStyle, 
+      audienceType, 
+      audience, 
+      description, 
+      notes 
+    } = req.body;
+
+    const persona = {
+      user_id: req.user._id,
+      personaName: personaName || name || '',
+      tone: tone || voice || title || '',
+      writingStyle: writingStyle || '',
+      audienceType: audienceType || audience || '',
+      description: description || notes || '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    const result = await rawDb.collection('company_personas').insertOne(persona);
+    const created = await rawDb.collection('company_personas').findOne({ _id: result.insertedId });
+    res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.put('/api/personas/:id', authRequired, async (req, res) => {
-  const { name, title, description, painPoints, contentPreferences } = req.body;
-  const updates = {
-    personaName: name || '',
-    tone: title || '',
-    description: description || '',
-    updated_at: new Date().toISOString()
-  };
-  await rawDb.collection('company_personas').updateOne(
-    { _id: new ObjectId(req.params.id), user_id: req.user._id },
-    { $set: updates }
-  );
-  const updated = await rawDb.collection('company_personas').findOne({ _id: new ObjectId(req.params.id) });
-  res.json({ success: true, data: { ...updated, id: updated._id.toString() } });
+  try {
+    const { 
+      name, 
+      personaName, 
+      tone, 
+      voice, 
+      title, 
+      writingStyle, 
+      audienceType, 
+      audience, 
+      description, 
+      notes 
+    } = req.body;
+
+    const updates = {
+      personaName: personaName || name || '',
+      tone: tone || voice || title || '',
+      writingStyle: writingStyle || '',
+      audienceType: audienceType || audience || '',
+      description: description || notes || '',
+      updated_at: new Date().toISOString()
+    };
+
+    await rawDb.collection('company_personas').updateOne(
+      { _id: new ObjectId(req.params.id), user_id: req.user._id },
+      { $set: updates }
+    );
+    const updated = await rawDb.collection('company_personas').findOne({ _id: new ObjectId(req.params.id) });
+    res.json({ success: true, data: { ...updated, id: updated._id.toString() } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.delete('/api/personas/:id', authRequired, async (req, res) => {
