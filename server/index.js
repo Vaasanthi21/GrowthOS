@@ -2226,6 +2226,28 @@ const createMongoStore = (db) => ({
 
     return await collection.findOne({ user_id: String(userId) });
   },
+  async listBlogs(userId) {
+    return await db.collection('blogs')
+      .find({ user_id: String(userId) })
+      .sort({ updated_at: -1, created_at: -1 })
+      .toArray();
+  },
+  async listTopics(userId) {
+    return await db.collection('topics')
+      .find({ user_id: String(userId) })
+      .sort({ updated_at: -1, created_at: -1 })
+      .toArray();
+  },
+  async findResearchByTopicId(userId, topicId) {
+    return await db.collection('research')
+      .findOne({ user_id: String(userId), topic_id: String(topicId) });
+  },
+  async listResearch(userId) {
+    return await db.collection('research')
+      .find({ user_id: String(userId) })
+      .sort({ updated_at: -1, created_at: -1 })
+      .toArray();
+  },
   async countUsers() {
     return await db.collection('users').countDocuments();
   },
@@ -4151,10 +4173,7 @@ app.post('/api/knowledge/:id/extract', authRequired, async (req, res) => {
 app.get('/api/blogs', authRequired, async (req, res) => {
   const userId = req.user.id || req.user._id.toString();
 
-  const blogs = await db.collection('blogs')
-    .find({ user_id: String(userId) })
-    .sort({ updated_at: -1, created_at: -1 })
-    .toArray();
+  const blogs = await store.listBlogs(userId);
 
   res.json({
     success: true,
@@ -4168,10 +4187,7 @@ app.get('/api/blogs', authRequired, async (req, res) => {
 app.get('/api/topics', authRequired, async (req, res) => {
   const userId = req.user.id || req.user._id.toString();
 
-  const topics = await db.collection('topics')
-    .find({ user_id: String(userId) })
-    .sort({ updated_at: -1, created_at: -1 })
-    .toArray();
+  const topics = await store.listTopics(userId);
 
   res.json({
     success: true,
@@ -4186,8 +4202,7 @@ app.get('/api/topics', authRequired, async (req, res) => {
 app.get('/api/research/:topicId', authRequired, async (req, res) => {
   const userId = req.user.id || req.user._id.toString();
 
-  const research = await db.collection('research')
-    .findOne({ user_id: String(userId), topic_id: String(req.params.topicId) });
+  const research = await store.findResearchByTopicId(userId, req.params.topicId);
 
   if (!research) {
     return res.status(404).json({
@@ -4208,10 +4223,7 @@ app.get('/api/research/:topicId', authRequired, async (req, res) => {
 app.get('/api/research', authRequired, async (req, res) => {
   const userId = req.user.id || req.user._id.toString();
 
-  const records = await db.collection('research')
-    .find({ user_id: String(userId) })
-    .sort({ updated_at: -1, created_at: -1 })
-    .toArray();
+  const records = await store.listResearch(userId);
 
   res.json({
     success: true,
