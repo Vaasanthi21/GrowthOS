@@ -2416,6 +2416,40 @@ const generateCanonicalBlog = async (topic, brief, research) => {
   return await callAzureOpenAI(systemPrompt, userPrompt, 0.7);
 };
 
+const suggestSEOKeywords = async (topicName, topicDetails, company) => {
+  const systemPrompt = "You are a professional SEO copywriter and strategist. Given a topic name, detailed description, and company profile, generate 4 to 6 highly relevant, search-volume optimized SEO keywords. Return STRICTLY a valid JSON object with a keywords array.";
+  const userPrompt = `Generate SEO keywords for:
+COMPANY Name: ${company.companyName}
+Industry: ${company.industry}
+Description: ${company.productDescription}
+
+TOPIC Name: ${topicName}
+Details: ${topicDetails}
+
+Return JSON with keywords array now:`;
+
+  try {
+    const responseText = await callAzureOpenAI(systemPrompt, userPrompt, 0.6);
+    let cleanText = responseText.trim();
+    cleanText = cleanText.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+
+    const parsed = JSON.parse(cleanText);
+    if (parsed.keywords && Array.isArray(parsed.keywords)) {
+      return parsed.keywords.map(k => k.toLowerCase().replace(/#/g, '').trim());
+    }
+    throw new Error('Sourced AI JSON is missing keywords array.');
+  } catch (err) {
+    console.warn('[AI SERVICE WARNING] suggestSEOKeywords failed. Using fallback keywords...', err.message);
+    return [
+      topicName.toLowerCase().replace(/[^a-z0-9\s]+/g, '').split(' ').slice(0, 3).join(' '),
+      'career tech',
+      'job matching',
+      'grad employability'
+    ].filter(Boolean);
+  }
+};
+
+
 const generateSEOBrief = async (topic, keywords) => {
   const systemPrompt = "You are an SEO strategist. Generate an SEO brief including keywords recommendations, structure, and word count target.";
   const userPrompt = `Generate an SEO brief for topic: "${topic}" with focus keywords: "${keywords}"`;
@@ -2984,6 +3018,25 @@ app.post('/api/topics', authRequired, async (req, res) => {
   const result = await rawDb.collection('topics').insertOne(topic);
   const created = await rawDb.collection('topics').findOne({ _id: result.insertedId });
   res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
+});
+
+app.post('/api/topics/suggest-keywords', authRequired, async (req, res) => {
+  try {
+    const { topicName, topic } = req.body;
+    if (!topicName || !topic) {
+      return res.status(400).json({ success: false, error: 'Topic name and details are required' });
+    }
+    const company = await rawDb.collection('companies').findOne({ user_id: req.user._id }) || {
+      companyName: 'UDEN Tech',
+      industry: 'EdTech',
+      brandVoice: 'Professional',
+      productDescription: 'AI career placement'
+    };
+    const suggested = await suggestSEOKeywords(topicName, topic, company);
+    res.json({ success: true, data: suggested });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.put('/api/topics/:id', authRequired, async (req, res) => {
