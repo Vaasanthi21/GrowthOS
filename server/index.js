@@ -2242,6 +2242,28 @@ const createMongoStore = (db) => ({
     const result = await db.collection('topics').insertOne(topic);
     return await db.collection('topics').findOne({ _id: result.insertedId });
   },
+  async upsertResearchByTopicId(userId, topicId, researchData) {
+    const timestamp = nowIso();
+    const collection = db.collection('research');
+
+    await collection.updateOne(
+      { user_id: String(userId), topic_id: String(topicId) },
+      {
+        $set: {
+          ...researchData,
+          user_id: String(userId),
+          topic_id: String(topicId),
+          updated_at: timestamp,
+        },
+        $setOnInsert: {
+          created_at: timestamp,
+        },
+      },
+      { upsert: true }
+    );
+
+    return await collection.findOne({ user_id: String(userId), topic_id: String(topicId) });
+  },
   async findResearchByTopicId(userId, topicId) {
     return await db.collection('research')
       .findOne({ user_id: String(userId), topic_id: String(topicId) });
@@ -4219,6 +4241,38 @@ app.post('/api/topics', authRequired, async (req, res) => {
     data: {
       ...topic,
       id: topic.id || topic._id?.toString?.(),
+    },
+  });
+});
+
+app.post('/api/research/generate', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+  const topicId = String(req.body.topicId || req.body.topic_id || req.body.id || '').trim();
+
+  if (!topicId) {
+    return res.status(400).json({
+      success: false,
+      error: 'Topic ID is required',
+    });
+  }
+
+  const research = await store.upsertResearchByTopicId(userId, topicId, {
+    news: [],
+    keywords: Array.isArray(req.body.keywords) ? req.body.keywords : [],
+    competitorAnalysis: [],
+    suggestedAngles: [
+      'Resume clarity and ATS readiness',
+      'Portfolio and GitHub project presentation',
+      'Internship and entry-level job preparation',
+    ],
+    status: 'completed',
+  });
+
+  res.status(201).json({
+    success: true,
+    data: {
+      ...research,
+      id: research.id || research._id?.toString?.(),
     },
   });
 });
