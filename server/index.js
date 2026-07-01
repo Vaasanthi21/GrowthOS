@@ -4165,6 +4165,24 @@ app.get('/api/blogs', authRequired, async (req, res) => {
   });
 });
 
+app.get('/api/topics', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+
+  const topics = await db.collection('topics')
+    .find({ user_id: String(userId) })
+    .sort({ updated_at: -1, created_at: -1 })
+    .toArray();
+
+  res.json({
+    success: true,
+    count: topics.length,
+    data: topics.map((topic) => ({
+      ...topic,
+      id: topic.id || topic._id?.toString?.(),
+    })),
+  });
+});
+
 app.get('/api/knowledge-sources', authRequired, async (req, res) => {
   const userId = req.user.id || req.user._id.toString();
   const rows = await store.listKnowledgeSources(userId);
