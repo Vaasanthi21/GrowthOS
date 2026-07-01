@@ -3212,7 +3212,13 @@ app.delete('/api/topics/:id', authRequired, async (req, res) => {
 
 // 5. Research endpoints
 app.get('/api/research/:topicId', authRequired, async (req, res) => {
-  const research = await rawDb.collection('researches').findOne({ topic_id: req.params.topicId, user_id: req.user._id });
+  const research = await rawDb.collection('researches').findOne({
+    $or: [
+      { topicId: req.params.topicId },
+      { topic_id: req.params.topicId }
+    ],
+    user_id: req.user._id
+  });
   res.json({ success: true, data: research ? { ...research, id: research._id.toString() } : null });
 });
 
@@ -3272,6 +3278,7 @@ app.post('/api/research/generate', authRequired, async (req, res) => {
     // 6. Save/upsert to researches collection
     const researchRecord = {
       user_id: req.user._id,
+      topicId: topicId,
       topic_id: topicId,
       topicName: topic.topicName,
       news: synthesized.news,
@@ -3282,12 +3289,12 @@ app.post('/api/research/generate', authRequired, async (req, res) => {
     };
 
     await rawDb.collection('researches').updateOne(
-      { topic_id: topicId, user_id: req.user._id },
+      { topicId: topicId, user_id: req.user._id },
       { $set: researchRecord },
       { upsert: true }
     );
 
-    const created = await rawDb.collection('researches').findOne({ topic_id: topicId, user_id: req.user._id });
+    const created = await rawDb.collection('researches').findOne({ topicId: topicId, user_id: req.user._id });
     res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
   } catch (err) {
     console.error("Market research generation failed:", err.message);
