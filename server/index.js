@@ -766,7 +766,15 @@ const activeOcrJobs = new Map();
 const OCR_CACHE_LIMIT = 100;
 const OCR_LANGUAGE_ALLOWLIST = new Set(['eng', 'spa', 'fra', 'deu', 'ita', 'por', 'nld']);
 const OCR_AUTO_LANGUAGE = 'eng+spa+fra+deu+ita+por+nld';
-const parsePdf = pdfParse.default || pdfParse;
+const parsePdf = async (buffer) => {
+  const parser = new pdfParse.PDFParse({ data: buffer });
+  try {
+    const result = await parser.getText();
+    return result;
+  } finally {
+    await parser.destroy();
+  }
+};
 
 const setOcrCache = (key, value) => {
   if (!key) {
@@ -2227,7 +2235,7 @@ const uploadToS3 = async (buffer, fileName, mimeType) => {
 const extractDocumentText = async (buffer, mimeType, fileName) => {
   const mime = String(mimeType || '').toLowerCase();
   if (mime.includes('pdf')) {
-    const data = await (pdfParse.default || pdfParse)(buffer);
+    const data = await parsePdf(buffer);
     return data.text || '';
   }
   if (mime.includes('plain') || mime.includes('text') || fileName.endsWith('.txt')) {
