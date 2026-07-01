@@ -2268,7 +2268,7 @@ const callAzureOpenAI = async (systemPrompt, userPrompt, temperature = 0.7) => {
       { role: 'user', content: userPrompt }
     ],
     temperature,
-    max_completion_tokens: 2500
+    max_completion_tokens: 8000
   }, {
     headers: { 'api-key': apiKey, 'Content-Type': 'application/json' }
   });
