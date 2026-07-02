@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 
-const emailFrom = process.env.EMAIL_FROM || process.env.SMTP_FROM || 'noreply@uden.ai';
+const getEmailFrom = () => process.env.EMAIL_FROM || process.env.SMTP_FROM || 'noreply@uden.ai';
 
 const createTransporter = () => {
   if (process.env.SENDGRID_API_KEY) {
@@ -39,7 +39,7 @@ export const sendPasswordResetOtpEmail = async ({ to, otp, expiresInMinutes = 10
   }
 
   await transporter.sendMail({
-    from: emailFrom,
+    from: getEmailFrom(),
     to,
     subject: 'Creative Studio OS password reset OTP',
     text: `Your password reset OTP is ${otp}. It will expire in ${expiresInMinutes} minutes.`,
