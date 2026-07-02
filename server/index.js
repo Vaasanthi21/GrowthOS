@@ -14,7 +14,6 @@ import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 import { createWorker } from 'tesseract.js';
 import { spawn } from 'child_process';
@@ -879,6 +878,7 @@ const OCR_CACHE_LIMIT = 100;
 const OCR_LANGUAGE_ALLOWLIST = new Set(['eng', 'spa', 'fra', 'deu', 'ita', 'por', 'nld']);
 const OCR_AUTO_LANGUAGE = 'eng+spa+fra+deu+ita+por+nld';
 const parsePdf = async (buffer) => {
+  const { PDFParse } = await import('pdf-parse');
   const parser = new PDFParse({ data: buffer });
 
   try {
