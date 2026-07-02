@@ -2758,6 +2758,20 @@ const extractDocumentText = async (buffer, mimeType, fileName) => {
 };
 
 
+const stripJsonWrapper = (text) => {
+  if (!text) return '';
+  let cleanText = text.trim();
+  if (cleanText.startsWith('```json')) {
+    cleanText = cleanText.slice(7);
+  } else if (cleanText.startsWith('```')) {
+    cleanText = cleanText.slice(3);
+  }
+  if (cleanText.endsWith('```')) {
+    cleanText = cleanText.slice(0, -3);
+  }
+  return cleanText.trim();
+};
+
 // Azure OpenAI AI Service Helper
 const callAzureOpenAI = async (systemPrompt, userPrompt, temperature = 0.7) => {
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
@@ -2908,7 +2922,7 @@ The output JSON format MUST strictly match the following schema:
   ]
 }`;
   const userPrompt = `Raw Document Content:\n${text.slice(0, 10000)}\n\nExtract Company and Persona details and return raw JSON now:`;
-  const rawJson = await callAzureOpenAI(systemPrompt, userPrompt, 0.4);
+  const rawJson = await callAzureOpenAI(systemPrompt, userPrompt, 0.2);
   try {
     const cleanJson = rawJson.replace(/```json/g, '').replace(/```/g, '').trim();
     return JSON.parse(cleanJson);
@@ -2939,7 +2953,7 @@ Return JSON with keywords array now:`;
   try {
     const responseText = await callAzureOpenAI(systemPrompt, userPrompt, 0.6);
     let cleanText = responseText.trim();
-    cleanText = cleanText.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+    cleanText = stripJsonWrapper(cleanText);
 
     const parsed = JSON.parse(cleanText);
     if (parsed.keywords && Array.isArray(parsed.keywords)) {
@@ -3013,7 +3027,7 @@ Generate JSON payload now:`;
   try {
     const responseText = await callAzureOpenAI(systemPrompt, userPrompt, 0.7);
     let cleanText = responseText.trim();
-    cleanText = cleanText.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+    cleanText = stripJsonWrapper(cleanText);
 
     const parsedData = JSON.parse(cleanText);
     if (parsedData.news && parsedData.keywords && parsedData.competitorAnalysis && parsedData.suggestedAngles) {
@@ -3054,9 +3068,554 @@ const analyzeBlogSEO = async (content) => {
   return { score: 85, readability: 'Good', details: raw };
 };
 
-const generateBlogCoverImage = async (prompt) => {
-  // Mock image generator URL (since DALL-E is optional or uses separate credentials)
-  return `https://images.unsplash.com/photo-1542435503-956c469947f6?q=80&w=1000`;
+const calculateSeoAnalysis = (title = '', content = '', metaDescription = '', keyword = '', slug = '', companyWebsite = '', platformName = '') => {
+  const cleanTitle = String(title || '').trim();
+  const cleanContent = String(content || '').trim();
+  const cleanMeta = String(metaDescription || '').trim();
+  const cleanKeyword = String(keyword || '').trim();
+  const cleanSlug = String(slug || '').trim();
+  
+  const keywordLower = cleanKeyword.toLowerCase();
+
+  // ----------------------------------------
+  // Custom LinkedIn Social SEO Analysis Rules
+  // ----------------------------------------
+  if (platformName && platformName.toLowerCase() === 'linkedin') {
+    const recommendations = [];
+    const checks = {
+      emojiInTitle: false,
+      hashtagCount: 0,
+      wordCount: 0,
+      ctaEngagement: false,
+      readabilityValid: false
+    };
+
+    // 1. Emoji in Title (20 points)
+    let scoreEmoji = 0;
+    const emojiRegex = /[\u{1F300}-\u{1F9FF}]/u;
+    if (emojiRegex.test(cleanTitle)) {
+      checks.emojiInTitle = true;
+      scoreEmoji = 20;
+    } else {
+      recommendations.push('Start your title hook with an engaging emoji to increase visibility.');
+    }
+
+    // 2. Hashtags (20 points)
+    let scoreHashtags = 0;
+    const hashMatches = cleanContent.match(/#\w+/g);
+    const hashCount = hashMatches ? hashMatches.length : 0;
+    checks.hashtagCount = hashCount;
+    if (hashCount >= 3 && hashCount <= 6) {
+      scoreHashtags = 20;
+    } else if (hashCount > 0) {
+      scoreHashtags = 10;
+      recommendations.push('Include between 3 and 5 relevant tactical hashtags at the bottom.');
+    } else {
+      recommendations.push('Add 3-5 relevant tactical hashtags at the very bottom.');
+    }
+
+    // 3. Word Count (20 points)
+    let scoreWordCount = 0;
+    const words = cleanContent ? cleanContent.split(/\s+/).filter(w => w.length > 0) : [];
+    const wordCount = words.length;
+    checks.wordCount = wordCount;
+    if (wordCount >= 200 && wordCount <= 500) {
+      scoreWordCount = 20;
+    } else if (wordCount > 0) {
+      scoreWordCount = 10;
+      recommendations.push(`Aim for a mobile-friendly length of 200-500 words (current: ${wordCount} words).`);
+    } else {
+      recommendations.push('Add body copy for the post.');
+    }
+
+    // 4. CTA Engagement (20 points)
+    let scoreCta = 0;
+    const ctaRegex = /(?:comment|share|thoughts|experiences|below|what\s+do\s+you|feedback|agree|disagree)/i;
+    if (ctaRegex.test(cleanContent)) {
+      checks.ctaEngagement = true;
+      scoreCta = 20;
+    } else {
+      recommendations.push('Conclude with an engaging call-to-action asking readers to leave their thoughts in the comments.');
+    }
+
+    // 5. Readability (20 points)
+    let scoreReadability = 0;
+    let readabilityScore = 100;
+    if (wordCount > 0) {
+      const sentences = cleanContent.split(/[.!?]+/).filter(s => s.trim().length > 0);
+      const sentenceCount = sentences.length;
+      if (sentenceCount > 0) {
+        const avgSentenceLength = wordCount / sentenceCount;
+        readabilityScore = Math.round(Math.max(20, Math.min(100, 100 - (avgSentenceLength - 12) * 3)));
+      }
+    }
+    if (readabilityScore >= 75) {
+      checks.readabilityValid = true;
+      scoreReadability = 20;
+    } else {
+      recommendations.push('Break up long sentences to improve mobile readability.');
+    }
+
+    const totalScore = scoreEmoji + scoreHashtags + scoreWordCount + scoreCta + scoreReadability;
+
+    return {
+      score: totalScore,
+      seoScore: totalScore,
+      readabilityScore,
+      keywordDensity: 0,
+      titleScore: scoreEmoji * 5,
+      metaScore: 100,
+      headingScore: 100,
+      checks,
+      recommendations
+    };
+  }
+
+  // ----------------------------------------
+  // Standard Long-Form Blog SEO Analysis Rules
+  // ----------------------------------------
+  const recommendations = [];
+  const checks = {
+    keywordInTitle: false,
+    keywordInMetaDescription: false,
+    keywordInFirstParagraph: false,
+    keywordInH1: false,
+    keywordInSlug: false,
+    wordCount: 0,
+    h2Count: 0,
+    h3Count: 0,
+    faqPresence: false,
+    conclusionPresence: false,
+    internalLinks: 0,
+    externalLinks: 0,
+    imageAltText: false
+  };
+
+  // 1. Keyword in Title (10 points)
+  let scoreKeywordInTitle = 0;
+  if (cleanTitle && keywordLower) {
+    if (cleanTitle.toLowerCase().includes(keywordLower)) {
+      checks.keywordInTitle = true;
+      scoreKeywordInTitle = 10;
+    } else {
+      recommendations.push('Include the target keyword in the blog title.');
+    }
+  } else if (!cleanTitle) {
+    recommendations.push('Add a blog title.');
+  }
+
+  // 2. Keyword in Meta Description (10 points)
+  let scoreKeywordInMeta = 0;
+  if (cleanMeta && keywordLower) {
+    if (cleanMeta.toLowerCase().includes(keywordLower)) {
+      checks.keywordInMetaDescription = true;
+      scoreKeywordInMeta = 10;
+    } else {
+      recommendations.push('Include the target keyword in the meta description.');
+    }
+  } else if (!cleanMeta) {
+    recommendations.push('Add an engaging meta description under 160 characters.');
+  }
+
+  // 3. Keyword in First Paragraph (10 points)
+  let scoreKeywordInFirstPara = 0;
+  let firstParagraph = '';
+  if (cleanContent) {
+    const lines = cleanContent.split('\n');
+    let inCodeBlock = false;
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      if (line.startsWith('```')) {
+        inCodeBlock = !inCodeBlock;
+        continue;
+      }
+      if (inCodeBlock) continue;
+      
+      // Skip headers, blockquotes, lists, images, and HTML/markdown tags
+      if (/^(#+|<h[1-6]>)/i.test(line)) continue;
+      if (line.startsWith('>')) continue;
+      if (/^([*\-+]|\d+\.)\s+/.test(line)) continue;
+      if (line.startsWith('![')) continue;
+      if (line.startsWith('<img')) continue;
+      
+      firstParagraph = line;
+      break;
+    }
+  }
+
+  if (firstParagraph && keywordLower) {
+    if (firstParagraph.toLowerCase().includes(keywordLower)) {
+      checks.keywordInFirstParagraph = true;
+      scoreKeywordInFirstPara = 10;
+    } else {
+      recommendations.push('Include the target keyword in the first paragraph of the content.');
+    }
+  } else if (cleanContent && keywordLower && !firstParagraph) {
+    recommendations.push('Ensure the content contains at least one standard paragraph containing the target keyword.');
+  }
+
+  // 4. Keyword in H1 (10 points)
+  let scoreKeywordInH1 = 0;
+  let hasH1 = false;
+  if (cleanContent) {
+    const h1MarkdownRegex = /^#\s+(.+)$/m;
+    const h1HtmlRegex = /<h1>(.*?)<\/h1>/i;
+    
+    const mdMatch = cleanContent.match(h1MarkdownRegex);
+    const htmlMatch = cleanContent.match(h1HtmlRegex);
+    
+    const h1Text = (mdMatch ? mdMatch[1] : (htmlMatch ? htmlMatch[1] : '')).trim();
+    
+    if (h1Text) {
+      hasH1 = true;
+      if (keywordLower && h1Text.toLowerCase().includes(keywordLower)) {
+        checks.keywordInH1 = true;
+        scoreKeywordInH1 = 10;
+      } else if (keywordLower) {
+        recommendations.push('Include the target keyword in the H1 heading.');
+      }
+    } else {
+      recommendations.push("Add an H1 heading (Markdown '#' format) at the beginning of the content.");
+    }
+  }
+
+  // 5. Keyword in Slug (10 points)
+  let scoreKeywordInSlug = 0;
+  if (cleanSlug && keywordLower) {
+    const slugifiedKeyword = keywordLower
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)+/g, '');
+      
+    if (cleanSlug.toLowerCase().includes(slugifiedKeyword)) {
+      checks.keywordInSlug = true;
+      scoreKeywordInSlug = 10;
+    } else {
+      recommendations.push('Include the target keyword in the URL slug.');
+    }
+  }
+
+  // 6. Word Count (10 points)
+  let scoreWordCount = 0;
+  const words = cleanContent ? cleanContent.split(/\s+/).filter(w => w.length > 0) : [];
+  const wordCount = words.length;
+  checks.wordCount = wordCount;
+
+  if (wordCount >= 800 && wordCount <= 1200) {
+    scoreWordCount = 10;
+  } else if (wordCount > 0) {
+    if (wordCount < 800) {
+      recommendations.push(`Extend the article length to meet the target of 800-1200 words (current: ${wordCount} words).`);
+      scoreWordCount = Math.round((wordCount / 800) * 10);
+    } else {
+      recommendations.push(`Condense the article length to fit the target of 800-1200 words (current: ${wordCount} words).`);
+      scoreWordCount = 5;
+    }
+  } else {
+    recommendations.push('Add body content to the blog post.');
+  }
+
+  // 7. H2 Count (10 points)
+  let scoreH2Count = 0;
+  let h2Count = 0;
+  if (cleanContent) {
+    const h2MarkdownMatches = cleanContent.match(/^##\s+/mg);
+    const h2HtmlMatches = cleanContent.match(/<h2>/mig);
+    h2Count = (h2MarkdownMatches ? h2MarkdownMatches.length : 0) + (h2HtmlMatches ? h2HtmlMatches.length : 0);
+  }
+  checks.h2Count = h2Count;
+  if (h2Count >= 2) {
+    scoreH2Count = 10;
+  } else {
+    recommendations.push(`Add at least two H2 headings to structure your content (current: ${h2Count}).`);
+    scoreH2Count = h2Count * 5;
+  }
+
+  // 8. H3 Count (10 points)
+  let scoreH3Count = 0;
+  let h3Count = 0;
+  if (cleanContent) {
+    const h3MarkdownMatches = cleanContent.match(/^###\s+/mg);
+    const h3HtmlMatches = cleanContent.match(/<h3>/mig);
+    h3Count = (h3MarkdownMatches ? h3MarkdownMatches.length : 0) + (h3HtmlMatches ? h3HtmlMatches.length : 0);
+  }
+  checks.h3Count = h3Count;
+  if (h3Count >= 1) {
+    scoreH3Count = 10;
+  } else {
+    recommendations.push(`Add at least one H3 heading to structure sub-sections (current: ${h3Count}).`);
+  }
+
+  // 9. FAQ Presence (5 points)
+  let scoreFAQ = 0;
+  if (cleanContent) {
+    const faqRegex = /(?:faq|frequently\s+asked\s+questions|questions\s+&\s+answers|q&a)/i;
+    if (faqRegex.test(cleanContent)) {
+      checks.faqPresence = true;
+      scoreFAQ = 5;
+    } else {
+      recommendations.push('Add an FAQ section to address common user queries.');
+    }
+  }
+
+  // 10. Conclusion Presence (5 points)
+  let scoreConclusion = 0;
+  if (cleanContent) {
+    const conclusionRegex = /(?:conclusion|key\s+takeaways|summary|wrapping\s+up|final\s+thoughts)/i;
+    if (conclusionRegex.test(cleanContent)) {
+      checks.conclusionPresence = true;
+      scoreConclusion = 5;
+    } else {
+      recommendations.push('Add a conclusion section at the end of the content.');
+    }
+  }
+
+  // Links
+  const mdLinkRegex = /(?<!\!)\[.*?\]\((.*?)\)/g;
+  const htmlLinkRegex = /<a\s+(?:[^>]*?\s+)?href=["']([^"']*)["']/gi;
+  const allLinks = [];
+  let match;
+  if (cleanContent) {
+    mdLinkRegex.lastIndex = 0;
+    while ((match = mdLinkRegex.exec(cleanContent)) !== null) {
+      if (match[1]) allLinks.push(match[1].trim());
+    }
+    htmlLinkRegex.lastIndex = 0;
+    while ((match = htmlLinkRegex.exec(cleanContent)) !== null) {
+      if (match[1]) allLinks.push(match[1].trim());
+    }
+  }
+
+  let cleanCompanyDomain = '';
+  if (companyWebsite) {
+    cleanCompanyDomain = companyWebsite
+      .toLowerCase()
+      .replace(/^(https?:\/\/)?(www\.)?/, '')
+      .split('/')[0]
+      .trim();
+  }
+
+  let internalLinksCount = 0;
+  let externalLinksCount = 0;
+  for (const url of allLinks) {
+    if (url.startsWith('#') || url.startsWith('mailto:') || url.startsWith('tel:')) continue;
+    const isInternal = url.startsWith('/') && !url.startsWith('//') ||
+                       url.toLowerCase().includes('growthos.com') ||
+                       url.toLowerCase().includes('growth-os-system') ||
+                       url.toLowerCase().includes('localhost') ||
+                       (cleanCompanyDomain && url.toLowerCase().includes(cleanCompanyDomain));
+    if (isInternal) {
+      internalLinksCount++;
+    } else if (url.startsWith('http://') || url.startsWith('https://')) {
+      externalLinksCount++;
+    }
+  }
+  checks.internalLinks = internalLinksCount;
+  checks.externalLinks = externalLinksCount;
+
+  // 11. Internal Links (5 points)
+  let scoreInternalLinks = 0;
+  if (internalLinksCount >= 1) {
+    scoreInternalLinks = 5;
+  } else {
+    recommendations.push('Include at least one internal link to relevant resources on your website.');
+  }
+
+  // 12. External Links (5 points)
+  let scoreExternalLinks = 0;
+  if (externalLinksCount >= 1) {
+    scoreExternalLinks = 5;
+  } else {
+    recommendations.push('Include at least one external link to authoritative sources.');
+  }
+
+  // 13. Image Alt Text (No longer required - marked as green by default)
+  checks.imageAltText = true;
+  let scoreImageAlt = 0;
+
+  const seoScore = 
+    scoreKeywordInTitle +
+    scoreKeywordInMeta +
+    scoreKeywordInFirstPara +
+    scoreKeywordInH1 +
+    scoreKeywordInSlug +
+    scoreWordCount +
+    scoreH2Count +
+    scoreH3Count +
+    scoreFAQ +
+    scoreConclusion +
+    scoreInternalLinks +
+    scoreExternalLinks +
+    scoreImageAlt;
+
+  // Readability
+  let readabilityScore = 100;
+  if (wordCount > 0) {
+    const sentences = cleanContent.split(/[.!?]+/).filter(s => s.trim().length > 0);
+    const sentenceCount = sentences.length;
+    if (sentenceCount > 0) {
+      const avgSentenceLength = wordCount / sentenceCount;
+      readabilityScore = Math.round(Math.max(20, Math.min(100, 100 - (avgSentenceLength - 15) * 2)));
+    }
+  }
+
+  // Keyword Density
+  let keywordDensity = 0;
+  if (wordCount > 0 && keywordLower) {
+    const escapedKeyword = keywordLower.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const keywordRegex = new RegExp(`\\b${escapedKeyword}\\b`, 'gi');
+    const matches = cleanContent.match(keywordRegex);
+    const occurrences = matches ? matches.length : 0;
+    keywordDensity = parseFloat(((occurrences / wordCount) * 100).toFixed(2));
+  }
+
+  // Legacy scores for backward compatibility
+  let titleScore = 0;
+  if (cleanTitle) {
+    titleScore += 40;
+    if (keywordLower && cleanTitle.toLowerCase().includes(keywordLower)) titleScore += 40;
+    if (cleanTitle.length >= 40 && cleanTitle.length <= 70) titleScore += 20;
+  }
+  let metaScore = 0;
+  if (cleanMeta) {
+    metaScore += 40;
+    if (keywordLower && cleanMeta.toLowerCase().includes(keywordLower)) metaScore += 40;
+    if (cleanMeta.length >= 120 && cleanMeta.length <= 160) metaScore += 20;
+  }
+  let headingScore = 0;
+  if (cleanContent) {
+    if (hasH1) headingScore += 40;
+    if (h2Count >= 2) headingScore += 40;
+    let keywordInHeadings = false;
+    const lines = cleanContent.split('\n');
+    for (const line of lines) {
+      if (/^(#+|<h1>|<h2>|<h3>)/i.test(line) && keywordLower && line.toLowerCase().includes(keywordLower)) {
+        keywordInHeadings = true;
+        break;
+      }
+    }
+    if (keywordInHeadings) headingScore += 20;
+  }
+
+  return {
+    score: seoScore,
+    seoScore,
+    readabilityScore,
+    keywordDensity,
+    titleScore,
+    metaScore,
+    headingScore,
+    readability: readabilityScore >= 80 ? 'Excellent' : readabilityScore >= 60 ? 'Good' : 'Needs Work',
+    checks,
+    recommendations,
+    details: 'Automated SEO metrics audit complete.'
+  };
+};
+
+const generateBrandedImagePrompt = async (blog, company, campaign, persona, platform) => {
+  const brandVoice = company?.brandVoice || '';
+  const industry = company?.industry || '';
+  const productDesc = company?.productDescription || '';
+  const personaName = persona?.personaName || '';
+  const personaTone = persona?.tone || '';
+  const personaDesc = persona?.description || '';
+  const topic = campaign?.topic || blog.title;
+  
+  const brandColors = company?.brandColors || [];
+  const brandColorsDescription = company?.brandColorsDescription || '';
+  const brandColorsList = brandColors.length > 0 ? brandColors.join(', ') : 'Not explicitly set';
+  let outlineContext = '';
+  if (blog.outline && blog.outline.length > 0) {
+    outlineContext = blog.outline.map(s => s.sectionTitle).join(', ');
+  }
+  const contentSnippet = blog.content ? blog.content.replace(/<[^>]*>/g, '').substring(0, 500) : '';
+  const blogContext = `Title: ${blog.title}\nSummary: ${blog.metaDescription || 'N/A'}\nOutline Sections: ${outlineContext || 'N/A'}\nExcerpt: ${contentSnippet || 'N/A'}`;
+  const systemPrompt = `You are a Visual Creative Director and AI Prompt Designer.
+Your task is to generate a single, highly optimized visual prompt for DALL-E.
+The visual must represent the blog post topic, but styled specifically for the company's branding colors and guidelines, and tailored to appeal to the target persona.
+Company Details:
+- Name: ${company?.companyName || 'N/A'}
+- Industry: ${industry}
+- Product Description: ${productDesc}
+- Brand Voice: ${brandVoice}
+- Brand Color Codes: ${brandColorsList}
+- Brand Color Description: ${brandColorsDescription}
+Persona Details:
+- Name: ${personaName}
+- Tone: ${personaTone}
+- Description: ${personaDesc}
+Platform: ${platform || 'General'}
+Requirements for the DALL-E prompt:
+1. Incorporate visual design elements and colors that match the company's industry and brand voice. You MUST prioritize using the configured brand colors: ${brandColorsList} (${brandColorsDescription}) in the prompt. Make these brand colors the dominant colors of the image.
+2. The design style must match the target persona's preferences (e.g. professional and educational, or technical and clean).
+3. Do NOT include any text, typography, letters, logos, or words in the image.
+4. Output only the prompt string. Do not wrap in JSON or markdown.
+5. The composition MUST be optimized for the target platform's aspect ratio. Since the platform is "${platform}", specify a wide landscape (16:9 aspect ratio) composition with subjects centered.
+6. To guarantee visual diversity and prevent identical images for different blogs:
+   - Identify a unique, creative visual metaphor or conceptual scene based on the unique blog context (Title, Summary, Outline, Excerpt) instead of generic visual clichés.
+   - Specify a distinct artistic style (e.g. detailed minimalist 3D render, modern flat vector, papercut layered art, line-art graphic, abstract glassmorphism shapes).`;
+  const userPrompt = `Create a DALL-E image prompt for a blog post:
+BLOG CONTEXT:
+${blogContext}
+TOPIC: ${topic}
+PLATFORM: ${platform || 'General'}`;
+  try {
+    const promptText = await callAzureOpenAI(systemPrompt, userPrompt, 0.7);
+    return promptText.trim();
+  } catch (err) {
+    console.warn('[IMAGE PROMPT WARNING] Failed to generate prompt, using fallback:', err.message);
+    const fallbackColors = brandColors.length > 0 
+      ? `with a color palette strictly limited to the brand colors: ${brandColors.join(', ')} (${brandColorsDescription})` 
+      : 'using professional dark cyan and grey highlights';
+    return `Minimalist 3D isometric vector illustration depicting a creative visual metaphor for "${blog.title}", ${fallbackColors}, flat solid background, no text, no letters, no typography.`;
+  }
+};
+
+const generateImage = async (prompt, dimensions = '1024x1024') => {
+  const apiKey = process.env.AZURE_OPENAI_API_KEY || process.env.AZURE_API_KEY || process.env.AZURE_OPENAI_IMAGE_API_KEY;
+  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+  if (!apiKey || !endpoint) {
+    throw new Error('Azure OpenAI credentials or Image API Key are missing from the environment configuration.');
+  }
+  let resolvedDimensions = '1024x1024';
+  if (dimensions) {
+    const parts = dimensions.toLowerCase().split('x');
+    if (parts.length === 2) {
+      const w = parseInt(parts[0], 10) || 1024;
+      const h = parseInt(parts[1], 10) || 1024;
+      const ratio = w / h;
+      if (ratio >= 1.3) {
+        resolvedDimensions = '1792x1024';
+      } else if (ratio <= 0.77) {
+        resolvedDimensions = '1024x1792';
+      } else {
+        resolvedDimensions = '1024x1024';
+      }
+    }
+  }
+  const apiVersion = '2023-12-01-preview';
+  const url = `${endpoint}/openai/deployments/gpt-image-2/images/generations?api-version=${apiVersion}`;
+  console.log(`[DALL-E] Calling image generation at endpoint: ${url}`);
+  const response = await axios.post(
+    url,
+    {
+      prompt,
+      n: 1,
+      size: resolvedDimensions
+    },
+    {
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': apiKey,
+      },
+      timeout: 90000
+    }
+  );
+  const imageUrl = response.data?.data?.[0]?.url;
+  const b64Json = response.data?.data?.[0]?.b64_json;
+  if (imageUrl) return imageUrl;
+  if (b64Json) return `data:image/png;base64,${b64Json}`;
+  throw new Error('No image URL returned from DALL-E.');
 };
 
 const generatePlatformBlog = async (blogContent, platform) => {
@@ -3545,7 +4104,7 @@ app.post('/api/knowledge/:id/extract', authRequired, async (req, res) => {
       {
         $set: {
           companyName: companyInfo.companyName || '',
-          website: doc.fileName || companyInfo.website || '',
+          website: (doc.fileType === 'url' ? doc.fileUrl : (companyInfo.website || doc.fileUrl || '')),
           industry: companyInfo.industry || '',
           productDescription: companyInfo.productDescription || '',
           targetAudience: companyInfo.targetAudience || '',
@@ -3811,15 +4370,25 @@ app.post('/api/research/generate', authRequired, async (req, res) => {
 });
 
 // 6. Blogs endpoints
+const mapBlogDocument = (b) => {
+  if (!b) return null;
+  return {
+    ...b,
+    id: b._id.toString(),
+    createdAt: b.createdAt || b.created_at,
+    updatedAt: b.updatedAt || b.updated_at
+  };
+};
+
 app.get('/api/blogs', authRequired, async (req, res) => {
   const list = await rawDb.collection('blogs').find({ user_id: req.user._id }).sort({ updated_at: -1 }).toArray();
-  res.json({ success: true, data: list.map(b => ({ ...b, id: b._id.toString() })) });
+  res.json({ success: true, data: list.map(mapBlogDocument) });
 });
 
 app.get('/api/blogs/:id', authRequired, async (req, res) => {
   const blog = await rawDb.collection('blogs').findOne({ _id: new ObjectId(req.params.id), user_id: req.user._id });
   if (!blog) return res.status(404).json({ success: false, error: 'Blog not found' });
-  res.json({ success: true, data: { ...blog, id: blog._id.toString() } });
+  res.json({ success: true, data: mapBlogDocument(blog) });
 });
 
 app.post('/api/blogs/generate', authRequired, async (req, res) => {
@@ -3898,46 +4467,65 @@ app.post('/api/blogs/generate', authRequired, async (req, res) => {
     };
 
     // 7. Generate blog content using AI
-    const systemPrompt = `You are a World-Class Blog Copywriter and SEO Strategist.
-Write a comprehensive, engaging canonical blog post based on the topic, brief, and research provided.
-You MUST structure the post with a Title, Meta Description, Outline, and Content.
-Return STRICTLY a valid JSON object format matching the exact structure below. Do not wrap it in markdown codeblocks.
+    const systemPrompt = `You are a Principal Content Strategist and Copywriter at Growth OS.
+Write a comprehensive, engaging canonical blog post based on campaign criteria, target persona, and synthesized research data.
+
+CRITICAL CONTENT REQUIREMENTS:
+1. WORD COUNT: The generated content MUST target approximately 1000 words. Keep it strictly between 800 and 1200 words.
+2. TONE: Adhere strictly to the requested persona tone guidelines: "${persona.tone}".
+3. TARGET AUDIENCE: Write content directly addressing the needs, pain points, and terminology of: "${persona.audienceType}".
+4. SEO OPTIMIZATION: Seamlessly integrate the primary keyword "${resolvedKeyword}" naturally throughout the content. You MUST include "${resolvedKeyword}" in the H1 title, in the meta description, in the URL slug, in the first paragraph, and naturally throughout the text body (ideal density is 1.0% to 2.5%).
+5. STRUCTURE: The content MUST contain:
+   - An H1 heading at the very beginning of the content.
+   - A minimum of 4 H2 headings throughout the body.
+   - At least two H3 subheadings (Markdown '###' format) nested within H2 sections.
+   - An FAQ section towards the end of the post under an H3 header (e.g. "### Frequently Asked Questions") containing at least 2 questions and answers.
+   - A concluding section at the end under an H2 header containing a standard conclusion keyword (e.g., "Conclusion", "Key Takeaways", "Summary").
+   - Short paragraphs for readability.
+   - Practical examples illustrating key points.
+   - At least one internal/relative link (e.g. [internal link text](/dashboard) or similar relative path) integrated naturally. You MUST wrap all links in bold markdown syntax (e.g. "**[Link Text](/dashboard)**") to highlight them.
+   - At least one external link to an authoritative source (e.g. [Google Search](https://search.google.com/search-console/about)) integrated naturally. You MUST wrap all links in bold markdown syntax (e.g. "**[Google Search](https://search.google.com/search-console/about)**") to highlight them.
+   - CRITICAL IMAGE RULE: Do NOT include any images, image tags, or markdown image references (e.g., '![Alt Text](url)') in the content under any circumstances. Keep the post text-only.
+${customAngle ? `CRITICAL TARGET ANGLE REQUIREMENT: You MUST write a completely distinct and unique blog post based on this specific copy angle/title hook: "${customAngle}". The H1 title, outline structure (H2/H3 headings), and body paragraphs must be fully tailored and customized to focus on this angle, ensuring it does not look like other articles on the same topic.\n` : ''}
+
+Your response MUST be returned strictly in a valid JSON object format matching the exact structure below. Do not wrap the JSON payload in markdown backticks or any other decorators.
 
 Required JSON Structure:
 {
-  "title": "An SEO-optimized Title",
-  "metaDescription": "A compelling meta description under 160 characters",
-  "outline": ["Introduction", "Heading 1", "Heading 2", "Conclusion"],
-  "content": "Full rich Markdown formatted blog post content."
+  "title": "A highly compelling, SEO-optimized title for the blog post",
+  "slug": "An SEO-friendly URL slug (lowercase, words separated by hyphens) containing the primary keyword",
+  "metaDescription": "An engaging meta description (under 160 characters) optimized for keywords",
+  "category": "A single word category/industry classification for this post (e.g. Tech, Marketing, Operations, Finance, Legal, HR)",
+  "outline": [
+    {
+      "sectionTitle": "Section Heading",
+      "talkingPoints": ["Talking point 1", "Talking point 2"]
+    }
+  ],
+  "content": "Full length (800-1200 words) comprehensive blog content in Markdown format, starting with an H1 heading, followed by a minimum of 4 H2 sections, nested H3 subheadings, an FAQ section, internal and external links, and ending with a Conclusion section. Do NOT include any image tags."
 }`;
 
-    const userPrompt = `Generate blog post for topic:
-Topic Name: ${topic.topicName}
-Topic Details: ${topic.topic || ''}
-Target Goal: ${topic.goal || ''}
-Selected Audience Angle: ${customAngle || ''}
+    const userPrompt = `Generate a canonical blog post:
+PRIMARY KEYWORD: "${resolvedKeyword}"
+CAMPAIGN Focus: ${topic.topic}
+Goal: ${topic.goal}
 
-Audience Persona:
-- Name: ${persona.personaName}
-- Tone: ${persona.tone}
-- Style: ${persona.writingStyle}
-- Audience Type: ${persona.audienceType}
+PERSONA Name: ${persona.personaName}
+Tone: ${persona.tone}
+Writing Style: ${persona.writingStyle}
 
-SEO Brief:
-- Primary Keyword: ${seoBrief.primaryKeyword}
-- H1: ${seoBrief.h1Suggestion}
+RESEARCH DATA SUMMARY:
+- News Feeds: ${research.news ? research.news.slice(0, 500) : 'N/A'}
+- Competitor Gaps: ${research.competitorAnalysis ? research.competitorAnalysis.slice(0, 500) : 'N/A'}
+- Targeted keywords: ${research.keywords ? research.keywords.map(k => k.keyword).join(', ') : 'N/A'}
 
-Research Report:
-- News Summary: ${research.news || ''}
-- Competitor Analysis: ${research.competitorAnalysis || ''}
-
-${knowledgeContext ? 'GROUNDING MATERIAL:\n' + knowledgeContext + '\n' : ''}
+${knowledgeContext ? 'GROUNDING KNOWLEDGE BASE CONTEXT:\n' + knowledgeContext + '\n' : ''}
 
 Generate JSON payload now:`;
 
     const responseText = await callAzureOpenAI(systemPrompt, userPrompt, 0.7);
     let cleanText = responseText.trim();
-    cleanText = cleanText.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+    cleanText = stripJsonWrapper(cleanText);
 
     const blogPayload = JSON.parse(cleanText);
     if (!blogPayload.title || !blogPayload.content) {
@@ -3947,7 +4535,10 @@ Generate JSON payload now:`;
     const finalTitle = blogPayload.title;
     const finalMeta = blogPayload.metaDescription || '';
     const finalContent = blogPayload.content;
-    const finalSlug = finalTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+    const finalSlug = blogPayload.slug || finalTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+    const finalCategory = blogPayload.category || 'General';
+
+    const seoMetrics = calculateSeoAnalysis(finalTitle, finalContent, finalMeta, resolvedKeyword, finalSlug, company?.website || '');
 
     const blogRecord = {
       user_id: req.user._id,
@@ -3955,15 +4546,16 @@ Generate JSON payload now:`;
       topicId: topicId,
       title: finalTitle,
       metaDescription: finalMeta,
-      outline: blogPayload.outline || [],
+      outline: (blogPayload.outline || []).map(item => typeof item === 'string' ? { sectionTitle: item, talkingPoints: [] } : item),
       content: finalContent,
       status: 'draft',
       keyword: resolvedKeyword,
       targetAudience: persona.audienceType,
       tone: persona.tone,
       slug: finalSlug,
-      seoScore: 85,
-      seoAnalysis: { seoScore: 85, readability: 'Good', details: 'Automated SEO audit complete.' },
+      keywordCategory: finalCategory,
+      seoScore: seoMetrics.seoScore,
+      seoAnalysis: seoMetrics,
       seoBrief: seoBrief,
       wordCount: finalContent.split(/\s+/).filter(Boolean).length,
       versions: [
@@ -3972,11 +4564,10 @@ Generate JSON payload now:`;
           title: finalTitle,
           metaDescription: finalMeta,
           content: finalContent,
-          seoScore: 85,
+          seoScore: seoMetrics.seoScore,
           createdAt: new Date()
         }
       ],
-      keywordCategory: 'General',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
@@ -3989,7 +4580,7 @@ Generate JSON payload now:`;
     );
 
     const created = await rawDb.collection('blogs').findOne({ topicId: topicId, user_id: req.user._id });
-    res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
+    res.status(201).json({ success: true, data: mapBlogDocument(created) });
   } catch (err) {
     console.error("Blog generation failed:", err.message);
     res.status(500).json({ success: false, error: err.message });
@@ -3997,17 +4588,310 @@ Generate JSON payload now:`;
 });
 
 app.put('/api/blogs/:id', authRequired, async (req, res) => {
-  const { canonicalContent, status } = req.body;
-  const updates = { updated_at: new Date().toISOString() };
-  if (canonicalContent !== undefined) updates.canonicalContent = canonicalContent;
-  if (status !== undefined) updates.status = status;
+  try {
+    const { title, metaDescription, content, status, publishDate, author, keywordCategory, keyword } = req.body;
+    const updates = { updated_at: new Date().toISOString() };
+    
+    if (title !== undefined) updates.title = title;
+    if (metaDescription !== undefined) updates.metaDescription = metaDescription;
+    if (content !== undefined) updates.content = content;
+    if (status !== undefined) updates.status = status;
+    if (publishDate !== undefined) {
+      updates.publishDate = publishDate ? new Date(publishDate).toISOString() : null;
+    }
+    if (author !== undefined) updates.author = author;
+    if (keywordCategory !== undefined) updates.keywordCategory = keywordCategory;
+    if (keyword !== undefined) updates.keyword = keyword;
 
-  await rawDb.collection('blogs').updateOne(
-    { _id: new ObjectId(req.params.id), user_id: req.user._id },
-    { $set: updates }
-  );
-  const updated = await rawDb.collection('blogs').findOne({ _id: new ObjectId(req.params.id) });
-  res.json({ success: true, data: { ...updated, id: updated._id.toString() } });
+    // Load current blog to fill in any missing fields for SEO analysis
+    const current = await rawDb.collection('blogs').findOne({ _id: new ObjectId(req.params.id), user_id: req.user._id });
+    if (!current) {
+      return res.status(404).json({ success: false, error: 'Blog not found' });
+    }
+
+    const finalTitle = title !== undefined ? title : current.title;
+    const finalContent = content !== undefined ? content : current.content;
+    const finalMeta = metaDescription !== undefined ? metaDescription : current.metaDescription;
+    const finalKeyword = keyword !== undefined ? keyword : current.keyword;
+    
+    // Recalculate slug if title changed
+    if (title) {
+      updates.slug = title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)+/g, '');
+    }
+    const finalSlug = updates.slug || current.slug;
+
+    // Recalculate SEO analysis
+    const company = await rawDb.collection('companies').findOne({ user_id: req.user._id });
+    const companyWebsite = company?.website || '';
+    const seoMetrics = calculateSeoAnalysis(finalTitle, finalContent, finalMeta, finalKeyword, finalSlug, companyWebsite);
+    
+    updates.seoScore = seoMetrics.seoScore;
+    updates.seoAnalysis = seoMetrics;
+    updates.wordCount = finalContent.split(/\s+/).filter(Boolean).length;
+
+    // Push new version to history if title or content changed
+    const hasChanged = (title && title !== current.title) || (content && content !== current.content);
+    if (hasChanged) {
+      const nextVersion = (current.versions && current.versions.length > 0)
+        ? Math.max(...current.versions.map(v => v.version)) + 1
+        : 1;
+
+      const newVersionEntry = {
+        version: nextVersion,
+        title: finalTitle,
+        metaDescription: finalMeta,
+        content: finalContent,
+        seoScore: seoMetrics.seoScore,
+        createdAt: new Date()
+      };
+
+      await rawDb.collection('blogs').updateOne(
+        { _id: new ObjectId(req.params.id), user_id: req.user._id },
+        { 
+          $set: updates,
+          $push: { versions: newVersionEntry }
+        }
+      );
+    } else {
+      await rawDb.collection('blogs').updateOne(
+        { _id: new ObjectId(req.params.id), user_id: req.user._id },
+        { $set: updates }
+      );
+    }
+
+    const updated = await rawDb.collection('blogs').findOne({ _id: new ObjectId(req.params.id) });
+    res.json({ success: true, data: mapBlogDocument(updated) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET blog versions
+app.get('/api/blogs/:id/versions', authRequired, async (req, res) => {
+  try {
+    const blog = await rawDb.collection('blogs').findOne({ _id: new ObjectId(req.params.id), user_id: req.user._id });
+    if (!blog) return res.status(404).json({ success: false, error: 'Blog not found' });
+    res.json({ success: true, data: blog.versions || [] });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Restore blog version
+app.post('/api/blogs/:id/restore/:version', authRequired, async (req, res) => {
+  try {
+    const blogIdStr = req.params.id;
+    const versionNum = parseInt(req.params.version, 10);
+
+    const blog = await rawDb.collection('blogs').findOne({ _id: new ObjectId(blogIdStr), user_id: req.user._id });
+    if (!blog) return res.status(404).json({ success: false, error: 'Blog not found' });
+
+    const targetVersion = (blog.versions || []).find(v => v.version === versionNum);
+    if (!targetVersion) {
+      return res.status(404).json({ success: false, error: `Version ${versionNum} not found` });
+    }
+
+    const updates = {
+      title: targetVersion.title,
+      metaDescription: targetVersion.metaDescription || '',
+      content: targetVersion.content,
+      updated_at: new Date().toISOString()
+    };
+
+    updates.slug = targetVersion.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)+/g, '');
+
+    const targetKeyword = blog.keyword || '';
+    const company = await rawDb.collection('companies').findOne({ user_id: req.user._id });
+    const companyWebsite = company?.website || '';
+    const seoMetrics = calculateSeoAnalysis(updates.title, updates.content, updates.metaDescription, targetKeyword, updates.slug, companyWebsite);
+    
+    updates.seoScore = seoMetrics.seoScore;
+    updates.seoAnalysis = seoMetrics;
+    updates.wordCount = updates.content.split(/\s+/).filter(Boolean).length;
+
+    const nextVersion = (blog.versions && blog.versions.length > 0)
+      ? Math.max(...blog.versions.map(v => v.version)) + 1
+      : 1;
+
+    const newVersionEntry = {
+      version: nextVersion,
+      title: updates.title,
+      metaDescription: updates.metaDescription,
+      content: updates.content,
+      seoScore: updates.seoScore,
+      createdAt: new Date()
+    };
+
+    await rawDb.collection('blogs').updateOne(
+      { _id: new ObjectId(blogIdStr), user_id: req.user._id },
+      { 
+        $set: updates,
+        $push: { versions: newVersionEntry }
+      }
+    );
+
+    const updated = await rawDb.collection('blogs').findOne({ _id: new ObjectId(blogIdStr) });
+    res.json({ success: true, data: mapBlogDocument(updated) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST blog auto-optimize
+app.post('/api/blogs/:id/optimize', authRequired, async (req, res) => {
+  try {
+    const blogIdStr = req.params.id;
+    const blog = await rawDb.collection('blogs').findOne({ _id: new ObjectId(blogIdStr), user_id: req.user._id });
+    if (!blog) return res.status(404).json({ success: false, error: 'Blog not found' });
+
+    const company = await rawDb.collection('companies').findOne({ user_id: req.user._id });
+    const companyWebsite = company?.website || '';
+
+    const oldScore = blog.seoScore || 0;
+    let currentScore = oldScore;
+    let title = blog.title || '';
+    let content = blog.content || '';
+    let metaDescription = blog.metaDescription || '';
+    let slug = blog.slug || '';
+    let seoMetrics = blog.seoAnalysis || calculateSeoAnalysis(title, content, metaDescription, blog.keyword, slug, companyWebsite);
+    let recommendations = seoMetrics.recommendations || [];
+
+    let iteration = 0;
+    const history = [];
+    let improvements = [];
+    let optimized = false;
+
+    // Run optimization loop up to 2 times if score < 80
+    while (currentScore < 80 && iteration < 2) {
+      iteration++;
+      const systemPrompt = `You are a World-Class SEO Expert, Content Strategist, and Copywriter.
+Your task is to optimize the provided canonical blog post to improve its SEO score to 80+ (target 90-100).
+You will analyze the current blog title, meta description, content, target keyword, and the failed SEO checks/recommendations provided.
+
+You MUST optimize:
+1. Title: Ensure the target keyword is included naturally. Optimize length to be between 40 and 70 characters.
+2. Meta Description: Ensure it contains the target keyword. Optimize length to be between 120 and 160 characters.
+3. Heading Structure: Ensure there is exactly one H1 heading at the start of the content (Markdown '#' format) containing the target keyword. Include at least two H2 headings (Markdown '##' format) to structure the content, and at least one H3 heading (Markdown '###' format).
+4. Keyword Placement: Integrate the target keyword naturally in the title, meta description, H1 heading, first paragraph, and throughout the body copy (ideal density is 1.0% to 2.5%).
+5. FAQ Section: Add a structured FAQ section at the end of the content to address common user queries if missing or improve it. Use a heading like "### Frequently Asked Questions" or similar.
+6. Internal Linking: Suggest and integrate at least one relevant internal/relative link (e.g. [internal link text](/path/to/page) or [dashboard](/dashboard) or similar relative path) in the body content. You MUST wrap all links in bold markdown syntax (e.g. "**[Link Text](/path/to/page)**") to highlight them.
+7. External Linking: Add at least one external link to authoritative sources (e.g. [authoritative source](https://example.com/source)) in the body content. You MUST wrap all links in bold markdown syntax (e.g. "**[authoritative source](https://example.com/source)**") to highlight them.
+8. Images: Ensure that image markdown tags (e.g. ![Alt text](url)) are present and that all of them have descriptive, non-empty alt text.
+9. Word Count: Expand the body content to reach the target of 800 - 1200 words. Keep it comprehensive, deep-dive, and engaging.
+10. Conclusion Section: Ensure there is a conclusion section (e.g. "### Conclusion" or "## Key Takeaways") at the end of the content.
+
+You MUST respond strictly in a valid JSON object format matching the exact structure below. Do not wrap it in markdown codeblocks.
+
+Required JSON Structure:
+{
+  "title": "The optimized, highly compelling blog title",
+  "metaDescription": "The optimized, engaging meta description (under 160 characters)",
+  "content": "The complete, optimized blog content in Markdown format (800-1200 words) containing the H1, H2s, H3s, FAQ, conclusion, links, and alt-texted images.",
+  "improvements": [
+    "Added target keyword to the blog title",
+    "Expanded content length to meet the SEO target"
+  ]
+}`;
+
+      const userPrompt = `Optimize the following blog post:
+TARGET KEYWORD: "${blog.keyword || ''}"
+CURRENT SEO SCORE: ${currentScore}
+FAILED CHECKS & RECOMMENDATIONS:
+${recommendations.map(r => `- ${r}`).join('\n')}
+
+CURRENT TITLE: "${title}"
+CURRENT META DESCRIPTION: "${metaDescription}"
+CURRENT SLUG: "${slug}"
+
+CURRENT CONTENT:
+${content}
+
+Generate the optimized JSON payload now:`;
+
+      try {
+        const responseText = await callAzureOpenAI(systemPrompt, userPrompt, 0.7);
+        let cleanText = responseText.trim();
+        cleanText = stripJsonWrapper(cleanText);
+        const optResult = JSON.parse(cleanText);
+
+        if (optResult.title && optResult.content) {
+          title = optResult.title;
+          metaDescription = optResult.metaDescription || '';
+          content = optResult.content;
+          improvements = improvements.concat(optResult.improvements || []);
+          slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+          
+          seoMetrics = calculateSeoAnalysis(title, content, metaDescription, blog.keyword, slug, companyWebsite);
+          currentScore = seoMetrics.seoScore;
+          recommendations = seoMetrics.recommendations || [];
+          optimized = true;
+        }
+      } catch (err) {
+        console.error('Optimization iteration failed:', err);
+        break;
+      }
+    }
+
+    if (optimized) {
+      const updates = {
+        title,
+        metaDescription,
+        content,
+        slug,
+        seoScore: currentScore,
+        seoAnalysis: seoMetrics,
+        wordCount: content.split(/\s+/).filter(Boolean).length,
+        updated_at: new Date().toISOString()
+      };
+
+      const nextVersion = (blog.versions && blog.versions.length > 0)
+        ? Math.max(...blog.versions.map(v => v.version)) + 1
+        : 1;
+
+      const newVersionEntry = {
+        version: nextVersion,
+        title,
+        metaDescription,
+        content,
+        seoScore: currentScore,
+        createdAt: new Date()
+      };
+
+      await rawDb.collection('blogs').updateOne(
+        { _id: new ObjectId(blogIdStr), user_id: req.user._id },
+        { 
+          $set: updates,
+          $push: { versions: newVersionEntry }
+        }
+      );
+
+      res.json({
+        success: true,
+        oldScore,
+        newScore: currentScore,
+        improvements,
+        message: 'Blog post optimized successfully',
+        data: mapBlogDocument({ ...blog, ...updates })
+      });
+    } else {
+      res.json({
+        success: true,
+        oldScore,
+        newScore: oldScore,
+        improvements: [],
+        message: 'Blog SEO score is already 80 or higher. No optimization performed.',
+        data: mapBlogDocument(blog)
+      });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.delete('/api/blogs/:id', authRequired, async (req, res) => {
@@ -4016,51 +4900,408 @@ app.delete('/api/blogs/:id', authRequired, async (req, res) => {
 });
 
 // 7. Render/Adaptations endpoints
-app.post('/api/render', authRequired, async (req, res) => {
-  const { blogId, platform } = req.body;
+app.post('/api/render/:platform', authRequired, async (req, res) => {
   try {
+    const { platform } = req.params;
+    const { blogId } = req.body;
+    if (!blogId) {
+      return res.status(400).json({ success: false, error: 'Blog ID is required' });
+    }
     const blog = await rawDb.collection('blogs').findOne({ _id: new ObjectId(blogId), user_id: req.user._id });
-    if (!blog) return res.status(404).json({ success: false, error: 'Blog not found' });
+    if (!blog) {
+      return res.status(404).json({ success: false, error: 'Blog not found' });
+    }
 
-    // Credit charging disabled
-
-    const adaptedContent = await generatePlatformBlog(blog.canonicalContent, platform);
-
-    const adaptation = {
-      user_id: req.user._id,
-      blog_id: blogId,
-      platform,
-      adaptedContent,
-      created_at: new Date().toISOString()
+    // Resolve platform config rules
+    let searchName = platform.replace('-', ' ');
+    if (searchName.toLowerCase() === 'dev to') {
+      searchName = 'Dev.to';
+    }
+    const config = await rawDb.collection('platform_configs').findOne({
+      platformName: { $regex: new RegExp('^' + searchName + '$', 'i') }
+    }) || {
+      platformName: searchName,
+      titleRules: 'Create a short, high-curiosity hook under 80 characters.',
+      structureRules: 'Format in readable blocks.',
+      seoRules: 'Must include the primary keyword naturally.',
+      ctaRules: 'Invite readers to comment.'
     };
 
-    const result = await rawDb.collection('rendered_blogs').insertOne(adaptation);
-    const created = await rawDb.collection('rendered_blogs').findOne({ _id: result.insertedId });
+    const company = await rawDb.collection('companies').findOne({ user_id: req.user._id }) || {
+      companyName: 'UDEN Tech',
+      website: 'https://uden.tech'
+    };
+    const companyWebsite = company.website || 'https://uden.tech';
+    const targetKeyword = blog.keyword || '';
+
+    const campaign = await rawDb.collection('topics').findOne({ _id: blog.topicId }) || {
+      goal: 'General Brand growth'
+    };
+
+    const pIdStr = blog.personaId || blog.audienceId;
+    let persona = null;
+    if (pIdStr && (pIdStr instanceof ObjectId || (typeof pIdStr === 'string' && pIdStr.length === 24))) {
+      try {
+        persona = await rawDb.collection('company_personas').findOne({ _id: new ObjectId(pIdStr) });
+      } catch (e) {
+        console.warn("Failed to query personaId in render:", pIdStr, e.message);
+      }
+    }
+    if (!persona) {
+      persona = {
+        personaName: blog.targetAudience || 'General Audience',
+        tone: blog.tone || 'Professional',
+        writingStyle: 'Direct',
+        audienceType: 'B2C'
+      };
+    }
+
+    const isLongForm = ['medium', 'company-blog', 'company blog', 'dev.to', 'dev-to', 'substack'].includes(config.platformName.toLowerCase());
+    
+    let lengthInstruction = isLongForm
+      ? `\n\nCRITICAL REQUIREMENT FOR LONG-FORM CONTENT:
+Since this is a ${config.platformName} post, it MUST be a highly detailed, comprehensive, and structured article (aim for 800 to 1200 words). Do NOT summarize or condense it. Retain all technical explanations, code blocks, and lists.`
+      : `\n\nCRITICAL REQUIREMENT FOR SOCIAL FEEDS:
+Since this is a ${config.platformName} post, keep it punchy, engaging, and suitable for a social media feed (aim for 200-400 words).`;
+
+    let seoPreservationPrompt = isLongForm
+      ? `\n5. SEO VIABILITY PRESERVATION RULES:
+   You MUST maintain the high SEO quality of the canonical post. Start the "copy" text with an H1 heading (Markdown "# Heading Title" format) containing the target keyword. Include the target keyword in the first paragraph and in H2/H3 headings. Preserve all links pointing to "${companyWebsite}". You MUST wrap all links (both internal and external) in bold markdown syntax (e.g. "**[Link Text](/path)**") to highlight them.`
+      : '';
+
+    const systemPrompt = `You are a World-Class Growth Specialist, Content Adaptor, and Copy Editor.
+Transform a high-quality canonical blog post into a platform-specific post tailored exactly for the channel: ${config.platformName}.
+CRITICAL IMAGE RULE: Do NOT include any images, image tags, or markdown image references (e.g., '![Alt Text](url)') in the copy under any circumstances. Keep the post copy text-only.
+Return STRICTLY a valid JSON object format matching the exact structure below. Do not wrap in markdown codeblocks.
+
+Required JSON Structure:
+{
+  "title": "Adapted title or headline matching Title Hook Rules",
+  "copy": "Optimized platform-specific post text body in Markdown format (starting with an H1 heading for long-form platforms), fully utilizing Content Structuring & Formatting Rules. Do NOT include any image tags.",
+  "hashtags": ["tag1", "tag2", "tag3"],
+  "metaDescription": "Optimized platform meta excerpt"
+}`;
+
+    const userPrompt = `Adapt this canonical blog post for the platform ${config.platformName}:
+Canonical Title: ${blog.title}
+Canonical Content:
+${blog.content}
+
+Rules:
+1. TITLE HEADLINE RULES: "${config.titleRules}"
+2. CONTENT STRUCTURE & FORMATTING RULES: "${config.structureRules}"
+3. SEO & KEYWORDS RULES: "${config.seoRules}"
+4. CTA & CONVERSIONS RULES: "${config.ctaRules}"
+${lengthInstruction}
+${seoPreservationPrompt}
+
+Render the tailored JSON payload now:`;
+
+    const responseText = await callAzureOpenAI(systemPrompt, userPrompt, 0.7);
+    let cleanText = responseText.trim();
+    cleanText = stripJsonWrapper(cleanText);
+
+    const parsedData = JSON.parse(cleanText);
+    if (!parsedData.title || !parsedData.copy) {
+      throw new Error('Sourced JSON is missing required fields.');
+    }
+
+    const seoMetrics = calculateSeoAnalysis(
+      parsedData.title,
+      parsedData.copy,
+      parsedData.metaDescription || '',
+      targetKeyword,
+      blog.slug,
+      company?.website || '',
+      config.platformName || ''
+    );
+
+    const adaptationRecord = {
+      user_id: req.user._id,
+      companyId: company._id || null,
+      blogId: new ObjectId(blogId),
+      platformName: config.platformName,
+      title: parsedData.title,
+      copy: parsedData.copy,
+      hashtags: parsedData.hashtags || [],
+      metaDescription: parsedData.metaDescription || '',
+      seoScore: seoMetrics.seoScore,
+      seoAnalysis: seoMetrics,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    await rawDb.collection('rendered_blogs').updateOne(
+      { blogId: new ObjectId(blogId), platformName: config.platformName, user_id: req.user._id },
+      { $set: adaptationRecord },
+      { upsert: true }
+    );
+
+    const created = await rawDb.collection('rendered_blogs').findOne({ blogId: new ObjectId(blogId), platformName: config.platformName, user_id: req.user._id });
     res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
+  } catch (err) {
+    console.error("Platform render failed:", err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/render/blog/:blogId/platform/:platformName', authRequired, async (req, res) => {
+  try {
+    const { blogId, platformName } = req.params;
+    let targetPlatform = 'LinkedIn';
+    if (platformName.toLowerCase() === 'medium') targetPlatform = 'Medium';
+    if (platformName.toLowerCase() === 'company blog' || platformName.toLowerCase() === 'company-blog') {
+      targetPlatform = 'Company Blog';
+    }
+    if (platformName.toLowerCase() === 'dev.to' || platformName.toLowerCase() === 'dev-to') {
+      targetPlatform = 'Dev.to';
+    }
+    if (platformName.toLowerCase() === 'substack') {
+      targetPlatform = 'Substack';
+    }
+
+    const rendered = await rawDb.collection('rendered_blogs').findOne({
+      blogId: new ObjectId(blogId),
+      platformName: { $regex: new RegExp('^' + targetPlatform + '$', 'i') },
+      user_id: req.user._id
+    });
+    
+    if (!rendered) {
+      return res.status(404).json({ success: false, error: 'No rendered blog post found' });
+    }
+    res.json({ success: true, data: { ...rendered, id: rendered._id.toString() } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/render/:id', authRequired, async (req, res) => {
+  try {
+    const { title, copy, hashtags, metaDescription } = req.body;
+    const updates = { updated_at: new Date().toISOString() };
+    if (title !== undefined) updates.title = title;
+    if (copy !== undefined) updates.copy = copy;
+    if (hashtags !== undefined) updates.hashtags = hashtags;
+    if (metaDescription !== undefined) updates.metaDescription = metaDescription;
+
+    await rawDb.collection('rendered_blogs').updateOne(
+      { _id: new ObjectId(req.params.id), user_id: req.user._id },
+      { $set: updates }
+    );
+    const updated = await rawDb.collection('rendered_blogs').findOne({ _id: new ObjectId(req.params.id) });
+    res.json({ success: true, data: { ...updated, id: updated._id.toString() } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/render/:id/optimize', authRequired, async (req, res) => {
+  try {
+    const rendered = await rawDb.collection('rendered_blogs').findOne({ _id: new ObjectId(req.params.id), user_id: req.user._id });
+    if (!rendered) return res.status(404).json({ success: false, error: 'Rendered post not found' });
+
+    const blog = await rawDb.collection('blogs').findOne({ _id: rendered.blogId });
+    const targetKeyword = blog ? (blog.keyword || '') : '';
+    const slug = blog ? (blog.slug || '') : '';
+    const company = await rawDb.collection('companies').findOne({ user_id: req.user._id });
+    const companyWebsite = company?.website || '';
+    const platformName = rendered.platformName || '';
+    const recommendations = rendered.seoAnalysis?.recommendations || [];
+
+    let recommendationsPrompt = '';
+    if (recommendations && recommendations.length > 0) {
+      recommendationsPrompt = `\n\nFAILED CHECKS & SEO RECOMMENDATIONS TO ADDRESS AND SOLVE:
+${recommendations.map((rec, i) => `${i + 1}. ${rec}`).join('\n')}`;
+    }
+
+    const systemPrompt = `You are an SEO Optimizer. Optimize this platform post for the platform "${platformName}" to maximize its SEO score, readability, and keyword integration.
+You MUST preserve and naturally integrate the target keyword: "${targetKeyword}" in the title, first paragraph, and throughout the text.
+Do NOT remove the target keyword. Keep the focus keyword density around 1% to 2.5%.
+Preserve all links pointing to "${companyWebsite}". You MUST wrap all links (both internal and external) in bold markdown syntax (e.g. "**[Link Text](/path)**") to highlight them.
+Return STRICTLY a valid JSON object format matching the exact structure below.
+
+Required JSON Structure:
+{
+  "title": "Optimized Title",
+  "copy": "Optimized copy body text in Markdown format",
+  "hashtags": ["tag1", "tag2"]
+}`;
+    const userPrompt = `Optimize this platform post:
+Platform: ${platformName}
+Target Keyword: ${targetKeyword}
+${recommendationsPrompt}
+
+Title: ${rendered.title}
+Body: ${rendered.copy}
+Hashtags: ${rendered.hashtags ? rendered.hashtags.join(', ') : ''}
+
+Optimize and return JSON now:`;
+
+    const responseText = await callAzureOpenAI(systemPrompt, userPrompt, 0.7);
+    let cleanText = responseText.trim();
+    cleanText = stripJsonWrapper(cleanText);
+    const optimized = JSON.parse(cleanText);
+
+    const seoMetrics = calculateSeoAnalysis(
+      optimized.title || rendered.title,
+      optimized.copy || rendered.copy,
+      rendered.metaDescription || '',
+      targetKeyword,
+      slug,
+      companyWebsite,
+      platformName
+    );
+
+    const updates = {
+      title: optimized.title || rendered.title,
+      copy: optimized.copy || rendered.copy,
+      hashtags: optimized.hashtags || rendered.hashtags || [],
+      seoScore: seoMetrics.seoScore,
+      seoAnalysis: seoMetrics,
+      updated_at: new Date().toISOString()
+    };
+
+    await rawDb.collection('rendered_blogs').updateOne({ _id: new ObjectId(req.params.id) }, { $set: updates });
+    const updated = await rawDb.collection('rendered_blogs').findOne({ _id: new ObjectId(req.params.id) });
+    res.json({ success: true, data: { ...updated, id: updated._id.toString() } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // 8. Images endpoints
-app.post('/api/images/generate', authRequired, async (req, res) => {
-  const { blogId, prompt } = req.body;
+app.get('/api/images/download', authRequired, async (req, res) => {
   try {
-    // Credit charging disabled
+    const { url } = req.query;
+    if (!url) {
+      return res.status(400).json({ success: false, error: 'Image URL is required' });
+    }
 
-    const imageUrl = await generateBlogCoverImage(prompt);
+    if (!/^https?:\/\//i.test(url)) {
+      return res.status(400).json({ success: false, error: 'Invalid image URL' });
+    }
+
+    console.log(`[IMAGE CONTROLLER] Proxy downloading image URL: ${url}`);
+    
+    const response = await axios.get(url, {
+      responseType: 'stream',
+      timeout: 15000
+    });
+
+    const contentType = response.headers['content-type'] || 'image/png';
+    const extension = url.split('.').pop().split('?')[0] || 'png';
+    const filename = `cover_image_${Date.now()}.${extension}`;
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    
+    response.data.pipe(res);
+  } catch (error) {
+    console.error(`[IMAGE CONTROLLER] Failed to proxy download image: ${error.message}`);
+    res.status(500).json({ success: false, error: 'Failed to download image from source.' });
+  }
+});
+
+app.get('/api/images/:blogId', authRequired, async (req, res) => {
+  try {
+    const blogIdStr = req.params.blogId;
+    const list = await rawDb.collection('image_metadata').find({
+      $or: [
+        { blog_id: blogIdStr },
+        { blogId: blogIdStr },
+        { blog_id: new ObjectId(blogIdStr) },
+        { blogId: new ObjectId(blogIdStr) }
+      ]
+    }).sort({ created_at: -1 }).toArray();
+
+    res.json({
+      success: true,
+      data: list.map(img => ({
+        ...img,
+        id: img._id.toString(),
+        blogId: img.blog_id || img.blogId,
+        createdAt: img.createdAt || img.created_at,
+        dimensions: img.dimensions || '1792x1024'
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/images/generate', authRequired, async (req, res) => {
+  const { blogId, dimensions, platform } = req.body;
+  try {
+    const blog = await rawDb.collection('blogs').findOne({ _id: new ObjectId(blogId), user_id: req.user._id });
+    if (!blog) return res.status(404).json({ success: false, error: 'Blog not found' });
+
+    const company = await rawDb.collection('companies').findOne({ user_id: req.user._id }) || {};
+    const campaign = await rawDb.collection('topics').findOne({ _id: blog.topicId }) || {};
+    
+    const pIdStr = blog.personaId || blog.audienceId;
+    let persona = null;
+    if (pIdStr && (pIdStr instanceof ObjectId || (typeof pIdStr === 'string' && pIdStr.length === 24))) {
+      try {
+        persona = await rawDb.collection('company_personas').findOne({ _id: new ObjectId(pIdStr) });
+      } catch (e) {}
+    }
+
+    const resolvedPrompt = await generateBrandedImagePrompt(blog, company, campaign, persona, platform);
+    
+    let imageUrl;
+    try {
+      imageUrl = await generateImage(resolvedPrompt, dimensions);
+      if (imageUrl && !imageUrl.includes('unsplash.com')) {
+        try {
+          let buffer;
+          let mimeType = 'image/png';
+          if (imageUrl.startsWith('data:image')) {
+            const parts = imageUrl.split(',');
+            const base64Data = parts[1];
+            const match = parts[0].match(/data:(.*?);/);
+            if (match) mimeType = match[1];
+            buffer = Buffer.from(base64Data, 'base64');
+          } else {
+            const bufferResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+            buffer = Buffer.from(bufferResponse.data, 'binary');
+            const contentType = bufferResponse.headers['content-type'];
+            if (contentType) mimeType = contentType;
+          }
+          const s3Url = await uploadToS3(buffer, `dalle_${blogId}_${Date.now()}.png`, mimeType);
+          imageUrl = s3Url;
+        } catch (uploadErr) {
+          console.warn('[IMAGE UPLOAD WARNING] Failed to upload image to S3, using source/temp URL:', uploadErr.message);
+        }
+      }
+    } catch (dalleErr) {
+      console.warn('[DALL-E WARNING] Image generation failed, falling back to mock unsplash image:', dalleErr.message);
+      imageUrl = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1024&q=80';
+    }
 
     const img = {
       user_id: req.user._id,
       blog_id: blogId,
-      prompt,
+      blogId: blogId,
+      prompt: resolvedPrompt,
       imageUrl,
-      created_at: new Date().toISOString()
+      dimensions: dimensions || '1792x1024',
+      created_at: new Date().toISOString(),
+      createdAt: new Date().toISOString()
     };
 
     const result = await rawDb.collection('image_metadata').insertOne(img);
     const created = await rawDb.collection('image_metadata').findOne({ _id: result.insertedId });
-    res.status(201).json({ success: true, data: { ...created, id: created._id.toString(), imageUrl } });
+    res.status(201).json({
+      success: true,
+      data: {
+        ...created,
+        id: created._id.toString(),
+        blogId: created.blog_id,
+        createdAt: created.created_at,
+        dimensions: created.dimensions,
+        imageUrl
+      }
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -6762,7 +8003,7 @@ const tryStartMongo = async () => {
   const db = client.db(dbName);
   store = createMongoStore(db);
   rawDb = db;
-  // One-off migration for document tags
+  // One-off migration for document tags and platform configurations
   try {
     await db.collection('knowledge_sources').updateMany(
       { mimeType: 'text/html', fileType: { $exists: false } },
@@ -6773,8 +8014,58 @@ const tryStartMongo = async () => {
       { $set: { fileType: 'file' } }
     );
     console.log("✓ Document fileType tags migration executed successfully!");
+    
+    // Seed platform configurations
+    const count = await db.collection('platform_configs').countDocuments();
+    if (count < 5) {
+      const defaultConfigs = [
+        {
+          platformName: 'LinkedIn',
+          titleRules: 'Create a short, hook under 80 characters. Start with an emoji. Emphasize a contrarian viewpoint or metric. Avoid generic corporate announcements.',
+          structureRules: 'Format in mobile-friendly blocks: maximum 1-2 sentences. Use emoji bullets. Add clean white space. Place 3-5 relevant hashtags at the bottom.',
+          seoRules: 'Must include the primary keyword naturally. 3-5 hashtags at the bottom.',
+          ctaRules: 'Invite readers to comment. Do not include external links in post body.'
+        },
+        {
+          platformName: 'Medium',
+          titleRules: 'Design a compelling title between 60-90 characters. Pair it with a descriptive subtitle. Include keyword in title.',
+          structureRules: 'Adopt storytelling format. Use H2/H3 structural section headers, lists, and tables. Write a detailed, long-form post (minimum 800-1200 words) covering all sections of the original post.',
+          seoRules: 'Integrate target keyword in title, first paragraph, and H2 headings. Meta description under 160 characters. Preserve all links.',
+          ctaRules: 'End with claps, responses, and visiting company website.'
+        },
+        {
+          platformName: 'Company Blog',
+          titleRules: 'Generate an SEO-optimized title containing campaign keywords. Keep it between 50-70 characters.',
+          structureRules: 'Clear technical readability: use H2/H3 headers, lists, tables, FAQ, and Conclusion. Write a complete article (minimum 800-1200 words) matching canonical blog length.',
+          seoRules: 'Maintain 1.0-1.5% keyword density. Keyword in title, first paragraph, H1, and H2 headings. Preserve all links.',
+          ctaRules: 'Integrate corporate CTA requesting demo, free trial, or whitepaper download.'
+        },
+        {
+          platformName: 'Dev.to',
+          titleRules: 'Create developer-focused title between 50-80 characters. Include keyword in title.',
+          structureRules: 'Developer-friendly Markdown: H2/H3 headers, code blocks (yaml, javascript, go), lists, FAQ, and Conclusion. Write a complete article (minimum 800-1200 words) matching canonical length.',
+          seoRules: 'Place keyword in title, first paragraph, H1, and headings. Preserve links.',
+          ctaRules: 'Encourage bookmarking, commenting stack implementation, and checking company website.'
+        },
+        {
+          platformName: 'Substack',
+          titleRules: 'Design warm, newsletter-style headline. Keep it between 50-70 characters. Include keyword in title.',
+          structureRules: 'Email newsletter layout. Editorial opening. Use H2/H3 headers, lists, code blocks, FAQ, and Conclusion. Write a complete newsletter post (minimum 800-1200 words) matching canonical blog length.',
+          seoRules: 'Place keyword in title, first paragraph, and H2 headings. Meta excerpt under 160 characters. Preserve links.',
+          ctaRules: 'Newsletter signup CTA, subscribe request, and visiting company website.'
+        }
+      ];
+      for (const config of defaultConfigs) {
+        await db.collection('platform_configs').updateOne(
+          { platformName: config.platformName },
+          { $set: config },
+          { upsert: true }
+        );
+      }
+      console.log("✓ Default platform configurations seeded successfully!");
+    }
   } catch (err) {
-    console.warn("Failed to run document tags migration:", err.message);
+    console.warn("Failed to run database migrations/seeds:", err.message);
   }
   await store.init();
   return client;
