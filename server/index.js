@@ -6501,7 +6501,7 @@ app.post('/api/generate-image', authRequired, async (req, res) => {
       note: `Image generation charge (${imageCost} credit${imageCost === 1 ? '' : 's'})`,
     });
 
-    const company = await rawDb.collection('companies').findOne(userQuery(userId)) || {};
+    const company = await rawDb.collection('companies').findOne({ user_id: userQuery(userId) }) || {};
     const platform = req.body?.platform || null;
     const topic = String(req.body?.topic || '').trim();
     const contentType = String(req.body?.contentType || '').trim();
