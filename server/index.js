@@ -6889,7 +6889,7 @@ app.post('/api/knowledge/crawl', authRequired, async (req, res) => {
         company: company.companyName || companyName,
         name: `${company.companyName || companyName} Brand Persona`,
         tagline: '',
-        logo_url: company.logo || '',
+        logo_url: company.logoUrl || company.logo || '',
         logo_placement: 'none',
         preserve_original_logo: true,
         audience: company.targetAudience || '',
