@@ -6458,6 +6458,7 @@ app.post('/api/generate-image', authRequired, async (req, res) => {
       note: `Image generation charge (${imageCost} credit${imageCost === 1 ? '' : 's'})`,
     });
 
+    const company = await rawDb.collection('companies').findOne(userQuery(userId)) || {};
     const platform = req.body?.platform || null;
     const topic = String(req.body?.topic || '').trim();
     const contentType = String(req.body?.contentType || '').trim();
@@ -6505,7 +6506,7 @@ app.post('/api/generate-image', authRequired, async (req, res) => {
       const jobId = startImageGenerationJob({
         prompt,
         size,
-        logoUrl: companyPersona?.logoUrl || companyPersona?.logo_url || '',
+        logoUrl: company?.logo || company?.logoUrl || companyPersona?.logoUrl || companyPersona?.logo_url || '',
         logoPlacement: resolvedLogoPlacement,
         onFailed: async ({ error }) => {
           await refundGenerationCredits({
