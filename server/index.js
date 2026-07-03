@@ -2840,7 +2840,21 @@ ${text}
 Generate structured factual summary now:`;
 
   return await callAzureOpenAI(systemPrompt, userPrompt, 0.3);
-};const analyzeLogoColors = async (imageUrl, imageBuffer = null, contentType = '') => {
+};
+
+const describeColorPalette = async (colors) => {
+  try {
+    const systemPrompt = "You are a Visual Identity Designer. Describe the brand color palette formed by these HEX colors in a single concise sentence (e.g., 'A color palette of dark blue and white' or 'A combination of warm coral orange and slate gray'). Respond ONLY with the sentence.";
+    const userPrompt = `HEX colors: ${colors.join(', ')}`;
+    const description = await callAzureOpenAI(systemPrompt, userPrompt, 0.3);
+    return description.trim();
+  } catch (err) {
+    console.warn("Failed to describe color palette with AI:", err.message);
+    return `A brand color palette consisting of ${colors.join(', ')}.`;
+  }
+};
+
+const analyzeLogoColors = async (imageUrl, imageBuffer = null, contentType = '') => {
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
   const apiKey = process.env.AZURE_OPENAI_API_KEY;
   const deploymentName = process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-4';
@@ -2867,11 +2881,31 @@ Generate structured factual summary now:`;
         return col;
       }))];
       
+      const hasWhite = /fill=["']white["']/i.test(svgText) || 
+                       /stroke=["']white["']/i.test(svgText) || 
+                       /fill:\s*white/i.test(svgText) || 
+                       /stroke:\s*white/i.test(svgText) ||
+                       /rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)/i.test(svgText);
+                       
+      const hasBlack = /fill=["']black["']/i.test(svgText) || 
+                       /stroke=["']black["']/i.test(svgText) || 
+                       /fill:\s*black/i.test(svgText) || 
+                       /stroke:\s*black/i.test(svgText) ||
+                       /rgb\(\s*0\s*,\s*0\s*,\s*0\s*\)/i.test(svgText);
+
+      if (hasWhite && !uniqueColors.includes('#ffffff')) {
+        uniqueColors.push('#ffffff');
+      }
+      if (hasBlack && !uniqueColors.includes('#000000')) {
+        uniqueColors.push('#000000');
+      }
+
       const finalColors = uniqueColors.length > 0 ? uniqueColors : ['#f25b18', '#1c1c1e'];
+      const desc = await describeColorPalette(finalColors);
       
       return {
         colors: finalColors.slice(0, 5),
-        description: `Colors extracted from SVG file: ${finalColors.slice(0, 3).join(', ')}.`
+        description: desc
       };
     } catch (svgErr) {
       console.warn("Failed to parse SVG logo colors:", svgErr.message);
@@ -2901,7 +2935,8 @@ Generate structured factual summary now:`;
   // 3. Reject unsupported formats (like ico) or call Vision API for png/jpeg/webp/gif
   if (activeBuffer && activeContentType && activeContentType.startsWith('image/')) {
     if (activeContentType.includes('icon') || activeContentType.includes('microsoft')) {
-      return { colors: ['#f25b18', '#1c1c1e'], description: 'Icon format logo. Default warm slate palette.' };
+      const desc = await describeColorPalette(['#f25b18', '#1c1c1e']);
+      return { colors: ['#f25b18', '#1c1c1e'], description: desc };
     }
 
     const base64Data = Buffer.from(activeBuffer).toString('base64');
@@ -2947,7 +2982,8 @@ Ensure your output is raw JSON only.`;
     }
   }
 
-  return { colors: ['#f25b18', '#1c1c1e'], description: 'Default fallback palette.' };
+  const desc = await describeColorPalette(['#f25b18', '#1c1c1e']);
+  return { colors: ['#f25b18', '#1c1c1e'], description: desc };
 };
 
 const extractBrandProfileAndPersonas = async (text) => {
