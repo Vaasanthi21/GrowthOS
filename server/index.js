@@ -3840,23 +3840,46 @@ app.get('/api/company', authRequired, async (req, res) => {
 });
 
 app.post('/api/company', authRequired, async (req, res) => {
-  const { companyName, website, brandVoice, targetAudience } = req.body;
-  const company = {
-    user_id: req.user._id,
-    companyName: companyName || '',
-    website: website || '',
-    brandVoice: brandVoice || [],
-    targetAudience: targetAudience || '',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  };
-  const result = await rawDb.collection('companies').insertOne(company);
-  const created = await rawDb.collection('companies').findOne({ _id: result.insertedId });
-  
-  // Link to user profile
-  await rawDb.collection('users').updateOne({ _id: req.user._id }, { $set: { companyId: result.insertedId } });
-  
-  res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
+  try {
+    const { 
+      companyName, 
+      website, 
+      brandVoice, 
+      targetAudience,
+      industry,
+      productDescription,
+      competitors,
+      logo,
+      brandColors,
+      brandColorsDescription
+    } = req.body;
+
+    const company = {
+      user_id: req.user._id,
+      companyName: companyName || '',
+      website: website || '',
+      brandVoice: brandVoice || '',
+      targetAudience: targetAudience || '',
+      industry: industry || '',
+      productDescription: productDescription || '',
+      competitors: competitors || [],
+      logo: logo || '',
+      brandColors: logo === '' ? [] : (brandColors || []),
+      brandColorsDescription: logo === '' ? '' : (brandColorsDescription || ''),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    const result = await rawDb.collection('companies').insertOne(company);
+    const created = await rawDb.collection('companies').findOne({ _id: result.insertedId });
+    
+    // Link to user profile
+    await rawDb.collection('users').updateOne({ _id: req.user._id }, { $set: { companyId: result.insertedId } });
+    
+    res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.put('/api/company/:id', authRequired, async (req, res) => {
@@ -3888,12 +3911,32 @@ app.put('/api/company/:id', authRequired, async (req, res) => {
       updated_at: new Date().toISOString()
     };
 
-    await rawDb.collection('companies').updateOne(
-      { _id: new ObjectId(req.params.id), user_id: req.user._id },
-      { $set: updates },
-      { upsert: true }
-    );
-    const updated = await rawDb.collection('companies').findOne({ _id: new ObjectId(req.params.id) });
+    let companyId;
+    if (req.params.id && req.params.id !== 'undefined' && req.params.id !== 'null' && ObjectId.isValid(req.params.id)) {
+      companyId = new ObjectId(req.params.id);
+    } else {
+      const existing = await rawDb.collection('companies').findOne({ user_id: req.user._id });
+      if (existing) {
+        companyId = existing._id;
+      }
+    }
+
+    if (companyId) {
+      await rawDb.collection('companies').updateOne(
+        { _id: companyId, user_id: req.user._id },
+        { $set: updates }
+      );
+    } else {
+      const result = await rawDb.collection('companies').insertOne({
+        ...updates,
+        user_id: req.user._id,
+        created_at: new Date().toISOString()
+      });
+      companyId = result.insertedId;
+      await rawDb.collection('users').updateOne({ _id: req.user._id }, { $set: { companyId: result.insertedId } });
+    }
+
+    const updated = await rawDb.collection('companies').findOne({ _id: companyId });
     res.json({ success: true, data: { ...updated, id: updated._id.toString() } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
