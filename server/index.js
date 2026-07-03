@@ -5363,7 +5363,20 @@ app.post('/api/images/generate', authRequired, async (req, res) => {
             const contentType = bufferResponse.headers['content-type'];
             if (contentType) mimeType = contentType;
           }
-          const s3Url = await uploadToS3(buffer, `dalle_${blogId}_${Date.now()}.png`, mimeType);
+          let s3Url = await uploadToS3(buffer, `dalle_${blogId}_${Date.now()}.png`, mimeType);
+          if (company && company.logo) {
+            try {
+              console.log('[IMAGE GENERATION LOGO OVERLAY] Overlaying logo:', company.logo);
+              const overlaidUrl = await overlayLogoOnImage({
+                imageUrl: s3Url,
+                logoUrl: company.logo,
+                logoPlacement: 'bottom-right',
+              });
+              s3Url = overlaidUrl;
+            } catch (overlayErr) {
+              console.error('[IMAGE GENERATION LOGO OVERLAY FAILED]', overlayErr);
+            }
+          }
           imageUrl = s3Url;
         } catch (uploadErr) {
           console.warn('[IMAGE UPLOAD WARNING] Failed to upload image to S3, using source/temp URL:', uploadErr.message);
