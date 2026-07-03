@@ -6388,15 +6388,28 @@ app.post('/api/generate-image', authRequired, async (req, res) => {
     const size = selectAzureImageSize({ platform, contentType, aspectRatio, width, height });
 
     if (req.body?.async !== false) {
-      const resolvedLogoPlacement =
+      const resolvedLogoPlacement = String(
         logoPlacement === 'persona-default'
           ? (companyPersona?.logo_placement || companyPersona?.logoPlacement || 'none')
-          : (logoPlacement || companyPersona?.logo_placement || companyPersona?.logoPlacement || 'none');
+          : (logoPlacement || companyPersona?.logo_placement || companyPersona?.logoPlacement || 'none')
+      ).trim().replace('_', '-');
       
+      let resolvedLogoUrl = companyPersona?.logoUrl || companyPersona?.logo_url || '';
+      if (!resolvedLogoUrl && req.user.companyId) {
+        try {
+          const companyObj = await db.collection('companies').findOne({ _id: new ObjectId(req.user.companyId) });
+          if (companyObj && companyObj.logo) {
+            resolvedLogoUrl = companyObj.logo;
+          }
+        } catch (err) {
+          console.error('[GENERATE IMAGE ASYNC] Failed to fetch company logo:', err);
+        }
+      }
+
       const jobId = startImageGenerationJob({
         prompt,
         size,
-        logoUrl: companyPersona?.logoUrl || companyPersona?.logo_url || '',
+        logoUrl: resolvedLogoUrl,
         logoPlacement: resolvedLogoPlacement,
         onFailed: async ({ error }) => {
           await refundGenerationCredits({
@@ -6419,15 +6432,28 @@ app.post('/api/generate-image', authRequired, async (req, res) => {
       });
     }
 
-    const resolvedLogoPlacement =
+    const resolvedLogoPlacement = String(
       logoPlacement === 'persona-default'
         ? (companyPersona?.logo_placement || companyPersona?.logoPlacement || 'none')
-        : (logoPlacement || companyPersona?.logo_placement || companyPersona?.logoPlacement || 'none');
+        : (logoPlacement || companyPersona?.logo_placement || companyPersona?.logoPlacement || 'none')
+    ).trim().replace('_', '-');
+
+    let resolvedLogoUrl = companyPersona?.logoUrl || companyPersona?.logo_url || '';
+    if (!resolvedLogoUrl && req.user.companyId) {
+      try {
+        const companyObj = await db.collection('companies').findOne({ _id: new ObjectId(req.user.companyId) });
+        if (companyObj && companyObj.logo) {
+          resolvedLogoUrl = companyObj.logo;
+        }
+      } catch (err) {
+        console.error('[GENERATE IMAGE SYNC] Failed to fetch company logo:', err);
+      }
+    }
 
     const image = await generateImageWithAzure({
       prompt,
       size,
-      logoUrl: companyPersona?.logoUrl || companyPersona?.logo_url || '',
+      logoUrl: resolvedLogoUrl,
       logoPlacement: resolvedLogoPlacement,
     });
     res.json({
@@ -6512,15 +6538,28 @@ app.post('/api/generate-video', authRequired, async (req, res) => {
       variantContent,
     });
 
-    const resolvedLogoPlacement =
+    const resolvedLogoPlacement = String(
       logoPlacement === 'persona-default'
         ? (companyPersona?.logo_placement || companyPersona?.logoPlacement || 'none')
-        : (logoPlacement || companyPersona?.logo_placement || companyPersona?.logoPlacement || 'none');
+        : (logoPlacement || companyPersona?.logo_placement || companyPersona?.logoPlacement || 'none')
+    ).trim().replace('_', '-');
+
+    let resolvedLogoUrl = companyPersona?.logoUrl || companyPersona?.logo_url || '';
+    if (!resolvedLogoUrl && req.user.companyId) {
+      try {
+        const companyObj = await db.collection('companies').findOne({ _id: new ObjectId(req.user.companyId) });
+        if (companyObj && companyObj.logo) {
+          resolvedLogoUrl = companyObj.logo;
+        }
+      } catch (err) {
+        console.error('[GENERATE VIDEO] Failed to fetch company logo:', err);
+      }
+    }
 
     const jobId = startVideoGenerationJob({
       prompt,
       aspectRatio,
-      logoUrl: companyPersona?.logoUrl || companyPersona?.logo_url || '',
+      logoUrl: resolvedLogoUrl,
       logoPlacement: resolvedLogoPlacement,
       onFailed: async ({ error }) => {
         await refundGenerationCredits({
