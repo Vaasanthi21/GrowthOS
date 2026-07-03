@@ -2867,8 +2867,7 @@ Generate structured factual summary now:`;
         return col;
       }))];
       
-      const filtered = uniqueColors.filter(c => c !== '#ffffff' && c !== '#000000');
-      const finalColors = filtered.length > 0 ? filtered : (uniqueColors.length > 0 ? uniqueColors : ['#f25b18', '#1c1c1e']);
+      const finalColors = uniqueColors.length > 0 ? uniqueColors : ['#f25b18', '#1c1c1e'];
       
       return {
         colors: finalColors.slice(0, 5),
