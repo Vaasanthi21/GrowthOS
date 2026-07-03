@@ -991,18 +991,44 @@ const saveLogoUpload = async (logoFile) => {
     }
   }
 
-  const key = `logos/${Date.now()}.png`;
+  try {
+    const key = `logos/${Date.now()}.png`;
 
-  await s3Client.send(
-    new PutObjectCommand({
-      Bucket: process.env.AWS_BUCKET_NAME,
-      Key: key,
-      Body: parsed.buffer,
-      ContentType: parsed.mimeType,
-    })
-  );
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: key,
+        Body: parsed.buffer,
+        ContentType: parsed.mimeType,
+      })
+    );
 
-  return `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+    return `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+  } catch (s3Err) {
+    console.warn("AWS S3 logo upload failed, falling back to local file storage:", s3Err.message);
+    try {
+      await fs.mkdir(uploadsDir, { recursive: true });
+      let ext = '.png';
+      if (parsed.mimeType === 'image/jpeg' || parsed.mimeType === 'image/jpg') {
+        ext = '.jpg';
+      } else if (parsed.mimeType === 'image/gif') {
+        ext = '.gif';
+      } else if (parsed.mimeType === 'image/svg+xml') {
+        ext = '.svg';
+      } else if (parsed.mimeType === 'image/webp') {
+        ext = '.webp';
+      }
+
+      const filename = `logo-${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`;
+      const filePath = path.join(uploadsDir, filename);
+      await fs.writeFile(filePath, parsed.buffer);
+      console.log(`[LOGO UPLOAD] Saved logo locally (fallback): /uploads/${filename}`);
+      return `/uploads/${filename}`;
+    } catch (localErr) {
+      console.error("Local file fallback failed for logo upload:", localErr);
+      throw s3Err;
+    }
+  }
 };
 
 const uploadImageBufferToS3 = async ({ buffer, mimeType = 'image/png', folder = 'images' }) => {
@@ -2711,23 +2737,37 @@ const COST_COVER_IMAGE = 3;
 const uploadToS3 = async (buffer, fileName, mimeType) => {
   if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
     console.warn("AWS S3 credentials missing. Falling back to local file mock.");
-    return `/uploads/${Date.now()}-\/${fileName}`;
+    return `/uploads/${Date.now()}-${fileName}`;
   }
-  const s3 = new S3Client({
-    region: process.env.AWS_REGION || 'ap-south-1',
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  try {
+    const s3 = new S3Client({
+      region: process.env.AWS_REGION || 'ap-south-1',
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      }
+    });
+    const key = `${process.env.AWS_S3_FOLDER || 'growth-os'}/${Date.now()}-${fileName}`;
+    await s3.send(new PutObjectCommand({
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: key,
+      Body: buffer,
+      ContentType: mimeType
+    }));
+    return `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com/${key}`;
+  } catch (s3Err) {
+    console.warn("AWS S3 upload failed, falling back to local file storage:", s3Err.message);
+    try {
+      await fs.mkdir(uploadsDir, { recursive: true });
+      const filename = `${Date.now()}-${fileName}`;
+      const filePath = path.join(uploadsDir, filename);
+      await fs.writeFile(filePath, buffer);
+      return `/uploads/${filename}`;
+    } catch (localErr) {
+      console.error("Local file fallback failed:", localErr);
+      throw s3Err;
     }
-  });
-  const key = `${process.env.AWS_S3_FOLDER || 'growth-os'}/${Date.now()}-${fileName}`;
-  await s3.send(new PutObjectCommand({
-    Bucket: process.env.AWS_BUCKET_NAME,
-    Key: key,
-    Body: buffer,
-    ContentType: mimeType
-  }));
-  return `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com/${key}`;
+  }
 };
 
 
