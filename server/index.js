@@ -1694,7 +1694,7 @@ const overlayLogoOnImage = async ({
   const image = sharp(imageBuffer);
   const metadata = await image.metadata();
 
-  const logoWidth = Math.round((metadata.width || 1024) * 0.18);
+  const logoWidth = Math.round((metadata.width || 1024) * 0.08);
 
   const resizedLogo = await sharp(logoBuffer)
     .resize({
