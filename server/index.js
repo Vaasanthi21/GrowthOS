@@ -2086,6 +2086,14 @@ const generateTextVariants = async ({ prompt }) => {
   throw new Error('Generated text response did not contain usable content');
 };
 
+const userQuery = (userId) => {
+  try {
+    return { $in: [String(userId), new ObjectId(userId)] };
+  } catch (e) {
+    return String(userId);
+  }
+};
+
 const createMongoStore = (db) => ({
   type: 'mongo',
   async init() {
@@ -2210,31 +2218,37 @@ const createMongoStore = (db) => ({
     return await db.collection('users').findOne({ _id: new ObjectId(id) });
   },
   async getCompanyByUserId(userId) {
-    return await db.collection('companies').findOne({ user_id: String(userId) });
+    return await db.collection('companies').findOne({ user_id: userQuery(userId) });
   },
   async upsertCompany(userId, companyData) {
     const collection = db.collection('companies');
+    const existing = await collection.findOne({ user_id: userQuery(userId) });
 
-    await collection.updateOne(
-      { user_id: String(userId) },
-      {
-        $set: {
-          ...companyData,
-          user_id: String(userId),
-          updated_at: nowIso(),
-        },
-        $setOnInsert: {
-          created_at: nowIso(),
-        },
-      },
-      { upsert: true }
-    );
-
-    return await collection.findOne({ user_id: String(userId) });
+    if (existing) {
+      await collection.updateOne(
+        { _id: existing._id },
+        {
+          $set: {
+            ...companyData,
+            user_id: existing.user_id,
+            updated_at: nowIso(),
+          },
+        }
+      );
+      return await collection.findOne({ _id: existing._id });
+    } else {
+      const result = await collection.insertOne({
+        ...companyData,
+        user_id: String(userId),
+        created_at: nowIso(),
+        updated_at: nowIso(),
+      });
+      return await collection.findOne({ _id: result.insertedId });
+    }
   },
   async listBlogs(userId) {
     return await db.collection('blogs')
-      .find({ user_id: String(userId) })
+      .find({ user_id: userQuery(userId) })
       .sort({ updated_at: -1, created_at: -1 })
       .toArray();
   },
@@ -2244,7 +2258,7 @@ const createMongoStore = (db) => ({
   },
   async listTopics(userId) {
     return await db.collection('topics')
-      .find({ user_id: String(userId) })
+      .find({ user_id: userQuery(userId) })
       .sort({ updated_at: -1, created_at: -1 })
       .toArray();
   },
@@ -2255,32 +2269,39 @@ const createMongoStore = (db) => ({
   async upsertResearchByTopicId(userId, topicId, researchData) {
     const timestamp = nowIso();
     const collection = db.collection('research');
+    const existing = await collection.findOne({ user_id: userQuery(userId), topic_id: String(topicId) });
 
-    await collection.updateOne(
-      { user_id: String(userId), topic_id: String(topicId) },
-      {
-        $set: {
-          ...researchData,
-          user_id: String(userId),
-          topic_id: String(topicId),
-          updated_at: timestamp,
-        },
-        $setOnInsert: {
-          created_at: timestamp,
-        },
-      },
-      { upsert: true }
-    );
-
-    return await collection.findOne({ user_id: String(userId), topic_id: String(topicId) });
+    if (existing) {
+      await collection.updateOne(
+        { _id: existing._id },
+        {
+          $set: {
+            ...researchData,
+            user_id: existing.user_id,
+            topic_id: String(topicId),
+            updated_at: timestamp,
+          },
+        }
+      );
+      return await collection.findOne({ _id: existing._id });
+    } else {
+      const result = await collection.insertOne({
+        ...researchData,
+        user_id: String(userId),
+        topic_id: String(topicId),
+        created_at: timestamp,
+        updated_at: timestamp,
+      });
+      return await collection.findOne({ _id: result.insertedId });
+    }
   },
   async findResearchByTopicId(userId, topicId) {
     return await db.collection('research')
-      .findOne({ user_id: String(userId), topic_id: String(topicId) });
+      .findOne({ user_id: userQuery(userId), topic_id: String(topicId) });
   },
   async listResearch(userId) {
     return await db.collection('research')
-      .find({ user_id: String(userId) })
+      .find({ user_id: userQuery(userId) })
       .sort({ updated_at: -1, created_at: -1 })
       .toArray();
   },
@@ -2451,7 +2472,7 @@ const createMongoStore = (db) => ({
       return await this.insertHistory(entry);
     }
 
-    const query = { user_id: entry.user_id };
+    const query = { user_id: userQuery(entry.user_id) };
     if (sessionRootHistoryId) {
       query.$or = [
         { session_root_history_id: sessionRootHistoryId },
@@ -2497,19 +2518,19 @@ const createMongoStore = (db) => ({
   },
   async updateHistoryStatus(id, userId) {
     await db.collection('content_history').updateOne(
-      { _id: new ObjectId(id), user_id: userId },
+      { _id: new ObjectId(id), user_id: userQuery(userId) },
       { $set: { status: 'deleted', deleted_at: nowIso() } }
     );
     return await db.collection('content_history').findOne({ _id: new ObjectId(id) });
   },
   async listCompanyPersonas(userId) {
-    return await db.collection('company_personas').find({ user_id: userId }).sort({ created_at: -1 }).toArray();
+    return await db.collection('company_personas').find({ user_id: userQuery(userId) }).sort({ created_at: -1 }).toArray();
   },
   async countCompanyPersonas(userId) {
-    return await db.collection('company_personas').countDocuments({ user_id: userId });
+    return await db.collection('company_personas').countDocuments({ user_id: userQuery(userId) });
   },
   async findCompanyPersonaById(id, userId) {
-    return await db.collection('company_personas').findOne({ _id: new ObjectId(id), user_id: userId });
+    return await db.collection('company_personas').findOne({ _id: new ObjectId(id), user_id: userQuery(userId) });
   },
   async insertCompanyPersona(persona) {
     const result = await db.collection('company_personas').insertOne(persona);
@@ -2517,20 +2538,20 @@ const createMongoStore = (db) => ({
   },
   async updateCompanyPersona(id, userId, updates) {
     await db.collection('company_personas').updateOne(
-      { _id: new ObjectId(id), user_id: userId },
+      { _id: new ObjectId(id), user_id: userQuery(userId) },
       { $set: updates }
     );
-    return await db.collection('company_personas').findOne({ _id: new ObjectId(id), user_id: userId });
+    return await db.collection('company_personas').findOne({ _id: new ObjectId(id), user_id: userQuery(userId) });
   },
   async deleteCompanyPersona(id, userId) {
-    const result = await db.collection('company_personas').deleteOne({ _id: new ObjectId(id), user_id: userId });
+    const result = await db.collection('company_personas').deleteOne({ _id: new ObjectId(id), user_id: userQuery(userId) });
     return result.deletedCount > 0;
   },
   async listKnowledgeSources(userId) {
-    return await db.collection('knowledge_sources').find({ user_id: userId }).sort({ updated_at: -1 }).toArray();
+    return await db.collection('knowledge_sources').find({ user_id: userQuery(userId) }).sort({ updated_at: -1 }).toArray();
   },
   async findKnowledgeSourceById(id, userId) {
-    return await db.collection('knowledge_sources').findOne({ _id: new ObjectId(id), user_id: userId });
+    return await db.collection('knowledge_sources').findOne({ _id: new ObjectId(id), user_id: userQuery(userId) });
   },
   async insertKnowledgeSource(source) {
     const result = await db.collection('knowledge_sources').insertOne(source);
@@ -2538,13 +2559,13 @@ const createMongoStore = (db) => ({
   },
   async updateKnowledgeSource(id, userId, updates) {
     await db.collection('knowledge_sources').updateOne(
-      { _id: new ObjectId(id), user_id: userId },
+      { _id: new ObjectId(id), user_id: userQuery(userId) },
       { $set: updates }
     );
-    return await db.collection('knowledge_sources').findOne({ _id: new ObjectId(id), user_id: userId });
+    return await db.collection('knowledge_sources').findOne({ _id: new ObjectId(id), user_id: userQuery(userId) });
   },
   async deleteKnowledgeSource(id, userId) {
-    const result = await db.collection('knowledge_sources').deleteOne({ _id: new ObjectId(id), user_id: userId });
+    const result = await db.collection('knowledge_sources').deleteOne({ _id: new ObjectId(id), user_id: userQuery(userId) });
     return result.deletedCount > 0;
   },
   async saveImageGeneration(entry) {
@@ -3731,7 +3752,7 @@ const cleanHtmlToText = (html) => {
   
   let result = text.trim();
   if (metaText) {
-    result = `${metaText}\n	ext`;
+    result = `${metaText}\n${text}`;
   }
   return result.trim();
 };
