@@ -2840,20 +2840,47 @@ ${text}
 Generate structured factual summary now:`;
 
   return await callAzureOpenAI(systemPrompt, userPrompt, 0.3);
-};
-
-const analyzeLogoColors = async (imageUrl) => {
+};const analyzeLogoColors = async (imageUrl, imageBuffer = null, contentType = '') => {
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
   const apiKey = process.env.AZURE_OPENAI_API_KEY;
   const deploymentName = process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-4';
 
   if (!endpoint || !apiKey) {
     console.warn("Azure credentials missing for vision analysis.");
-    return { colors: ['#f25b18', '#1c1c1e'], description: 'Default warm slate palette.' };
+    return { colors: ['#f25b18', '#1c1c1e'], description: 'Default fallback palette.' };
   }
 
-  let targetImageUrl = imageUrl;
-  if (imageUrl && imageUrl.startsWith('http')) {
+  let activeBuffer = imageBuffer;
+  let activeContentType = contentType;
+
+  // 1. Handle SVG files directly by parsing their hex colors
+  if (activeContentType === 'image/svg+xml' && activeBuffer) {
+    try {
+      const svgText = Buffer.from(activeBuffer).toString('utf-8');
+      const hexRegex = /#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})\b/g;
+      const matches = svgText.match(hexRegex) || [];
+      const uniqueColors = [...new Set(matches.map(c => {
+        let col = c.toLowerCase();
+        if (col.length === 4) { // shorthand hex #fff -> #ffffff
+          col = '#' + col[1] + col[1] + col[2] + col[2] + col[3] + col[3];
+        }
+        return col;
+      }))];
+      
+      const filtered = uniqueColors.filter(c => c !== '#ffffff' && c !== '#000000');
+      const finalColors = filtered.length > 0 ? filtered : (uniqueColors.length > 0 ? uniqueColors : ['#f25b18', '#1c1c1e']);
+      
+      return {
+        colors: finalColors.slice(0, 5),
+        description: `Colors extracted from SVG file: ${finalColors.slice(0, 3).join(', ')}.`
+      };
+    } catch (svgErr) {
+      console.warn("Failed to parse SVG logo colors:", svgErr.message);
+    }
+  }
+
+  // 2. Fetch image if buffer is not provided
+  if (!activeBuffer && imageUrl && imageUrl.startsWith('http')) {
     try {
       const response = await axios.get(imageUrl, {
         responseType: 'arraybuffer',
@@ -2864,54 +2891,64 @@ const analyzeLogoColors = async (imageUrl) => {
         }
       });
       if (response.status === 200) {
-        const contentType = response.headers['content-type'] || 'image/png';
-        const base64Data = Buffer.from(response.data).toString('base64');
-        targetImageUrl = `data:${contentType};base64,${base64Data}`;
+        activeBuffer = response.data;
+        activeContentType = response.headers['content-type'] || 'image/png';
       }
     } catch (e) {
       console.warn("Failed to download image for base64 vision input:", e.message);
     }
   }
 
-  const systemPrompt = `You are a Visual Identity Designer.
+  // 3. Reject unsupported formats (like ico) or call Vision API for png/jpeg/webp/gif
+  if (activeBuffer && activeContentType && activeContentType.startsWith('image/')) {
+    if (activeContentType.includes('icon') || activeContentType.includes('microsoft')) {
+      return { colors: ['#f25b18', '#1c1c1e'], description: 'Icon format logo. Default warm slate palette.' };
+    }
+
+    const base64Data = Buffer.from(activeBuffer).toString('base64');
+    const targetImageUrl = `data:${activeContentType};base64,${base64Data}`;
+
+    const systemPrompt = `You are a Visual Identity Designer.
 Analyze the company logo and identify the dominant brand colors.
 Respond ONLY with a JSON object containing two fields:
 1. "colors": an array of HEX strings of the top 3-5 dominant colors (e.g., ["#F25B18", "#181C25"])
 2. "description": a concise, single-sentence description of the brand color palette (e.g., "A combination of warm coral orange, dark slate, and clean white accents.")
 Ensure your output is raw JSON only.`;
 
-  const cleanEndpoint = endpoint.endsWith('/') ? endpoint.slice(0, -1) : endpoint;
-  const url = `${cleanEndpoint}/openai/deployments/${deploymentName}/chat/completions?api-version=2024-02-15-preview`;
+    const cleanEndpoint = endpoint.endsWith('/') ? endpoint.slice(0, -1) : endpoint;
+    const url = `${cleanEndpoint}/openai/deployments/${deploymentName}/chat/completions?api-version=2024-02-15-preview`;
 
-  try {
-    const response = await axios.post(url, {
-      messages: [
-        { role: 'system', content: systemPrompt },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: 'Extract the dominant color palette from this logo.' },
-            { type: 'image_url', image_url: { url: targetImageUrl } }
-          ]
-        }
-      ],
-      max_completion_tokens: 150
-    }, {
-      headers: { 'api-key': apiKey, 'Content-Type': 'application/json' }
-    });
+    try {
+      const response = await axios.post(url, {
+        messages: [
+          { role: 'system', content: systemPrompt },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Extract the dominant color palette from this logo.' },
+              { type: 'image_url', image_url: { url: targetImageUrl } }
+            ]
+          }
+        ],
+        max_completion_tokens: 150
+      }, {
+        headers: { 'api-key': apiKey, 'Content-Type': 'application/json' }
+      });
 
-    let cleanText = response.data.choices[0].message.content.trim();
-    if (cleanText.startsWith('```json')) cleanText = cleanText.substring(7);
-    if (cleanText.endsWith('```')) cleanText = cleanText.substring(0, cleanText.length - 3);
-    cleanText = cleanText.trim();
-    return JSON.parse(cleanText);
-  } catch (err) {
-    if (err.response && err.response.data) {
-      console.error('[VISION ERROR DETAILS]:', JSON.stringify(err.response.data, null, 2));
+      let cleanText = response.data.choices[0].message.content.trim();
+      if (cleanText.startsWith('```json')) cleanText = cleanText.substring(7);
+      if (cleanText.endsWith('```')) cleanText = cleanText.substring(0, cleanText.length - 3);
+      cleanText = cleanText.trim();
+      return JSON.parse(cleanText);
+    } catch (err) {
+      if (err.response && err.response.data) {
+        console.error('[VISION ERROR DETAILS]:', JSON.stringify(err.response.data, null, 2));
+      }
+      console.error("Vision logo analysis failed:", err.message);
     }
-    console.error("Vision logo analysis failed:", err.message);
-    return { colors: ['#f25b18', '#1c1c1e'], description: 'Default fallback palette.' };
   }
+
+  return { colors: ['#f25b18', '#1c1c1e'], description: 'Default fallback palette.' };
 };
 
 const extractBrandProfileAndPersonas = async (text) => {
@@ -4033,16 +4070,19 @@ app.post('/api/knowledge/crawl', authRequired, async (req, res) => {
             'Accept': 'image/*'
           }
         });
-        if (logoResponse.status === 200) {
+        const contentType = logoResponse.headers['content-type'] || '';
+        if (logoResponse.status === 200 && contentType.startsWith('image/')) {
           const filename = rawLogoUrl.split('/').pop() || 'logo.png';
-          logoUrl = await uploadToS3(logoResponse.data, filename, logoResponse.headers['content-type'] || 'image/png');
+          logoUrl = await uploadToS3(logoResponse.data, filename, contentType);
           console.log(`[CRAWLER] Logo uploaded successfully to S3: ${logoUrl}`);
 
-          // Extract colors using Vision
-          const colorAnalysis = await analyzeLogoColors(logoUrl);
+          // Extract colors using Vision / SVG fallback
+          const colorAnalysis = await analyzeLogoColors(logoUrl, logoResponse.data, contentType);
           brandColors = colorAnalysis.colors || [];
           brandColorsDescription = colorAnalysis.description || '';
           console.log(`[CRAWLER] Vision analyzed brand colors: ${JSON.stringify(brandColors)}`);
+        } else {
+          console.log(`[CRAWLER] Logo URL is not a valid image. Content-Type: ${contentType}`);
         }
       }
     } catch (logoErr) {
