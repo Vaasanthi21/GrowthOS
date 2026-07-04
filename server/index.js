@@ -1702,7 +1702,12 @@ const overlayLogoOnImage = async ({
   const image = sharp(imageBuffer);
   const metadata = await image.metadata();
 
-  const logoWidth = Math.round((metadata.width || 1024) * logoScale);
+  const baseDimension = Math.min(
+    metadata.width || 1024,
+    metadata.height || 1024
+  );
+
+  const logoWidth = Math.round(baseDimension * logoScale);
 
   const resizedLogo = await sharp(logoBuffer)
     .trim()
@@ -1967,7 +1972,7 @@ if (finalImageUrl && activeLogoUrl && logoPlacement && logoPlacement !== 'none')
       imageUrl: finalImageUrl,
       logoUrl: activeLogoUrl,
       logoPlacement,
-      logoScale: 0.06,
+      logoScale: 0.15,
     });
   } catch (err) {
     console.warn('[IMAGE OVERLAY] Sharp overlay failed:', err);
