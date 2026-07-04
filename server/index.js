@@ -1,4 +1,11 @@
 import dotenv from 'dotenv';
+if (typeof global !== 'undefined' && !global.DOMMatrix) {
+  global.DOMMatrix = class DOMMatrix {
+    constructor() {
+      this.a = 1; this.b = 0; this.c = 0; this.d = 1; this.e = 0; this.f = 0;
+    }
+  };
+}
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import express from 'express';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
