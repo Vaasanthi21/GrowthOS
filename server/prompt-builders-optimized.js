@@ -241,7 +241,7 @@ export const buildImagePrompt = ({
     // Omitted persona.goals (strategy, not visual) and persona.analysis
     // (derivative of fields already present).
     persona.company
-      ? `Brand: ${persona.company}${persona.tagline ? ` — ${persona.tagline}` : ''}.`
+      ? `Brand context only: ${persona.company}${persona.tagline ? ` — ${persona.tagline}` : ''}. Do not render the brand name, logo, initials, tagline, watermark, app name, or any fictional substitute brand in the image.`
       : null,
     persona.voice ? `Tone: ${persona.voice}.` : null,
     persona.audience ? `Audience: ${persona.audience}.` : null,
@@ -259,9 +259,9 @@ export const buildImagePrompt = ({
     // Merged the URL, placement, and fidelity requirement into one line.
     // Was previously split across 3 separate array entries (~230 chars → 90).
     requestedLogoPlacement === 'none'
-      ? 'Do not generate, recreate, imitate, redraw, stylize, or display ANY company logo, watermark, brand mark, brand initials, company text, or branding anywhere in the image. Do not invent or hallucinate logos or company names.'
+      ? 'Do not generate, recreate, imitate, redraw, stylize, or display ANY company logo, watermark, brand mark, brand initials, company text, app name, fictional product name, tagline, or branding anywhere in the image. Do not invent or hallucinate logos, company names, product names, app names, or fake brand identities.'
       : hasLogo
-        ? `Do not generate, recreate, imitate, redraw, stylize, or display ANY company logo, watermark, brand mark, brand initials, company text, or branding anywhere in the image. Do not invent or hallucinate logos or company names. Leave the ${requestedLogoPlacement} area clean, empty, and visually unobstructed so the exact uploaded logo can be added during edit mode.`
+        ? `Do not generate, recreate, imitate, redraw, stylize, or display ANY company logo, watermark, brand mark, brand initials, company text, app name, fictional product name, or branding anywhere in the image. Do not invent or hallucinate logos, company names, product names, or fake brand identities. Leave the ${requestedLogoPlacement.replace(/-/g, ' ')} logo area clear, empty, and visually unobstructed. Reserve approximately the outer 15–20% of that selected logo area for the real uploaded logo overlay; do not place text, icons, people, UI elements, fake logos, brand names, or important visual details there.`
         : null,
       
 
