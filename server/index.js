@@ -2770,6 +2770,9 @@ const COST_RESEARCH_SYNTHESIS = 5;
 const COST_CANONICAL_BLOG = 5;
 const COST_PLATFORM_ADAPTATION = 5;
 const COST_COVER_IMAGE = 3;
+const COST_SEO_OPTIMIZE_PLATFORM = 5;
+const COST_SEO_OPTIMIZE_BLOG = 5;
+
 
 
 // AWS S3 Storage Helper
@@ -4975,10 +4978,19 @@ app.post('/api/blogs/:id/restore/:version', authRequired, async (req, res) => {
 
 // POST blog auto-optimize
 app.post('/api/blogs/:id/optimize', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+  let blogOptimizeChargeResult = null;
   try {
     const blogIdStr = req.params.id;
     const blog = await rawDb.collection('blogs').findOne({ _id: new ObjectId(blogIdStr), user_id: req.user._id });
     if (!blog) return res.status(404).json({ success: false, error: 'Blog not found' });
+
+    blogOptimizeChargeResult = await chargeCreditsForGeneration({
+      userId,
+      amount: COST_SEO_OPTIMIZE_BLOG,
+      type: 'blog_seo_optimize',
+      note: `Canonical blog SEO optimization (${COST_SEO_OPTIMIZE_BLOG} credits)`,
+    });
 
     const company = await rawDb.collection('companies').findOne({ user_id: req.user._id });
     const companyWebsite = company?.website || '';
@@ -5120,6 +5132,18 @@ Generate the optimized JSON payload now:`;
       });
     }
   } catch (err) {
+    if (blogOptimizeChargeResult) {
+      try {
+        await refundGenerationCredits({
+          userId,
+          amount: COST_SEO_OPTIMIZE_BLOG,
+          type: 'blog_seo_optimize_refund',
+          note: `Refund for failed canonical blog SEO optimization (${COST_SEO_OPTIMIZE_BLOG} credits)`,
+        });
+      } catch (refundErr) {
+        console.error('Failed to refund credits for failed blog optimize:', refundErr);
+      }
+    }
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -5343,9 +5367,18 @@ app.put('/api/render/:id', authRequired, async (req, res) => {
 });
 
 app.post('/api/render/:id/optimize', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+  let renderOptimizeChargeResult = null;
   try {
     const rendered = await rawDb.collection('rendered_blogs').findOne({ _id: new ObjectId(req.params.id), user_id: req.user._id });
     if (!rendered) return res.status(404).json({ success: false, error: 'Rendered post not found' });
+
+    renderOptimizeChargeResult = await chargeCreditsForGeneration({
+      userId,
+      amount: COST_SEO_OPTIMIZE_PLATFORM,
+      type: 'platform_seo_optimize',
+      note: `Platform render SEO optimization (${COST_SEO_OPTIMIZE_PLATFORM} credits)`,
+    });
 
     const blog = await rawDb.collection('blogs').findOne({ _id: rendered.blogId });
     const targetKeyword = blog ? (blog.keyword || '') : '';
@@ -5412,6 +5445,18 @@ Optimize and return JSON now:`;
     const updated = await rawDb.collection('rendered_blogs').findOne({ _id: new ObjectId(req.params.id) });
     res.json({ success: true, data: { ...updated, id: updated._id.toString() } });
   } catch (err) {
+    if (renderOptimizeChargeResult) {
+      try {
+        await refundGenerationCredits({
+          userId,
+          amount: COST_SEO_OPTIMIZE_PLATFORM,
+          type: 'platform_seo_optimize_refund',
+          note: `Refund for failed platform render SEO optimization (${COST_SEO_OPTIMIZE_PLATFORM} credits)`,
+        });
+      } catch (refundErr) {
+        console.error('Failed to refund credits for failed platform optimize:', refundErr);
+      }
+    }
     res.status(500).json({ success: false, error: err.message });
   }
 });
