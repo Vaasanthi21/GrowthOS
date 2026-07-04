@@ -6721,8 +6721,13 @@ app.post('/api/generate-image', authRequired, async (req, res) => {
         }
       }
 
+      const promptWithLogoGuidance =
+        resolvedLogoPlacement && resolvedLogoPlacement !== 'none'
+          ? `${prompt} Logo overlay requirement: leave the ${resolvedLogoPlacement.replace(/-/g, ' ')} logo area clear, empty, and visually unobstructed. Do not place text, icons, faces, UI elements, or important visual details there because the real uploaded logo will be overlaid after generation.`
+          : prompt;
+
       const jobId = startImageGenerationJob({
-        prompt,
+        prompt: promptWithLogoGuidance,
         size,
 
         logoUrl: resolvedLogoUrl,
@@ -6741,7 +6746,7 @@ app.post('/api/generate-image', authRequired, async (req, res) => {
       });
       return res.status(202).json({
         jobId,
-        prompt,
+        prompt: promptWithLogoGuidance,
         size,
         status: getImageJobStatusPayload(imageGenerationJobs.get(jobId)),
         credits: {
