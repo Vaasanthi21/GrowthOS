@@ -1851,6 +1851,10 @@ const generateImageWithAzure = async ({
     }
   };
 
+  console.log('\n=== FINAL AZURE IMAGE PROMPT START ===');
+  console.log(prompt);
+  console.log('=== FINAL AZURE IMAGE PROMPT END ===\n');
+
   let requestBody = {
     prompt,
     size,
