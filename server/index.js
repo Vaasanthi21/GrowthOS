@@ -1,4 +1,11 @@
 import dotenv from 'dotenv';
+if (typeof global !== 'undefined' && !global.DOMMatrix) {
+  global.DOMMatrix = class DOMMatrix {
+    constructor() {
+      this.a = 1; this.b = 0; this.c = 0; this.d = 1; this.e = 0; this.f = 0;
+    }
+  };
+}
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import express from 'express';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
@@ -1713,6 +1720,7 @@ const overlayLogoOnImage = async ({
   imageUrl,
   logoUrl,
   logoPlacement = 'bottom-right',
+  logoScale = 0.02,
 }) => {
   const imageBuffer = await fetchImageBufferFromUrl(imageUrl);
   const logoBuffer = await fetchImageBufferFromUrl(logoUrl);
@@ -1720,7 +1728,12 @@ const overlayLogoOnImage = async ({
   const image = sharp(imageBuffer);
   const metadata = await image.metadata();
 
-  const logoWidth = Math.round((metadata.width || 1024) * 0.18);
+  const baseDimension = Math.min(
+    metadata.width || 1024,
+    metadata.height || 1024
+  );
+
+  const logoWidth = Math.round(baseDimension * logoScale);
 
   const resizedLogo = await sharp(logoBuffer)
     .resize({
@@ -1984,6 +1997,7 @@ if (finalImageUrl && activeLogoUrl && logoPlacement && logoPlacement !== 'none')
       imageUrl: finalImageUrl,
       logoUrl: activeLogoUrl,
       logoPlacement,
+      logoScale: 0.18,
     });
   } catch (err) {
     console.warn('[IMAGE OVERLAY] Sharp overlay failed:', err);
@@ -2112,6 +2126,14 @@ const generateTextVariants = async ({ prompt }) => {
   throw new Error('Generated text response did not contain usable content');
 };
 
+const userQuery = (userId) => {
+  try {
+    return { $in: [String(userId), new ObjectId(userId)] };
+  } catch (e) {
+    return String(userId);
+  }
+};
+
 const createMongoStore = (db) => ({
   type: 'mongo',
   async init() {
@@ -2236,31 +2258,37 @@ const createMongoStore = (db) => ({
     return await db.collection('users').findOne({ _id: new ObjectId(id) });
   },
   async getCompanyByUserId(userId) {
-    return await db.collection('companies').findOne({ user_id: String(userId) });
+    return await db.collection('companies').findOne({ user_id: userQuery(userId) });
   },
   async upsertCompany(userId, companyData) {
     const collection = db.collection('companies');
+    const existing = await collection.findOne({ user_id: userQuery(userId) });
 
-    await collection.updateOne(
-      { user_id: String(userId) },
-      {
-        $set: {
-          ...companyData,
-          user_id: String(userId),
-          updated_at: nowIso(),
-        },
-        $setOnInsert: {
-          created_at: nowIso(),
-        },
-      },
-      { upsert: true }
-    );
-
-    return await collection.findOne({ user_id: String(userId) });
+    if (existing) {
+      await collection.updateOne(
+        { _id: existing._id },
+        {
+          $set: {
+            ...companyData,
+            user_id: existing.user_id,
+            updated_at: nowIso(),
+          },
+        }
+      );
+      return await collection.findOne({ _id: existing._id });
+    } else {
+      const result = await collection.insertOne({
+        ...companyData,
+        user_id: String(userId),
+        created_at: nowIso(),
+        updated_at: nowIso(),
+      });
+      return await collection.findOne({ _id: result.insertedId });
+    }
   },
   async listBlogs(userId) {
     return await db.collection('blogs')
-      .find({ user_id: String(userId) })
+      .find({ user_id: userQuery(userId) })
       .sort({ updated_at: -1, created_at: -1 })
       .toArray();
   },
@@ -2270,7 +2298,7 @@ const createMongoStore = (db) => ({
   },
   async listTopics(userId) {
     return await db.collection('topics')
-      .find({ user_id: String(userId) })
+      .find({ user_id: userQuery(userId) })
       .sort({ updated_at: -1, created_at: -1 })
       .toArray();
   },
@@ -2281,32 +2309,39 @@ const createMongoStore = (db) => ({
   async upsertResearchByTopicId(userId, topicId, researchData) {
     const timestamp = nowIso();
     const collection = db.collection('research');
+    const existing = await collection.findOne({ user_id: userQuery(userId), topic_id: String(topicId) });
 
-    await collection.updateOne(
-      { user_id: String(userId), topic_id: String(topicId) },
-      {
-        $set: {
-          ...researchData,
-          user_id: String(userId),
-          topic_id: String(topicId),
-          updated_at: timestamp,
-        },
-        $setOnInsert: {
-          created_at: timestamp,
-        },
-      },
-      { upsert: true }
-    );
-
-    return await collection.findOne({ user_id: String(userId), topic_id: String(topicId) });
+    if (existing) {
+      await collection.updateOne(
+        { _id: existing._id },
+        {
+          $set: {
+            ...researchData,
+            user_id: existing.user_id,
+            topic_id: String(topicId),
+            updated_at: timestamp,
+          },
+        }
+      );
+      return await collection.findOne({ _id: existing._id });
+    } else {
+      const result = await collection.insertOne({
+        ...researchData,
+        user_id: String(userId),
+        topic_id: String(topicId),
+        created_at: timestamp,
+        updated_at: timestamp,
+      });
+      return await collection.findOne({ _id: result.insertedId });
+    }
   },
   async findResearchByTopicId(userId, topicId) {
     return await db.collection('research')
-      .findOne({ user_id: String(userId), topic_id: String(topicId) });
+      .findOne({ user_id: userQuery(userId), topic_id: String(topicId) });
   },
   async listResearch(userId) {
     return await db.collection('research')
-      .find({ user_id: String(userId) })
+      .find({ user_id: userQuery(userId) })
       .sort({ updated_at: -1, created_at: -1 })
       .toArray();
   },
@@ -2477,7 +2512,7 @@ const createMongoStore = (db) => ({
       return await this.insertHistory(entry);
     }
 
-    const query = { user_id: entry.user_id };
+    const query = { user_id: userQuery(entry.user_id) };
     if (sessionRootHistoryId) {
       query.$or = [
         { session_root_history_id: sessionRootHistoryId },
@@ -2523,19 +2558,19 @@ const createMongoStore = (db) => ({
   },
   async updateHistoryStatus(id, userId) {
     await db.collection('content_history').updateOne(
-      { _id: new ObjectId(id), user_id: userId },
+      { _id: new ObjectId(id), user_id: userQuery(userId) },
       { $set: { status: 'deleted', deleted_at: nowIso() } }
     );
     return await db.collection('content_history').findOne({ _id: new ObjectId(id) });
   },
   async listCompanyPersonas(userId) {
-    return await db.collection('company_personas').find({ user_id: userId }).sort({ created_at: -1 }).toArray();
+    return await db.collection('company_personas').find({ user_id: userQuery(userId) }).sort({ created_at: -1 }).toArray();
   },
   async countCompanyPersonas(userId) {
-    return await db.collection('company_personas').countDocuments({ user_id: userId });
+    return await db.collection('company_personas').countDocuments({ user_id: userQuery(userId) });
   },
   async findCompanyPersonaById(id, userId) {
-    return await db.collection('company_personas').findOne({ _id: new ObjectId(id), user_id: userId });
+    return await db.collection('company_personas').findOne({ _id: new ObjectId(id), user_id: userQuery(userId) });
   },
   async insertCompanyPersona(persona) {
     const result = await db.collection('company_personas').insertOne(persona);
@@ -2543,20 +2578,20 @@ const createMongoStore = (db) => ({
   },
   async updateCompanyPersona(id, userId, updates) {
     await db.collection('company_personas').updateOne(
-      { _id: new ObjectId(id), user_id: userId },
+      { _id: new ObjectId(id), user_id: userQuery(userId) },
       { $set: updates }
     );
-    return await db.collection('company_personas').findOne({ _id: new ObjectId(id), user_id: userId });
+    return await db.collection('company_personas').findOne({ _id: new ObjectId(id), user_id: userQuery(userId) });
   },
   async deleteCompanyPersona(id, userId) {
-    const result = await db.collection('company_personas').deleteOne({ _id: new ObjectId(id), user_id: userId });
+    const result = await db.collection('company_personas').deleteOne({ _id: new ObjectId(id), user_id: userQuery(userId) });
     return result.deletedCount > 0;
   },
   async listKnowledgeSources(userId) {
-    return await db.collection('knowledge_sources').find({ user_id: userId }).sort({ updated_at: -1 }).toArray();
+    return await db.collection('knowledge_sources').find({ user_id: userQuery(userId) }).sort({ updated_at: -1 }).toArray();
   },
   async findKnowledgeSourceById(id, userId) {
-    return await db.collection('knowledge_sources').findOne({ _id: new ObjectId(id), user_id: userId });
+    return await db.collection('knowledge_sources').findOne({ _id: new ObjectId(id), user_id: userQuery(userId) });
   },
   async insertKnowledgeSource(source) {
     const result = await db.collection('knowledge_sources').insertOne(source);
@@ -2564,13 +2599,13 @@ const createMongoStore = (db) => ({
   },
   async updateKnowledgeSource(id, userId, updates) {
     await db.collection('knowledge_sources').updateOne(
-      { _id: new ObjectId(id), user_id: userId },
+      { _id: new ObjectId(id), user_id: userQuery(userId) },
       { $set: updates }
     );
-    return await db.collection('knowledge_sources').findOne({ _id: new ObjectId(id), user_id: userId });
+    return await db.collection('knowledge_sources').findOne({ _id: new ObjectId(id), user_id: userQuery(userId) });
   },
   async deleteKnowledgeSource(id, userId) {
-    const result = await db.collection('knowledge_sources').deleteOne({ _id: new ObjectId(id), user_id: userId });
+    const result = await db.collection('knowledge_sources').deleteOne({ _id: new ObjectId(id), user_id: userQuery(userId) });
     return result.deletedCount > 0;
   },
   async saveImageGeneration(entry) {
@@ -2861,18 +2896,78 @@ Generate structured factual summary now:`;
   return await callAzureOpenAI(systemPrompt, userPrompt, 0.3);
 };
 
-const analyzeLogoColors = async (imageUrl) => {
+const describeColorPalette = async (colors) => {
+  try {
+    const systemPrompt = "You are a Visual Identity Designer. Describe the brand color palette formed by these HEX colors in a single concise sentence (e.g., 'A color palette of dark blue and white' or 'A combination of warm coral orange and slate gray'). Respond ONLY with the sentence.";
+    const userPrompt = `HEX colors: ${colors.join(', ')}`;
+    const description = await callAzureOpenAI(systemPrompt, userPrompt, 0.3);
+    return description.trim();
+  } catch (err) {
+    console.warn("Failed to describe color palette with AI:", err.message);
+    return `A brand color palette consisting of ${colors.join(', ')}.`;
+  }
+};
+
+const analyzeLogoColors = async (imageUrl, imageBuffer = null, contentType = '') => {
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
   const apiKey = process.env.AZURE_OPENAI_API_KEY;
   const deploymentName = process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-4';
 
   if (!endpoint || !apiKey) {
     console.warn("Azure credentials missing for vision analysis.");
-    return { colors: ['#f25b18', '#1c1c1e'], description: 'Default warm slate palette.' };
+    return { colors: ['#f25b18', '#1c1c1e'], description: 'Default fallback palette.' };
   }
 
-  let targetImageUrl = imageUrl;
-  if (imageUrl && imageUrl.startsWith('http')) {
+  let activeBuffer = imageBuffer;
+  let activeContentType = contentType;
+
+  // 1. Handle SVG files directly by parsing their hex colors
+  if (activeContentType === 'image/svg+xml' && activeBuffer) {
+    try {
+      const svgText = Buffer.from(activeBuffer).toString('utf-8');
+      const hexRegex = /#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})\b/g;
+      const matches = svgText.match(hexRegex) || [];
+      const uniqueColors = [...new Set(matches.map(c => {
+        let col = c.toLowerCase();
+        if (col.length === 4) { // shorthand hex #fff -> #ffffff
+          col = '#' + col[1] + col[1] + col[2] + col[2] + col[3] + col[3];
+        }
+        return col;
+      }))];
+      
+      const hasWhite = /fill=["']white["']/i.test(svgText) || 
+                       /stroke=["']white["']/i.test(svgText) || 
+                       /fill:\s*white/i.test(svgText) || 
+                       /stroke:\s*white/i.test(svgText) ||
+                       /rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)/i.test(svgText);
+                       
+      const hasBlack = /fill=["']black["']/i.test(svgText) || 
+                       /stroke=["']black["']/i.test(svgText) || 
+                       /fill:\s*black/i.test(svgText) || 
+                       /stroke:\s*black/i.test(svgText) ||
+                       /rgb\(\s*0\s*,\s*0\s*,\s*0\s*\)/i.test(svgText);
+
+      if (hasWhite && !uniqueColors.includes('#ffffff')) {
+        uniqueColors.push('#ffffff');
+      }
+      if (hasBlack && !uniqueColors.includes('#000000')) {
+        uniqueColors.push('#000000');
+      }
+
+      const finalColors = uniqueColors.length > 0 ? uniqueColors : ['#f25b18', '#1c1c1e'];
+      const desc = await describeColorPalette(finalColors);
+      
+      return {
+        colors: finalColors.slice(0, 5),
+        description: desc
+      };
+    } catch (svgErr) {
+      console.warn("Failed to parse SVG logo colors:", svgErr.message);
+    }
+  }
+
+  // 2. Fetch image if buffer is not provided
+  if (!activeBuffer && imageUrl && imageUrl.startsWith('http')) {
     try {
       const response = await axios.get(imageUrl, {
         responseType: 'arraybuffer',
@@ -2883,54 +2978,66 @@ const analyzeLogoColors = async (imageUrl) => {
         }
       });
       if (response.status === 200) {
-        const contentType = response.headers['content-type'] || 'image/png';
-        const base64Data = Buffer.from(response.data).toString('base64');
-        targetImageUrl = `data:${contentType};base64,${base64Data}`;
+        activeBuffer = response.data;
+        activeContentType = response.headers['content-type'] || 'image/png';
       }
     } catch (e) {
       console.warn("Failed to download image for base64 vision input:", e.message);
     }
   }
 
-  const systemPrompt = `You are a Visual Identity Designer.
+  // 3. Reject unsupported formats (like ico) or call Vision API for png/jpeg/webp/gif
+  if (activeBuffer && activeContentType && activeContentType.startsWith('image/')) {
+    if (activeContentType.includes('icon') || activeContentType.includes('microsoft')) {
+      const desc = await describeColorPalette(['#f25b18', '#1c1c1e']);
+      return { colors: ['#f25b18', '#1c1c1e'], description: desc };
+    }
+
+    const base64Data = Buffer.from(activeBuffer).toString('base64');
+    const targetImageUrl = `data:${activeContentType};base64,${base64Data}`;
+
+    const systemPrompt = `You are a Visual Identity Designer.
 Analyze the company logo and identify the dominant brand colors.
 Respond ONLY with a JSON object containing two fields:
 1. "colors": an array of HEX strings of the top 3-5 dominant colors (e.g., ["#F25B18", "#181C25"])
 2. "description": a concise, single-sentence description of the brand color palette (e.g., "A combination of warm coral orange, dark slate, and clean white accents.")
 Ensure your output is raw JSON only.`;
 
-  const cleanEndpoint = endpoint.endsWith('/') ? endpoint.slice(0, -1) : endpoint;
-  const url = `${cleanEndpoint}/openai/deployments/${deploymentName}/chat/completions?api-version=2024-02-15-preview`;
+    const cleanEndpoint = endpoint.endsWith('/') ? endpoint.slice(0, -1) : endpoint;
+    const url = `${cleanEndpoint}/openai/deployments/${deploymentName}/chat/completions?api-version=2024-02-15-preview`;
 
-  try {
-    const response = await axios.post(url, {
-      messages: [
-        { role: 'system', content: systemPrompt },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: 'Extract the dominant color palette from this logo.' },
-            { type: 'image_url', image_url: { url: targetImageUrl } }
-          ]
-        }
-      ],
-      max_completion_tokens: 150
-    }, {
-      headers: { 'api-key': apiKey, 'Content-Type': 'application/json' }
-    });
+    try {
+      const response = await axios.post(url, {
+        messages: [
+          { role: 'system', content: systemPrompt },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Extract the dominant color palette from this logo.' },
+              { type: 'image_url', image_url: { url: targetImageUrl } }
+            ]
+          }
+        ],
+        max_completion_tokens: 150
+      }, {
+        headers: { 'api-key': apiKey, 'Content-Type': 'application/json' }
+      });
 
-    let cleanText = response.data.choices[0].message.content.trim();
-    if (cleanText.startsWith('```json')) cleanText = cleanText.substring(7);
-    if (cleanText.endsWith('```')) cleanText = cleanText.substring(0, cleanText.length - 3);
-    cleanText = cleanText.trim();
-    return JSON.parse(cleanText);
-  } catch (err) {
-    if (err.response && err.response.data) {
-      console.error('[VISION ERROR DETAILS]:', JSON.stringify(err.response.data, null, 2));
+      let cleanText = response.data.choices[0].message.content.trim();
+      if (cleanText.startsWith('```json')) cleanText = cleanText.substring(7);
+      if (cleanText.endsWith('```')) cleanText = cleanText.substring(0, cleanText.length - 3);
+      cleanText = cleanText.trim();
+      return JSON.parse(cleanText);
+    } catch (err) {
+      if (err.response && err.response.data) {
+        console.error('[VISION ERROR DETAILS]:', JSON.stringify(err.response.data, null, 2));
+      }
+      console.error("Vision logo analysis failed:", err.message);
     }
-    console.error("Vision logo analysis failed:", err.message);
-    return { colors: ['#f25b18', '#1c1c1e'], description: 'Default fallback palette.' };
   }
+
+  const desc = await describeColorPalette(['#f25b18', '#1c1c1e']);
+  return { colors: ['#f25b18', '#1c1c1e'], description: desc };
 };
 
 const extractBrandProfileAndPersonas = async (text) => {
@@ -3771,7 +3878,7 @@ const cleanHtmlToText = (html) => {
   
   let result = text.trim();
   if (metaText) {
-    result = `${metaText}\n	ext`;
+    result = `${metaText}\n${text}`;
   }
   return result.trim();
 };
@@ -3787,23 +3894,46 @@ app.get('/api/company', authRequired, async (req, res) => {
 });
 
 app.post('/api/company', authRequired, async (req, res) => {
-  const { companyName, website, brandVoice, targetAudience } = req.body;
-  const company = {
-    user_id: req.user._id,
-    companyName: companyName || '',
-    website: website || '',
-    brandVoice: brandVoice || [],
-    targetAudience: targetAudience || '',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  };
-  const result = await rawDb.collection('companies').insertOne(company);
-  const created = await rawDb.collection('companies').findOne({ _id: result.insertedId });
-  
-  // Link to user profile
-  await rawDb.collection('users').updateOne({ _id: req.user._id }, { $set: { companyId: result.insertedId } });
-  
-  res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
+  try {
+    const { 
+      companyName, 
+      website, 
+      brandVoice, 
+      targetAudience,
+      industry,
+      productDescription,
+      competitors,
+      logo,
+      brandColors,
+      brandColorsDescription
+    } = req.body;
+
+    const company = {
+      user_id: req.user._id,
+      companyName: companyName || '',
+      website: website || '',
+      brandVoice: brandVoice || '',
+      targetAudience: targetAudience || '',
+      industry: industry || '',
+      productDescription: productDescription || '',
+      competitors: competitors || [],
+      logo: logo || '',
+      brandColors: logo === '' ? [] : (brandColors || []),
+      brandColorsDescription: logo === '' ? '' : (brandColorsDescription || ''),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    const result = await rawDb.collection('companies').insertOne(company);
+    const created = await rawDb.collection('companies').findOne({ _id: result.insertedId });
+    
+    // Link to user profile
+    await rawDb.collection('users').updateOne({ _id: req.user._id }, { $set: { companyId: result.insertedId } });
+    
+    res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.put('/api/company/:id', authRequired, async (req, res) => {
@@ -3835,12 +3965,32 @@ app.put('/api/company/:id', authRequired, async (req, res) => {
       updated_at: new Date().toISOString()
     };
 
-    await rawDb.collection('companies').updateOne(
-      { _id: new ObjectId(req.params.id), user_id: req.user._id },
-      { $set: updates },
-      { upsert: true }
-    );
-    const updated = await rawDb.collection('companies').findOne({ _id: new ObjectId(req.params.id) });
+    let companyId;
+    if (req.params.id && req.params.id !== 'undefined' && req.params.id !== 'null' && ObjectId.isValid(req.params.id)) {
+      companyId = new ObjectId(req.params.id);
+    } else {
+      const existing = await rawDb.collection('companies').findOne({ user_id: req.user._id });
+      if (existing) {
+        companyId = existing._id;
+      }
+    }
+
+    if (companyId) {
+      await rawDb.collection('companies').updateOne(
+        { _id: companyId, user_id: req.user._id },
+        { $set: updates }
+      );
+    } else {
+      const result = await rawDb.collection('companies').insertOne({
+        ...updates,
+        user_id: req.user._id,
+        created_at: new Date().toISOString()
+      });
+      companyId = result.insertedId;
+      await rawDb.collection('users').updateOne({ _id: req.user._id }, { $set: { companyId: result.insertedId } });
+    }
+
+    const updated = await rawDb.collection('companies').findOne({ _id: companyId });
     res.json({ success: true, data: { ...updated, id: updated._id.toString() } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -4052,16 +4202,19 @@ app.post('/api/knowledge/crawl', authRequired, async (req, res) => {
             'Accept': 'image/*'
           }
         });
-        if (logoResponse.status === 200) {
+        const contentType = logoResponse.headers['content-type'] || '';
+        if (logoResponse.status === 200 && contentType.startsWith('image/')) {
           const filename = rawLogoUrl.split('/').pop() || 'logo.png';
-          logoUrl = await uploadToS3(logoResponse.data, filename, logoResponse.headers['content-type'] || 'image/png');
+          logoUrl = await uploadToS3(logoResponse.data, filename, contentType);
           console.log(`[CRAWLER] Logo uploaded successfully to S3: ${logoUrl}`);
 
-          // Extract colors using Vision
-          const colorAnalysis = await analyzeLogoColors(logoUrl);
+          // Extract colors using Vision / SVG fallback
+          const colorAnalysis = await analyzeLogoColors(logoUrl, logoResponse.data, contentType);
           brandColors = colorAnalysis.colors || [];
           brandColorsDescription = colorAnalysis.description || '';
           console.log(`[CRAWLER] Vision analyzed brand colors: ${JSON.stringify(brandColors)}`);
+        } else {
+          console.log(`[CRAWLER] Logo URL is not a valid image. Content-Type: ${contentType}`);
         }
       }
     } catch (logoErr) {
@@ -5307,7 +5460,20 @@ app.post('/api/images/generate', authRequired, async (req, res) => {
             const contentType = bufferResponse.headers['content-type'];
             if (contentType) mimeType = contentType;
           }
-          const s3Url = await uploadToS3(buffer, `dalle_${blogId}_${Date.now()}.png`, mimeType);
+          let s3Url = await uploadToS3(buffer, `dalle_${blogId}_${Date.now()}.png`, mimeType);
+          if (company && company.logo) {
+            try {
+              console.log('[IMAGE GENERATION LOGO OVERLAY] Overlaying logo:', company.logo);
+              const overlaidUrl = await overlayLogoOnImage({
+                imageUrl: s3Url,
+                logoUrl: company.logo,
+                logoPlacement: 'bottom-right',
+              });
+              s3Url = overlaidUrl;
+            } catch (overlayErr) {
+              console.error('[IMAGE GENERATION LOGO OVERLAY FAILED]', overlayErr);
+            }
+          }
           imageUrl = s3Url;
         } catch (uploadErr) {
           console.warn('[IMAGE UPLOAD WARNING] Failed to upload image to S3, using source/temp URL:', uploadErr.message);
@@ -6389,6 +6555,7 @@ app.post('/api/generate-image', authRequired, async (req, res) => {
       note: `Image generation charge (${imageCost} credit${imageCost === 1 ? '' : 's'})`,
     });
 
+    const company = await rawDb.collection('companies').findOne({ user_id: userQuery(userId) }) || {};
     const platform = req.body?.platform || null;
     const topic = String(req.body?.topic || '').trim();
     const contentType = String(req.body?.contentType || '').trim();
@@ -6449,7 +6616,11 @@ app.post('/api/generate-image', authRequired, async (req, res) => {
       const jobId = startImageGenerationJob({
         prompt,
         size,
+
         logoUrl: resolvedLogoUrl,
+
+        logoUrl: company?.logo || company?.logoUrl || companyPersona?.logoUrl || companyPersona?.logo_url || '',
+
         logoPlacement: resolvedLogoPlacement,
         onFailed: async ({ error }) => {
           await refundGenerationCredits({
@@ -6858,7 +7029,7 @@ app.post('/api/knowledge/crawl', authRequired, async (req, res) => {
         company: company.companyName || companyName,
         name: `${company.companyName || companyName} Brand Persona`,
         tagline: '',
-        logo_url: company.logo || '',
+        logo_url: company.logoUrl || company.logo || '',
         logo_placement: 'none',
         preserve_original_logo: true,
         audience: company.targetAudience || '',
