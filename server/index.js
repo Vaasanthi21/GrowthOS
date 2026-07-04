@@ -1705,6 +1705,7 @@ const overlayLogoOnImage = async ({
   const logoWidth = Math.round((metadata.width || 1024) * logoScale);
 
   const resizedLogo = await sharp(logoBuffer)
+    .trim()
     .resize({
       width: logoWidth,
       withoutEnlargement: true,
