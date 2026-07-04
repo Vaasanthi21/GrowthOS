@@ -4163,10 +4163,17 @@ app.post('/api/knowledge/crawl', authRequired, async (req, res) => {
   if (!url) {
     return res.status(400).json({ success: false, error: 'URL is required' });
   }
+  const userId = req.user.id || req.user._id.toString();
+  let crawlChargeResult = null;
   try {
     await checkOrCreateShellCompany(req.user._id);
-    
-    // Credit charging disabled
+
+    crawlChargeResult = await chargeCreditsForGeneration({
+      userId,
+      amount: COST_WEBSITE_CRAWL,
+      type: 'website_crawl',
+      note: `Website crawl charge (${COST_WEBSITE_CRAWL} credits)`,
+    });
 
     const cleanUrl = url.trim();
     const response = await axios.get(cleanUrl, {
@@ -4280,6 +4287,14 @@ app.post('/api/knowledge/crawl', authRequired, async (req, res) => {
     const created = await rawDb.collection('knowledge_sources').findOne({ _id: result.insertedId });
     res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
   } catch (err) {
+    if (crawlChargeResult) {
+      await refundGenerationCredits({
+        userId,
+        amount: COST_WEBSITE_CRAWL,
+        type: 'website_crawl_refund',
+        note: `Refund for failed website crawl (${COST_WEBSITE_CRAWL} credits)`,
+      });
+    }
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -4585,6 +4600,9 @@ app.get('/api/blogs/:id', authRequired, async (req, res) => {
 });
 
 app.post('/api/blogs/generate', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+  const blogGenerationCost = COST_RESEARCH_SYNTHESIS + COST_CANONICAL_BLOG;
+  let blogChargeResult = null;
   try {
     const { topicId, customAngle } = req.body;
     if (!topicId) {
@@ -4596,6 +4614,13 @@ app.post('/api/blogs/generate', authRequired, async (req, res) => {
     if (!topic) {
       return res.status(404).json({ success: false, error: 'Topic not found' });
     }
+
+    blogChargeResult = await chargeCreditsForGeneration({
+      userId,
+      amount: blogGenerationCost,
+      type: 'blog_generation',
+      note: `Canonical blog generation incl. SEO market research (${blogGenerationCost} credits)`,
+    });
 
     // 2. Fetch Company details
     const company = await rawDb.collection('companies').findOne({ user_id: req.user._id }) || {
@@ -4776,6 +4801,14 @@ Generate JSON payload now:`;
     res.status(201).json({ success: true, data: mapBlogDocument(created) });
   } catch (err) {
     console.error("Blog generation failed:", err.message);
+    if (blogChargeResult) {
+      await refundGenerationCredits({
+        userId,
+        amount: blogGenerationCost,
+        type: 'blog_generation_refund',
+        note: `Refund for failed blog generation (${blogGenerationCost} credits)`,
+      });
+    }
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -5094,6 +5127,8 @@ app.delete('/api/blogs/:id', authRequired, async (req, res) => {
 
 // 7. Render/Adaptations endpoints
 app.post('/api/render/:platform', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
+  let renderChargeResult = null;
   try {
     const { platform } = req.params;
     const { blogId } = req.body;
@@ -5104,6 +5139,13 @@ app.post('/api/render/:platform', authRequired, async (req, res) => {
     if (!blog) {
       return res.status(404).json({ success: false, error: 'Blog not found' });
     }
+
+    renderChargeResult = await chargeCreditsForGeneration({
+      userId,
+      amount: COST_PLATFORM_ADAPTATION,
+      type: 'platform_render',
+      note: `${platform} rendering charge (${COST_PLATFORM_ADAPTATION} credits)`,
+    });
 
     // Resolve platform config rules
     let searchName = platform.replace('-', ' ');
@@ -5234,6 +5276,14 @@ Render the tailored JSON payload now:`;
     res.status(201).json({ success: true, data: { ...created, id: created._id.toString() } });
   } catch (err) {
     console.error("Platform render failed:", err.message);
+    if (renderChargeResult) {
+      await refundGenerationCredits({
+        userId,
+        amount: COST_PLATFORM_ADAPTATION,
+        type: 'platform_render_refund',
+        note: `Refund for failed ${req.params.platform} rendering (${COST_PLATFORM_ADAPTATION} credits)`,
+      });
+    }
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -5424,9 +5474,18 @@ app.get('/api/images/:blogId', authRequired, async (req, res) => {
 
 app.post('/api/images/generate', authRequired, async (req, res) => {
   const { blogId, dimensions, platform } = req.body;
+  const userId = req.user.id || req.user._id.toString();
+  let coverImageChargeResult = null;
   try {
     const blog = await rawDb.collection('blogs').findOne({ _id: new ObjectId(blogId), user_id: req.user._id });
     if (!blog) return res.status(404).json({ success: false, error: 'Blog not found' });
+
+    coverImageChargeResult = await chargeCreditsForGeneration({
+      userId,
+      amount: COST_COVER_IMAGE,
+      type: 'cover_image_generation',
+      note: `Cover image generation charge (${COST_COVER_IMAGE} credits)`,
+    });
 
     const company = await rawDb.collection('companies').findOne({ user_id: req.user._id }) || {};
     const campaign = await rawDb.collection('topics').findOne({ _id: blog.topicId }) || {};
