@@ -208,7 +208,7 @@ const sanitizeCompanyPersona = (persona) => ({
   id: persona.id || persona._id?.toString?.() || persona._id,
   user_id: persona.user_id,
   company: persona.company || '',
-  name: persona.name || '',
+  name: persona.name || persona.personaName || '',
   tagline: persona.tagline || '',
   logo_url: persona.logo_url || '',
   logo_placement: persona.logo_placement || 'none',
@@ -6694,6 +6694,7 @@ app.post('/api/generate-image', authRequired, async (req, res) => {
       topic,
       companyPersona: companyPersona ? {
         ...companyPersona,
+        company: companyPersona.company || company.companyName || '',
         logoPlacementOverride: logoPlacement === 'persona-default'
           ? (companyPersona.logo_placement || companyPersona.logoPlacement || 'none')
           : (logoPlacement || companyPersona.logo_placement || companyPersona.logoPlacement || 'none'),
@@ -6715,17 +6716,7 @@ app.post('/api/generate-image', authRequired, async (req, res) => {
           : (logoPlacement || companyPersona?.logo_placement || companyPersona?.logoPlacement || 'none')
       ).trim().replace('_', '-');
       
-      let resolvedLogoUrl = companyPersona?.logoUrl || companyPersona?.logo_url || '';
-      if (!resolvedLogoUrl && req.user.companyId) {
-        try {
-          const companyObj = await db.collection('companies').findOne({ _id: new ObjectId(req.user.companyId) });
-          if (companyObj && companyObj.logo) {
-            resolvedLogoUrl = companyObj.logo;
-          }
-        } catch (err) {
-          console.error('[GENERATE IMAGE ASYNC] Failed to fetch company logo:', err);
-        }
-      }
+      const resolvedLogoUrl = companyPersona?.logoUrl || companyPersona?.logo_url || company?.logo || '';
 
       const promptWithLogoGuidance =
         resolvedLogoPlacement && resolvedLogoPlacement !== 'none'
@@ -6768,17 +6759,7 @@ app.post('/api/generate-image', authRequired, async (req, res) => {
         : (logoPlacement || companyPersona?.logo_placement || companyPersona?.logoPlacement || 'none')
     ).trim().replace('_', '-');
 
-    let resolvedLogoUrl = companyPersona?.logoUrl || companyPersona?.logo_url || '';
-    if (!resolvedLogoUrl && req.user.companyId) {
-      try {
-        const companyObj = await db.collection('companies').findOne({ _id: new ObjectId(req.user.companyId) });
-        if (companyObj && companyObj.logo) {
-          resolvedLogoUrl = companyObj.logo;
-        }
-      } catch (err) {
-        console.error('[GENERATE IMAGE SYNC] Failed to fetch company logo:', err);
-      }
-    }
+    const resolvedLogoUrl = companyPersona?.logoUrl || companyPersona?.logo_url || company?.logo || '';
 
     const image = await generateImageWithAzure({
       prompt,
@@ -6834,7 +6815,7 @@ app.post('/api/generate-video', authRequired, async (req, res) => {
       type: 'generation_video',
       note: `Video generation charge (${videoCost} credit${videoCost === 1 ? '' : 's'})`,
     });
-
+    const company = await rawDb.collection('companies').findOne({ user_id: userQuery(userId) }) || {};
     const platform = req.body?.platform || null;
     const topic = String(req.body?.topic || '').trim();
     const contentType = String(req.body?.contentType || '').trim();
@@ -6856,6 +6837,7 @@ app.post('/api/generate-video', authRequired, async (req, res) => {
       topic,
       companyPersona: companyPersona ? {
         ...companyPersona,
+        company: companyPersona.company || company.companyName || '',
         logoPlacementOverride: logoPlacement === 'persona-default'
           ? (companyPersona.logo_placement || companyPersona.logoPlacement || 'none')
           : (logoPlacement || companyPersona.logo_placement || companyPersona.logoPlacement || 'none'),
@@ -6874,17 +6856,7 @@ app.post('/api/generate-video', authRequired, async (req, res) => {
         : (logoPlacement || companyPersona?.logo_placement || companyPersona?.logoPlacement || 'none')
     ).trim().replace('_', '-');
 
-    let resolvedLogoUrl = companyPersona?.logoUrl || companyPersona?.logo_url || '';
-    if (!resolvedLogoUrl && req.user.companyId) {
-      try {
-        const companyObj = await db.collection('companies').findOne({ _id: new ObjectId(req.user.companyId) });
-        if (companyObj && companyObj.logo) {
-          resolvedLogoUrl = companyObj.logo;
-        }
-      } catch (err) {
-        console.error('[GENERATE VIDEO] Failed to fetch company logo:', err);
-      }
-    }
+    const resolvedLogoUrl = companyPersona?.logoUrl || companyPersona?.logo_url || company?.logo || '';
 
     const jobId = startVideoGenerationJob({
       prompt,
