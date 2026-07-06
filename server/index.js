@@ -2569,6 +2569,9 @@ const createMongoStore = (db) => ({
   async countCompanyPersonas(userId) {
     return await db.collection('company_personas').countDocuments({ user_id: userQuery(userId) });
   },
+  async countCompanies(userId) {
+    return await db.collection('companies').countDocuments({ user_id: userQuery(userId) });
+  },
   async findCompanyPersonaById(id, userId) {
     return await db.collection('company_personas').findOne({ _id: new ObjectId(id), user_id: userQuery(userId) });
   },
@@ -6037,6 +6040,7 @@ app.get('/api/user/metrics', authRequired, async (req, res) => {
     (row) => new Date(row.created_date) >= thisMonthStart
   ).length;
   const companyPersonaCount = await store.countCompanyPersonas(userId);
+  const companyCount = await store.countCompanies(userId);
   const user = await store.findUserById(userId);
   const planName = user?.plan_name || req.user.plan_name || 'Free';
   const personaLimit = normalizeCreditValue(user?.persona_limit, getPersonaLimitForPlan(planName));
@@ -6048,6 +6052,8 @@ app.get('/api/user/metrics', authRequired, async (req, res) => {
     planId: req.user.plan_id || null,
     companyPersonaCount,
     companyPersonaLimit: personaLimit,
+    companyCount,
+    companyLimit: personaLimit,
   });
 });
 app.get('/api/company', authRequired, async (req, res) => {
