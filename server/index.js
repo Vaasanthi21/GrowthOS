@@ -6045,6 +6045,7 @@ app.get('/api/user/metrics', authRequired, async (req, res) => {
   ).length;
   const companyPersonaCount = await store.countCompanyPersonas(userId);
   const companyCount = await store.countCompanies(userId);
+  const company = await store.getCompanyByUserId(userId);
   const user = await store.findUserById(userId);
   const planName = user?.plan_name || req.user.plan_name || 'Free';
   const personaLimit = normalizeCreditValue(user?.persona_limit, getPersonaLimitForPlan(planName));
@@ -6058,6 +6059,7 @@ app.get('/api/user/metrics', authRequired, async (req, res) => {
     companyPersonaLimit: personaLimit,
     companyCount,
     companyLimit: personaLimit,
+    brandLogoUrl: company?.logo || '',
   });
 });
 app.get('/api/company', authRequired, async (req, res) => {
