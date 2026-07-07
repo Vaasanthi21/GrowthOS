@@ -1997,7 +1997,7 @@ if (finalImageUrl && activeLogoUrl && logoPlacement && logoPlacement !== 'none')
       imageUrl: finalImageUrl,
       logoUrl: activeLogoUrl,
       logoPlacement,
-      logoScale: 0.18,
+      logoScale: 0.08,
     });
   } catch (err) {
     console.warn('[IMAGE OVERLAY] Sharp overlay failed:', err);
@@ -5575,7 +5575,7 @@ app.post('/api/images/generate', authRequired, async (req, res) => {
                 imageUrl: s3Url,
                 logoUrl: company.logo,
                 logoPlacement: 'bottom-right',
-                logoScale: 0.18,
+                logoScale: 0.08,
               });
               s3Url = overlaidUrl;
             } catch (overlayErr) {
