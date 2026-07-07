@@ -5575,6 +5575,7 @@ app.post('/api/images/generate', authRequired, async (req, res) => {
                 imageUrl: s3Url,
                 logoUrl: company.logo,
                 logoPlacement: 'bottom-right',
+                logoScale: 0.18,
               });
               s3Url = overlaidUrl;
             } catch (overlayErr) {
