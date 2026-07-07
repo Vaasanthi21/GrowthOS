@@ -1281,6 +1281,8 @@ const selectAzureImageSize = ({ platform, contentType, aspectRatio, width, heigh
     '1:1': '1024x1024',
     '9:16': '1024x1792',
     '16:9': '1792x1024',
+    '4:5': '1024x1792',
+    '1.91:1': '1792x1024',
   };
 
   if (aspectRatioSizeMap[normalizedAspectRatio]) {
@@ -1552,7 +1554,7 @@ const startVideoGenerationJob = ({ prompt, aspectRatio = '', logoUrl = '', logoP
   return jobId;
 };
 
-const runImageGenerationJobDirectly = async ({ jobId, prompt, size, logoUrl = '', logoPlacement = 'none', onCompleted, onFailed }) => {
+const runImageGenerationJobDirectly = async ({ jobId, prompt, size, logoUrl = '', logoPlacement = 'none', targetWidth = null, targetHeight = null, onCompleted, onFailed }) => {
   const startedAt = Date.now();
   updateImageJob(jobId, {
     status: 'processing',
@@ -1574,6 +1576,8 @@ const runImageGenerationJobDirectly = async ({ jobId, prompt, size, logoUrl = ''
       size,
       logoUrl,
       logoPlacement,
+      targetWidth,
+      targetHeight,
     });
 
     clearTimeout(phaseTimer);
@@ -1624,7 +1628,7 @@ const runImageGenerationJobDirectly = async ({ jobId, prompt, size, logoUrl = ''
   }
 };
 
-const startImageGenerationJob = ({ prompt, size, logoUrl = '', logoPlacement = 'none', onCompleted, onFailed }) => {
+const startImageGenerationJob = ({ prompt, size, logoUrl = '', logoPlacement = 'none', targetWidth = null, targetHeight = null, onCompleted, onFailed }) => {
   const jobId = createImageJobId();
   const startedAt = Date.now();
   const estimatedTotalMs = getAverageImageGenerationDurationMs();
@@ -1640,6 +1644,8 @@ const startImageGenerationJob = ({ prompt, size, logoUrl = '', logoPlacement = '
     estimatedTotalMs,
     logoUrl,
     logoPlacement,
+    targetWidth,
+    targetHeight,
     completedAt: null,
     error: null,
     result: null,
@@ -1655,6 +1661,8 @@ const startImageGenerationJob = ({ prompt, size, logoUrl = '', logoPlacement = '
       size,
       logoUrl,
       logoPlacement,
+      targetWidth,
+      targetHeight,
       onCompleted,
       onFailed
     });
@@ -1666,6 +1674,8 @@ const startImageGenerationJob = ({ prompt, size, logoUrl = '', logoPlacement = '
       size,
       logoUrl,
       logoPlacement,
+      targetWidth,
+      targetHeight,
     }).catch((error) => {
       console.warn(`[IMAGE JOB] Failed to add to imageQueue, running directly in-memory:`, error.message);
       void runImageGenerationJobDirectly({
@@ -1674,6 +1684,8 @@ const startImageGenerationJob = ({ prompt, size, logoUrl = '', logoPlacement = '
         size,
         logoUrl,
         logoPlacement,
+        targetWidth,
+        targetHeight,
         onCompleted,
         onFailed
       });
@@ -1802,11 +1814,33 @@ const overlayLogoOnImage = async ({
   });
 };
 
+const resizeImageToExactDimensions = async ({ imageUrl, width, height }) => {
+  const buffer = await fetchImageBufferFromUrl(imageUrl);
+
+  const resizedBuffer = await sharp(buffer)
+    .resize({
+      width,
+      height,
+      fit: 'cover',
+      position: 'centre',
+    })
+    .png()
+    .toBuffer();
+
+  return await uploadImageBufferToS3({
+    buffer: resizedBuffer,
+    mimeType: 'image/png',
+    folder: 'images',
+  });
+};
+
 const generateImageWithAzure = async ({
   prompt,
   size = '1024x1024',
   logoUrl = '',
   logoPlacement = 'none',
+  targetWidth = null,
+  targetHeight = null,
 }) => {
   if (!azureImageApiKey || !azureImageEndpoint) {
     console.log('[MOCK IMAGE GENERATION] Azure credentials not configured, returning a beautiful simulated image.');
@@ -2001,10 +2035,22 @@ if (finalImageUrl && activeLogoUrl && logoPlacement && logoPlacement !== 'none')
       imageUrl: finalImageUrl,
       logoUrl: activeLogoUrl,
       logoPlacement,
-      logoScale: 0.18,
+      logoScale: 0.08,
     });
   } catch (err) {
     console.warn('[IMAGE OVERLAY] Sharp overlay failed:', err);
+  }
+}
+
+if (finalImageUrl && targetWidth && targetHeight) {
+  try {
+    finalImageUrl = await resizeImageToExactDimensions({
+      imageUrl: finalImageUrl,
+      width: targetWidth,
+      height: targetHeight,
+    });
+  } catch (resizeErr) {
+    console.warn('[IMAGE RESIZE] Failed to resize to exact output dimensions:', resizeErr.message);
   }
 }
 
@@ -6575,6 +6621,8 @@ const imageWorker = new Worker('image-generation-jobs', async (job) => {
     size,
     logoUrl = '',
     logoPlacement = 'none',
+    targetWidth = null,
+    targetHeight = null,
   } = job.data || {};
 
   const existingJob = imageGenerationJobs.get(jobId);
@@ -6600,6 +6648,8 @@ const imageWorker = new Worker('image-generation-jobs', async (job) => {
       size,
       logoUrl,
       logoPlacement,
+      targetWidth,
+      targetHeight,
     });
 
     clearTimeout(phaseTimer);
@@ -6679,6 +6729,8 @@ app.post('/api/generate-image', authRequired, async (req, res) => {
     const aspectRatio = req.body?.aspectRatio || req.body?.aspect_ratio || null;
     const width = req.body?.width || null;
     const height = req.body?.height || null;
+    const outputWidth = Number(req.body?.outputWidth) || null;
+    const outputHeight = Number(req.body?.outputHeight) || null;
     const style = req.body?.style || null;
     const logoPlacement = String(req.body?.logoPlacement || '').trim();
     const useOriginalLogo = req.body?.useOriginalLogo !== false;
@@ -6728,12 +6780,10 @@ app.post('/api/generate-image', authRequired, async (req, res) => {
       const jobId = startImageGenerationJob({
         prompt: promptWithLogoGuidance,
         size,
-
         logoUrl: resolvedLogoUrl,
-
-        logoUrl: company?.logo || company?.logoUrl || companyPersona?.logoUrl || companyPersona?.logo_url || '',
-
         logoPlacement: resolvedLogoPlacement,
+        targetWidth: outputWidth,
+        targetHeight: outputHeight,
         onFailed: async ({ error }) => {
           await refundGenerationCredits({
             userId,
@@ -6768,6 +6818,8 @@ app.post('/api/generate-image', authRequired, async (req, res) => {
       size,
       logoUrl: resolvedLogoUrl,
       logoPlacement: resolvedLogoPlacement,
+      targetWidth: outputWidth,
+      targetHeight: outputHeight,
     });
     res.json({
       prompt,
