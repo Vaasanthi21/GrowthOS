@@ -6803,7 +6803,116 @@ app.get('/api/generate-image/:jobId/status', authRequired, async (req, res) => {
   console.log("[IMAGE JOB STATUS]", job.id, "status:", job.status, "result:", job.result);
   return res.json(getImageJobStatusPayload(job));
 });
+// ─── Public Share Links (hides S3 bucket from social previews) ─────────────
 
+app.post('/api/create-share-link', authRequired, async (req, res) => {
+  try {
+    const assetUrl = String(req.body?.assetUrl || '').trim();
+    const caption = String(req.body?.caption || '').trim().slice(0, 300);
+    const title = String(req.body?.title || 'Check out this asset').trim().slice(0, 120);
+
+    if (!assetUrl) {
+      return res.status(400).json({ message: 'assetUrl is required' });
+    }
+
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(assetUrl);
+    } catch {
+      return res.status(400).json({ message: 'Invalid asset URL' });
+    }
+
+    const allowedHosts = new Set([
+      `${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`,
+      'res.cloudinary.com',
+    ]);
+
+    if (!allowedHosts.has(parsedUrl.hostname)) {
+      return res.status(400).json({ message: 'Unsupported asset host' });
+    }
+
+    const shareId = crypto.randomBytes(8).toString('hex');
+
+    await rawDb.collection('shared_assets').insertOne({
+      share_id: shareId,
+      asset_url: assetUrl,
+      caption,
+      title,
+      user_id: req.user._id,
+      created_at: nowIso(),
+    });
+
+    const baseUrl = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    return res.json({ shareUrl: `${baseUrl}/share/${shareId}` });
+  } catch (error) {
+    console.error('[CREATE SHARE LINK FAILED]', error?.message || error);
+    return res.status(500).json({ message: 'Failed to create share link' });
+  }
+});
+
+// Public — no auth. This is the page Facebook/WhatsApp/LinkedIn crawlers hit.
+app.get('/share/:id', async (req, res) => {
+  try {
+    const record = await rawDb.collection('shared_assets').findOne({ share_id: req.params.id });
+    if (!record) {
+      return res.status(404).send('Not found');
+    }
+
+    const baseUrl = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    const imageProxyUrl = `${baseUrl}/api/public-asset/${req.params.id}`;
+    const shareUrl = `${baseUrl}/share/${req.params.id}`;
+
+    const escapeHtml = (str) => String(str || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(record.title)}</title>
+  <meta property="og:title" content="${escapeHtml(record.title)}" />
+  <meta property="og:description" content="${escapeHtml(record.caption)}" />
+  <meta property="og:image" content="${imageProxyUrl}" />
+  <meta property="og:url" content="${shareUrl}" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta http-equiv="refresh" content="0; url=${imageProxyUrl}" />
+</head>
+<body>
+  <p>Redirecting... <a href="${imageProxyUrl}">View image</a></p>
+</body>
+</html>`);
+  } catch (error) {
+    console.error('[SHARE PAGE FAILED]', error?.message || error);
+    res.status(500).send('Something went wrong');
+  }
+});
+
+// Public — no auth. Streams the actual image without exposing the bucket URL.
+app.get('/api/public-asset/:id', async (req, res) => {
+  try {
+    const record = await rawDb.collection('shared_assets').findOne({ share_id: req.params.id });
+    if (!record) {
+      return res.status(404).send('Not found');
+    }
+
+    const assetResponse = await fetch(record.asset_url);
+    if (!assetResponse.ok) {
+      return res.status(502).send('Unable to fetch asset');
+    }
+
+    const contentType = assetResponse.headers.get('content-type') || 'image/png';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+
+    const buffer = Buffer.from(await assetResponse.arrayBuffer());
+    return res.send(buffer);
+  } catch (error) {
+    console.error('[PUBLIC ASSET PROXY FAILED]', error?.message || error);
+    res.status(500).send('Failed to load asset');
+  }
+});
 app.post('/api/generate-video', authRequired, async (req, res) => {
   const userId = req.user.id || req.user._id.toString();
   const settings = await store.getCreditSettings();
