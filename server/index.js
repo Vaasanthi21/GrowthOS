@@ -6914,6 +6914,55 @@ app.get('/api/public-asset/:id', async (req, res) => {
     res.status(500).send('Failed to load asset');
   }
 });
+
+// Public — no auth. Streams an image securely by decoding a base64 URL to avoid exposing S3 bucket URLs or causing 401s in downloads.
+app.get('/api/media-proxy', async (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token) {
+      return res.status(400).send('Token is required');
+    }
+
+    let assetUrl;
+    try {
+      assetUrl = Buffer.from(token, 'base64').toString('utf8');
+    } catch {
+      return res.status(400).send('Invalid token');
+    }
+
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(assetUrl);
+    } catch {
+      return res.status(400).send('Invalid asset URL');
+    }
+
+    const allowedHosts = new Set([
+      `${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`,
+      'res.cloudinary.com',
+      'creative-os-assets.s3.ap-south-1.amazonaws.com'
+    ]);
+
+    if (!allowedHosts.has(parsedUrl.hostname) && !parsedUrl.hostname.includes('s3.ap-south-1.amazonaws.com')) {
+      return res.status(400).send('Unsupported asset host');
+    }
+
+    const assetResponse = await fetch(assetUrl);
+    if (!assetResponse.ok) {
+      return res.status(502).send('Unable to fetch asset');
+    }
+
+    const contentType = assetResponse.headers.get('content-type') || 'image/png';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+
+    const buffer = Buffer.from(await assetResponse.arrayBuffer());
+    return res.send(buffer);
+  } catch (error) {
+    console.error('[MEDIA PROXY FAILED]', error?.message || error);
+    res.status(500).send('Failed to load asset');
+  }
+});
 app.post('/api/generate-video', authRequired, async (req, res) => {
   const userId = req.user.id || req.user._id.toString();
   const settings = await store.getCreditSettings();
