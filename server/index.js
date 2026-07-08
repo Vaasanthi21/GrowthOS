@@ -1732,7 +1732,7 @@ const overlayLogoOnImage = async ({
   imageUrl,
   logoUrl,
   logoPlacement = 'bottom-right',
-  logoScale = 0.02,
+  logoScale = 0.15,
 }) => {
   const imageBuffer = await fetchImageBufferFromUrl(imageUrl);
   const logoBuffer = await fetchImageBufferFromUrl(logoUrl);
@@ -2035,7 +2035,7 @@ if (finalImageUrl && activeLogoUrl && logoPlacement && logoPlacement !== 'none')
       imageUrl: finalImageUrl,
       logoUrl: activeLogoUrl,
       logoPlacement,
-      logoScale: 0.08,
+      logoScale: 0.15,
     });
   } catch (err) {
     console.warn('[IMAGE OVERLAY] Sharp overlay failed:', err);
@@ -5682,7 +5682,7 @@ app.post('/api/images/generate', authRequired, async (req, res) => {
                   imageUrl: s3Url,
                   logoUrl: company.logo,
                   logoPlacement: 'bottom-right',
-                  logoScale: 0.08,
+                  logoScale: 0.15,
                 });
                 s3Url = overlaidUrl;
               } catch (overlayErr) {
