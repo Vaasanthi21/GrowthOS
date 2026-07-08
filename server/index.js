@@ -125,7 +125,7 @@ app.use(express.static(frontendDistDir, {
   },
 }));
 
-app.get(/^(?!\/api(?:\/|$)).*/, async (_req, res, next) => {
+app.get(/^(?!\/(api|share)(?:\/|$)).*/, async (_req, res, next) => {
   try {
     const indexPath = path.join(frontendDistDir, 'index.html');
     await fs.access(indexPath);
