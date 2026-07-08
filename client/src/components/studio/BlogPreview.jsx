@@ -1470,7 +1470,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
                       <>
                         <button
                           onClick={() => setIsEditing(true)}
-                          className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 hover:border-white/20 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer mr-auto"
+                          className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 text-secondary-foreground border border-border font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer mr-auto"
                         >
                           <FileText size={13} />
                           <span>Edit Platform Copy</span>
@@ -1478,7 +1478,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
                         <button
                           onClick={handleOptimizeRender}
                           disabled={(optimizeRenderTaskId && tasks[optimizeRenderTaskId]?.status === 'running')}
-                          className="px-3 py-1.5 bg-gradient-to-r from-emerald-500/10 to-emerald-500/20 hover:from-emerald-500/20 hover:to-emerald-500/30 text-emerald-400 border border-emerald-500/20 hover:border-emerald-500/30 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-glow-sm cursor-pointer mr-2"
+                          className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-glow-sm cursor-pointer mr-2"
                         >
                           {(optimizeRenderTaskId && tasks[optimizeRenderTaskId]?.status === 'running') ? (
                             <Loader2 size={13} className="animate-spin" />
@@ -1491,21 +1491,21 @@ export const BlogPreview = ({ blogId, onBack }) => {
                     )}
                     <button
                       onClick={handleCopy}
-                      className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 hover:border-white/20 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                      className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 text-secondary-foreground border border-border font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
                     >
                       <Share2 size={13} />
                       <span>Copy</span>
                     </button>
                     <button
                       onClick={handleDownloadMD}
-                      className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 hover:border-white/20 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                      className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 text-secondary-foreground border border-border font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
                     >
                       <Download size={13} />
                       <span>MD</span>
                     </button>
                     <button
                       onClick={handleDownloadHTML}
-                      className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 hover:border-white/20 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                      className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 text-secondary-foreground border border-border font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
                     >
                       <Download size={13} />
                       <span>HTML</span>
@@ -1513,7 +1513,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
                     <button
                       onClick={handleAdapt}
                       disabled={(adaptTaskId && tasks[adaptTaskId]?.status === 'running')}
-                      className="px-3 py-1.5 bg-gradient-to-r from-primary/10 to-primary/20 hover:from-primary/20 hover:to-primary/30 text-primary border border-primary/20 hover:border-primary/30 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-glow-sm cursor-pointer"
+                      className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 hover:border-primary/30 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-glow-sm cursor-pointer"
                     >
                       <Repeat2 size={13} className={(adaptTaskId && tasks[adaptTaskId]?.status === 'running') ? "animate-spin" : ""} />
                       <span>Regenerate</span>
@@ -1521,50 +1521,50 @@ export const BlogPreview = ({ blogId, onBack }) => {
                   </div>
 
                   {/* Adapted SEO scorecard */}
-                  <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-white/5 border border-white/5 rounded-2xl text-center text-xs ${
+                  <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-secondary/40 border border-border/60 rounded-2xl text-center text-xs ${
                     activeTab === 'linkedin' || activeTab === 'medium' || activeTab === 'devto' || activeTab === 'substack' ? 'max-w-2xl' : 'max-w-4xl'
                   } mx-auto`}>
                     <div>
-                      <span className="text-[9px] text-slate-500 font-bold uppercase block">Platform SEO Score</span>
+                      <span className="text-[9px] text-muted-foreground/85 font-bold uppercase block">Platform SEO Score</span>
                       <span className={`text-base font-extrabold font-mono ${
-                        renderedRecord.seoScore >= 80 ? 'text-emerald-400' : renderedRecord.seoScore >= 50 ? 'text-amber-400' : 'text-rose-400'
+                        renderedRecord.seoScore >= 80 ? 'text-emerald-500' : renderedRecord.seoScore >= 50 ? 'text-amber-500' : 'text-rose-500'
                       }`}>
                         {renderedRecord.seoScore || 0}/100
                       </span>
                     </div>
                     <div>
-                      <span className="text-[9px] text-slate-500 font-bold uppercase block">Words</span>
-                      <span className="text-base font-extrabold font-mono text-slate-300">
+                      <span className="text-[9px] text-muted-foreground/85 font-bold uppercase block">Words</span>
+                      <span className="text-base font-extrabold font-mono text-foreground">
                         {renderedRecord.copy ? renderedRecord.copy.trim().split(/\s+/).filter(Boolean).length : 0}
                       </span>
                     </div>
                     <div>
-                      <span className="text-[9px] text-slate-500 font-bold uppercase block">Readability</span>
-                      <span className="text-base font-extrabold font-mono text-slate-300">
+                      <span className="text-[9px] text-muted-foreground/85 font-bold uppercase block">Readability</span>
+                      <span className="text-base font-extrabold font-mono text-foreground">
                         {renderedRecord.seoAnalysis?.readabilityScore || 0}
                       </span>
                     </div>
                     <div>
-                      <span className="text-[9px] text-slate-500 font-bold uppercase block">Density</span>
-                      <span className="text-base font-extrabold font-mono text-slate-300">
+                      <span className="text-[9px] text-muted-foreground/85 font-bold uppercase block">Density</span>
+                      <span className="text-base font-extrabold font-mono text-foreground">
                         {renderedRecord.seoAnalysis?.keywordDensity !== undefined ? `${renderedRecord.seoAnalysis.keywordDensity}%` : '0%'}
                       </span>
                     </div>
                   </div>
 
                   {!isEditing && (
-                    <div className={`p-4 bg-white/[0.02] border border-white/5 rounded-2xl text-left text-xs ${
+                    <div className={`p-4 bg-secondary/40 border border-border/60 rounded-2xl text-left text-xs ${
                       activeTab === 'linkedin' || activeTab === 'medium' || activeTab === 'devto' || activeTab === 'substack' ? 'max-w-2xl' : 'max-w-4xl'
                     } mx-auto space-y-2`}>
                       {renderedRecord.metaDescription && activeTab !== 'substack' && (
-                        <p className="text-slate-400 font-mono leading-relaxed">
-                          <strong className="text-slate-300 font-semibold uppercase text-[9px] block mb-0.5">Meta Description:</strong>
+                        <p className="text-muted-foreground font-mono leading-relaxed">
+                          <strong className="text-foreground font-semibold uppercase text-[9px] block mb-0.5">Meta Description:</strong>
                           {renderedRecord.metaDescription}
                         </p>
                       )}
                       {renderedRecord.hashtags && renderedRecord.hashtags.length > 0 && (
-                        <p className="text-slate-400 font-mono leading-relaxed">
-                          <strong className="text-slate-300 font-semibold uppercase text-[9px] block mb-0.5">Hashtags:</strong>
+                        <p className="text-muted-foreground font-mono leading-relaxed">
+                          <strong className="text-foreground font-semibold uppercase text-[9px] block mb-0.5">Hashtags:</strong>
                           <span className="text-primary font-semibold">
                             {renderedRecord.hashtags.map(tag => `#${tag}`).join(' ')}
                           </span>
@@ -1574,65 +1574,65 @@ export const BlogPreview = ({ blogId, onBack }) => {
                   )}
                   
                   {isEditing ? (
-                    <div className={`glass-card rounded-3xl border border-white/5 p-6 md:p-8 w-full ${
+                    <div className={`bg-card text-card-foreground border border-border/60 rounded-3xl p-6 md:p-8 w-full ${
                       activeTab === 'linkedin' || activeTab === 'medium' || activeTab === 'devto' || activeTab === 'substack' ? 'max-w-2xl' : 'max-w-4xl'
-                    } mx-auto space-y-4 text-left`}>
-                      <div className="flex justify-between items-center border-b border-white/5 pb-3">
-                        <h4 className="text-sm font-bold text-white uppercase tracking-wider">Edit {resolvedPlatformName} Post</h4>
+                    } mx-auto space-y-4 text-left shadow-sm`}>
+                      <div className="flex justify-between items-center border-b border-border pb-3">
+                        <h4 className="text-sm font-bold text-foreground uppercase tracking-wider">Edit {resolvedPlatformName} Post</h4>
                         <button
                           onClick={() => setIsEditing(false)}
-                          className="p-1.5 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+                          className="p-1.5 bg-secondary hover:bg-secondary/80 text-secondary-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer"
                         >
                           <X size={14} />
                         </button>
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-400">Title / Headline Hook</label>
+                        <label className="text-[10px] uppercase font-bold text-muted-foreground">Title / Headline Hook</label>
                         <input
                           type="text"
                           value={editTitle}
                           onChange={(e) => setEditTitle(e.target.value)}
-                          className="w-full px-4 py-2.5 bg-background/60 border border-white/10 rounded-xl text-white text-xs font-semibold focus:outline-none focus:border-primary transition-colors"
+                          className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-foreground text-xs font-semibold focus:outline-none focus:border-primary transition-colors"
                         />
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-400">Body Copy (Markdown)</label>
+                        <label className="text-[10px] uppercase font-bold text-muted-foreground">Body Copy (Markdown)</label>
                         <textarea
                           rows={12}
                           value={editCopy}
                           onChange={(e) => setEditCopy(e.target.value)}
-                          className="w-full p-4 bg-background/60 border border-white/10 rounded-xl text-white text-xs font-mono leading-relaxed focus:outline-none focus:border-primary transition-colors resize-none"
+                          className="w-full p-4 bg-background border border-border rounded-xl text-foreground text-xs font-mono leading-relaxed focus:outline-none focus:border-primary transition-colors resize-none"
                         />
                       </div>
 
                       {['linkedin', 'devto'].includes(activeTab) && (
                         <div className="space-y-1">
-                          <label className="text-[10px] uppercase font-bold text-slate-400">Hashtags (Comma Separated)</label>
+                          <label className="text-[10px] uppercase font-bold text-muted-foreground">Hashtags (Comma Separated)</label>
                           <input
                             type="text"
                             value={editHashtags.join(', ')}
                             onChange={(e) => setEditHashtags(e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-                            className="w-full px-4 py-2.5 bg-background/60 border border-white/10 rounded-xl text-white text-xs focus:outline-none focus:border-primary transition-colors"
+                            className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-foreground text-xs focus:outline-none focus:border-primary transition-colors"
                           />
                         </div>
                       )}
 
                       <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-400">Meta Description</label>
+                        <label className="text-[10px] uppercase font-bold text-muted-foreground">Meta Description</label>
                         <textarea
                           rows={2}
                           value={editMetaDescription}
                           onChange={(e) => setEditMetaDescription(e.target.value)}
-                          className="w-full px-4 py-2.5 bg-background/60 border border-white/10 rounded-xl text-white text-xs font-semibold focus:outline-none focus:border-primary transition-colors resize-none"
+                          className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-foreground text-xs font-semibold focus:outline-none focus:border-primary transition-colors resize-none"
                         />
                       </div>
 
-                      <div className="pt-4 flex justify-end gap-2 border-t border-white/5 mt-2">
+                      <div className="pt-4 flex justify-end gap-2 border-t border-border mt-2">
                         <button
                           onClick={() => setIsEditing(false)}
-                          className="px-4 py-2 bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 hover:border-white/20 font-bold rounded-xl text-xs transition-all cursor-pointer"
+                          className="px-4 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground border border-border font-bold rounded-xl text-xs transition-all cursor-pointer"
                         >
                           Cancel
                         </button>
