@@ -5513,6 +5513,24 @@ Optimize and return JSON now:`;
   }
 });
 
+app.get('/api/images/view/:filename', async (req, res) => {
+  try {
+    const { filename } = req.params;
+    if (!/^[a-zA-Z0-9_\-\.]+$/i.test(filename)) {
+      return res.status(400).send('Invalid filename');
+    }
+    const s3Url = `https://creative-os-assets.s3.ap-south-1.amazonaws.com/images/${filename}`;
+    const response = await axios.get(s3Url, {
+      responseType: 'stream',
+      timeout: 10000
+    });
+    res.setHeader('Content-Type', response.headers['content-type'] || 'image/png');
+    response.data.pipe(res);
+  } catch (error) {
+    res.status(404).send('Image not found');
+  }
+});
+
 // 8. Images endpoints
 app.get('/api/images/download', authRequired, async (req, res) => {
   try {
