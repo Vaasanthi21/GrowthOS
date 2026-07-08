@@ -551,6 +551,16 @@ export const BlogPreview = ({ blogId, onBack }) => {
     ? (coverImage.startsWith('/uploads') ? `http://localhost:4000${coverImage}` : coverImage)
     : null;
 
+  const getMaskedImageUrl = (url) => {
+    if (!url) return "";
+    if (url.includes('amazonaws.com') || url.includes('/images/')) {
+      const filename = url.split('/').pop();
+      const baseUrl = window.location.origin;
+      return `${baseUrl}/api/images/view/${filename}`;
+    }
+    return url;
+  };
+
   const handleDownloadCoverImage = () => {
     if (!resolvedCoverImageUrl) return;
     try {
@@ -707,14 +717,15 @@ export const BlogPreview = ({ blogId, onBack }) => {
   };
 
   const handleCopy = async () => {
+    const imageLink = getMaskedImageUrl(resolvedCoverImageUrl);
     if (activeTab === 'canonical') {
       if (!blogRecord) return;
       const strippedContent = stripLeadingTitle(blogRecord.content, blogRecord.title);
       let plainText = `# ${blogRecord.title}\n\n`;
       let htmlText = `<h1>${blogRecord.title}</h1>\n`;
       if (resolvedCoverImageUrl) {
-        plainText += `![Cover Image](${resolvedCoverImageUrl})\n\n`;
-        htmlText += `<img src="${resolvedCoverImageUrl}" alt="Cover Image" style="width:100%; max-width:680px; height:auto; border-radius:12px; margin-bottom:24px; display:block;" />\n`;
+        plainText += `![Cover Image](${imageLink})\n\n`;
+        htmlText += `<img src="${imageLink}" alt="Cover Image" style="width:100%; max-width:680px; height:auto; border-radius:12px; margin-bottom:24px; display:block;" />\n`;
       }
       plainText += strippedContent;
       htmlText += renderMarkdownToHTML(strippedContent);
@@ -736,8 +747,8 @@ export const BlogPreview = ({ blogId, onBack }) => {
           htmlPart += `<h1>${renderedRecord.title}</h1>\n`;
         }
         if (resolvedCoverImageUrl) {
-          plainPart += `[Image Attachment: ${resolvedCoverImageUrl}]\n\n`;
-          htmlPart += `<img src="${resolvedCoverImageUrl}" alt="Cover Image" style="width:100%; max-width:680px; height:auto; border-radius:12px; margin-bottom:24px; display:block;" />\n`;
+          plainPart += `[Image Attachment: ${imageLink}]\n\n`;
+          htmlPart += `<img src="${imageLink}" alt="Cover Image" style="width:100%; max-width:680px; height:auto; border-radius:12px; margin-bottom:24px; display:block;" />\n`;
         }
 
         const cleanCopy = cleanCopyWithoutTrailingHashtags(strippedCopy);
@@ -764,8 +775,8 @@ export const BlogPreview = ({ blogId, onBack }) => {
           htmlText += `<h2>${subtitle}</h2>\n`;
         }
         if (resolvedCoverImageUrl) {
-          plainText += `![Cover Image](${resolvedCoverImageUrl})\n\n`;
-          htmlText += `<img src="${resolvedCoverImageUrl}" alt="Cover Image" style="width:100%; max-width:680px; height:auto; border-radius:12px; margin-bottom:24px; display:block;" />\n`;
+          plainText += `![Cover Image](${imageLink})\n\n`;
+          htmlText += `<img src="${imageLink}" alt="Cover Image" style="width:100%; max-width:680px; height:auto; border-radius:12px; margin-bottom:24px; display:block;" />\n`;
         }
         plainText += copyWithCodeBlockTables;
         htmlText += renderMarkdownToHTML(copyWithCodeBlockTables);
@@ -781,8 +792,8 @@ export const BlogPreview = ({ blogId, onBack }) => {
           htmlText += `<h2>${displaySubtitle}</h2>\n`;
         }
         if (resolvedCoverImageUrl) {
-          plainText += `![Cover Image](${resolvedCoverImageUrl})\n\n`;
-          htmlText += `<img src="${resolvedCoverImageUrl}" alt="Cover Image" style="width:100%; max-width:680px; height:auto; border-radius:12px; margin-bottom:24px; display:block;" />\n`;
+          plainText += `![Cover Image](${imageLink})\n\n`;
+          htmlText += `<img src="${imageLink}" alt="Cover Image" style="width:100%; max-width:680px; height:auto; border-radius:12px; margin-bottom:24px; display:block;" />\n`;
         }
         plainText += strippedCopy;
         htmlText += renderMarkdownToHTML(strippedCopy);
@@ -797,8 +808,8 @@ export const BlogPreview = ({ blogId, onBack }) => {
           htmlText += `<h2>${subtitle}</h2>\n`;
         }
         if (resolvedCoverImageUrl) {
-          plainText += `![Cover Image](${resolvedCoverImageUrl})\n\n`;
-          htmlText += `<img src="${resolvedCoverImageUrl}" alt="Cover Image" style="width:100%; max-width:680px; height:auto; border-radius:12px; margin-bottom:24px; display:block;" />\n`;
+          plainText += `![Cover Image](${imageLink})\n\n`;
+          htmlText += `<img src="${imageLink}" alt="Cover Image" style="width:100%; max-width:680px; height:auto; border-radius:12px; margin-bottom:24px; display:block;" />\n`;
         }
         plainText += strippedCopy;
         htmlText += renderMarkdownToHTML(strippedCopy);
@@ -816,6 +827,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
   const handleDownloadMD = () => {
     let plainText = "";
     let filename = "";
+    const imageLink = getMaskedImageUrl(resolvedCoverImageUrl);
 
     if (!blogRecord) return;
     const author = blogRecord.author || 'Unassigned';
@@ -828,7 +840,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
       const strippedContent = stripLeadingTitle(blogRecord.content, blogRecord.title);
       plainText = yamlFrontMatter + `# ${blogRecord.title}\n\n`;
       if (resolvedCoverImageUrl) {
-        plainText += `![Cover Image](${resolvedCoverImageUrl})\n\n`;
+        plainText += `![Cover Image](${imageLink})\n\n`;
       }
       plainText += strippedContent;
       filename = `${blogRecord.slug || 'canonical'}.md.txt`;
@@ -841,7 +853,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
         const strippedCopy = cleanPlatformCopy(renderedRecord.copy, titleText);
         plainText = `Author: ${author}\nCategory: ${category}\nDate: ${date}\n\n`;
         if (renderedRecord.title) plainText += `${renderedRecord.title}\n\n`;
-        if (resolvedCoverImageUrl) plainText += `[Image Attachment: ${resolvedCoverImageUrl}]\n\n`;
+        if (resolvedCoverImageUrl) plainText += `[Image Attachment: ${imageLink}]\n\n`;
         plainText += cleanCopyWithoutTrailingHashtags(strippedCopy);
         if (renderedRecord.hashtags && renderedRecord.hashtags.length > 0) {
           plainText += `\n\n${renderedRecord.hashtags.map(t => `#${t}`).join(' ')}`;
@@ -857,7 +869,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
           plainText += `${subtitle}\n\n`;
         }
         if (resolvedCoverImageUrl) {
-          plainText += `![Cover Image](${resolvedCoverImageUrl})\n\n`;
+          plainText += `![Cover Image](${imageLink})\n\n`;
         }
         plainText += copyWithCodeBlockTables;
         filename = `medium_${slugName}.md.txt`;
@@ -871,7 +883,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
           plainText += `${displaySubtitle}\n\n`;
         }
         if (resolvedCoverImageUrl) {
-          plainText += `![Cover Image](${resolvedCoverImageUrl})\n\n`;
+          plainText += `![Cover Image](${imageLink})\n\n`;
         }
         plainText += strippedCopy;
         filename = `substack_${slugName}.md.txt`;
@@ -884,7 +896,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
           plainText += `${subtitle}\n\n`;
         }
         if (resolvedCoverImageUrl) {
-          plainText += `![Cover Image](${resolvedCoverImageUrl})\n\n`;
+          plainText += `![Cover Image](${imageLink})\n\n`;
         }
         plainText += strippedCopy;
         filename = `blog_${slugName}.md.txt`;
@@ -920,6 +932,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
     let subtitleText = "";
     let bodyHtml = "";
     let filename = "";
+    const imageLink = getMaskedImageUrl(resolvedCoverImageUrl);
 
     if (!blogRecord) return;
     const author = blogRecord.author || 'Unassigned';
@@ -1073,7 +1086,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
   </style>
 </head>
 <body>
-  ${resolvedCoverImageUrl ? `<div style="width: 100%; background-color: #0B0F17; border-bottom: 1px solid rgba(255, 255, 255, 0.05); text-align: center; margin-bottom: 24px; border-radius: 12px; overflow: hidden;"><img src="${resolvedCoverImageUrl}" alt="Cover Image" style="width: 100%; height: auto; display: block;" /></div>` : ''}
+  ${resolvedCoverImageUrl ? `<div style="width: 100%; background-color: #0B0F17; border-bottom: 1px solid rgba(255, 255, 255, 0.05); text-align: center; margin-bottom: 24px; border-radius: 12px; overflow: hidden;"><img src="${imageLink}" alt="Cover Image" style="width: 100%; height: auto; display: block;" /></div>` : ''}
   
   <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
     <div style="width: 36px; height: 36px; border-radius: 50%; background-color: #1e293b; border: 1px solid #334155; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #ffffff; font-size: 0.75rem; font-family: -apple-system, BlinkMacSystemFont, sans-serif;">VO</div>
@@ -1182,7 +1195,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
 <body>
   <h1>${titleText}</h1>
   ${subtitleText ? `<h2 style="font-size: 1.4rem; font-weight: 400; color: #6b7280; margin-top: 4px; margin-bottom: 20px; font-family: Georgia, Cambria, 'Times New Roman', Times, serif; line-height: 1.4;">${subtitleText}</h2>` : ''}
-  ${resolvedCoverImageUrl ? `<img src="${resolvedCoverImageUrl}" alt="Cover Image" style="width:100%; max-width:680px; height:auto; border-radius:12px; margin-top:16px; margin-bottom:24px; display:block;" />` : ''}
+  ${resolvedCoverImageUrl ? `<img src="${imageLink}" alt="Cover Image" style="width:100%; max-width:680px; height:auto; border-radius:12px; margin-top:16px; margin-bottom:24px; display:block;" />` : ''}
   ${bodyHtml}
 </body>
 </html>`;
