@@ -6,6 +6,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
     <title>Creative Studio OS</title>
+    <script>
+      if (typeof window !== 'undefined' && !window.DOMMatrix) {
+        window.DOMMatrix = window.WebKitCSSMatrix || window.MSCSSMatrix || class DOMMatrix {
+          constructor() {
+            this.a = 1; this.b = 0; this.c = 0; this.d = 1; this.e = 0; this.f = 0;
+          }
+        };
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

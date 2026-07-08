@@ -19,7 +19,7 @@ const requestTypes = [
   { label: "Persona Request", value: "persona_request" },
   { label: "Bug Report", value: "bug_report" },
   { label: "Feature Request", value: "feature_request" },
-  { label: "General Support", value: "general_support" },
+  { label: "General Support / Contact Us", value: "general_support" },
 ];
 
 export default function Support() {
@@ -52,15 +52,17 @@ export default function Support() {
     setIsSubmitting(true);
 
     try {
+      // Passes parameters to handle unified ticket assignment and ClickUp automation mapping
       await submitSupportRequest({
         type,
         subject: subject.trim(),
         message: message.trim(),
+        isContactUsFallback: type === "general_support", 
       });
 
       toast({
         title: "Request submitted",
-        description: "Your request has been submitted and is under review.",
+        description: "Your request has been successfully captured and routed to the team.",
         duration: 3000,
       });
 
@@ -91,8 +93,8 @@ export default function Support() {
               Support Center
             </h1>
             <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-              Need more credits, a new persona, or help with something? Submit a
-              request and our team will review it.
+              Need more credits, a new persona, or want to contact our team? Submit a
+              request below and we will process it right away.
             </p>
           </div>
 
@@ -101,9 +103,8 @@ export default function Support() {
               <HelpCircle className="h-4 w-4 text-primary" />
               What happens next?
             </div>
-            Your request will be sent to the admin team for review. You can use
-            this form for credits, persona requests, bugs, features, or general
-            support.
+            Your submission automatically syncs to our administration workspace. You can use
+            this unified form for credit updates, bugs, feature suggestions, or direct inquiries.
           </div>
         </div>
       </div>

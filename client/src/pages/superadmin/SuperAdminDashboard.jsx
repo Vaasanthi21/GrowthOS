@@ -50,7 +50,7 @@ export default function SuperAdminDashboard() {
     : [];
 
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="space-y-6 max-w-6xl px-4 sm:px-6 py-4">
       <div>
         <h1 className="font-display text-2xl font-bold text-foreground">Overview</h1>
         <p className="text-muted-foreground text-sm">Live platform metrics from MongoDB-backed content history</p>
@@ -65,6 +65,7 @@ export default function SuperAdminDashboard() {
         </Card>
       )}
 
+      {/* Grid wrapper scaling layout smoothly across mobile viewports */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {(isLoading ? Array.from({ length: 4 }) : stats).map((item, index) => {
           if (isLoading) {
@@ -73,53 +74,64 @@ export default function SuperAdminDashboard() {
 
           const { label, value, icon: Icon, change } = item;
           return (
-          <div key={label} className="bg-card border border-border rounded-xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm text-muted-foreground">{label}</p>
-              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Icon className="w-4 h-4 text-primary" />
+            <div key={label} className="bg-card border border-border rounded-xl p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm text-muted-foreground font-medium">{label}</p>
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <Icon className="w-4 h-4 text-primary" />
+                </div>
               </div>
+              <p className="font-display text-2xl font-bold text-foreground tracking-tight">{value}</p>
+              <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{change}</p>
             </div>
-            <p className="font-display text-2xl font-bold text-foreground">{value}</p>
-            <p className="text-xs text-muted-foreground mt-1">{change}</p>
-          </div>
           );
         })}
       </div>
 
-      <div className="bg-card border border-border rounded-xl">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4 text-primary" />
-            <h2 className="font-display font-semibold text-foreground">Most Active Personas</h2>
+      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Activity className="w-4 h-4 text-primary shrink-0" />
+            <h2 className="font-display font-semibold text-foreground truncate">Most Active Personas</h2>
           </div>
-          <Link to="/superadmin/usage" className="text-xs text-primary hover:underline">View usage</Link>
+          <Link to="/superadmin/usage" className="text-xs text-primary hover:underline shrink-0 font-medium">View usage</Link>
         </div>
+        
         <div className="divide-y divide-border">
           {isLoading && Array.from({ length: 5 }).map((_, index) => (
             <div key={index} className="px-5 py-4 h-16 animate-pulse" />
           ))}
+          
           {!isLoading && data?.recentActivity.map((entry) => (
-            <div key={entry.id} className="flex items-center justify-between px-5 py-3.5">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-xs font-bold text-foreground">
+            <div 
+              key={entry.id} 
+              className="flex flex-col sm:flex-row sm:items-center justify-between px-5 py-4 gap-4 transition-colors hover:bg-muted/10"
+            >
+              {/* Left Column Profile Stacking block */}
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center text-xs font-bold text-foreground shrink-0 border border-border">
                   {entry.company[0]}
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-foreground">{entry.company}</p>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground truncate">{entry.company}</p>
                   <p className="text-xs text-muted-foreground">{entry.apiCalls} generations</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-muted-foreground">{entry.lastUsed}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${statusStyles[entry.status]}`}>
+              
+              {/* Right Column Metadata Badge Block — Wraps down gracefully on mobile device screens */}
+              <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t border-border/40 sm:border-t-0">
+                <span className="text-xs text-muted-foreground font-medium">{entry.lastUsed}</span>
+                <span className={`text-[11px] px-2.5 py-0.5 rounded-full border font-semibold capitalize tracking-wide shrink-0 ${statusStyles[entry.status]}`}>
                   {entry.status}
                 </span>
               </div>
             </div>
           ))}
+          
           {!isLoading && !data?.recentActivity.length && (
-            <div className="px-5 py-8 text-sm text-muted-foreground">No content history records found.</div>
+            <div className="px-5 py-8 text-center text-sm text-muted-foreground">
+              No content history records found.
+            </div>
           )}
         </div>
       </div>

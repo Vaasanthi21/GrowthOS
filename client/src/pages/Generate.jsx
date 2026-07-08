@@ -91,7 +91,8 @@ ${personaContext ? `Brand style analysis: ${personaContext.analysis}` : ""}
 ${personaContext?.tagline ? `Brand tagline: ${personaContext.tagline}` : ""}
 ${personaContext?.logoUrl ? `Brand logo reference: ${personaContext.logoUrl}` : ""}
 ${personaContext?.tuningPrompt ? `Persistent style instructions: ${personaContext.tuningPrompt}` : ""}
-${ragContext ? `Approved knowledge base context:\n${ragContext.slice(0, 4000)}` : ""}
+${personaContext?.learningSummary ? `Cross-platform brand writing memory: ${personaContext.learningSummary}` : ""}
+${ragContext ? `Approved knowledge base context:\n${ragContext}` : ""}
 
 Generate 1 polished post about:
 "${topic}"
@@ -137,7 +138,8 @@ ${personaContext?.company ? `Company name: ${personaContext.company}` : ""}
 ${personaContext ? `Brand style analysis: ${personaContext.analysis}` : ""}
 ${personaContext?.tagline ? `Brand tagline: ${personaContext.tagline}` : ""}
 ${personaContext?.tuningPrompt ? `Persistent style instructions: ${personaContext.tuningPrompt}` : ""}
-${ragContext ? `Approved knowledge base context:\n${ragContext.slice(0, 4000)}` : ""}
+${personaContext?.learningSummary ? `Cross-platform brand writing memory: ${personaContext.learningSummary}` : ""}
+${ragContext ? `Approved knowledge base context:\n${ragContext}` : ""}
 
 Original topic:
 "${topic}"
@@ -236,6 +238,7 @@ export default function Generate() {
   );
 
   const [generatedContent, setGeneratedContent] = useState(null);
+  const [currentContentType, setCurrentContentType] = useState(null);
   const [lastGenerationParams, setLastGenerationParams] = useState(null);
   const [lastRagContext, setLastRagContext] = useState("");
   const [lastOriginalPrompt, setLastOriginalPrompt] = useState("");
@@ -1020,7 +1023,10 @@ export default function Generate() {
 
       <GenerationForm
         activePersona={activePersona}
-        onGenerate={(params) => generateMutation.mutate(params)}
+        onGenerate={(params) => {
+          setCurrentContentType(params.contentType);
+          generateMutation.mutate(params);
+        }}
         isGenerating={generateMutation.isPending}
         user={enrichedUser}
         planName={userMetrics?.planName ?? "Free"}
@@ -1117,8 +1123,8 @@ export default function Generate() {
                   {isVideoPolling
                     ? "Generate video"
                     : generationStage === "image"
-                      ? "Generate image"
-                      : "Prepare text"}
+                      ? `Generate image (${currentContentType || 'image'})`
+                      : `Prepare text (${currentContentType || 'text'})`}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {isVideoPolling
@@ -1167,7 +1173,7 @@ export default function Generate() {
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                   Enhance Content
                 </p>
-                <h3 className="mt-2 text-sm font-semibold text-foreground">
+                <h3 className="font-display mt-2 text-sm font-semibold text-foreground">
                   Open the refinement page for chat-based enhancement
                 </h3>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -1214,7 +1220,6 @@ export default function Generate() {
         variant={exportVariant}
         open={!!exportVariant}
         onClose={() => setExportVariant(null)}
-      />
-    </div>
+      />    </div>
   );
 }

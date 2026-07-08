@@ -1,11 +1,12 @@
-import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { toast } from "@/components/ui/use-toast";
 
 export default function Register() {
   const navigate = useNavigate();
-  const { signUp } = useAuth();
+  const [searchParams] = useSearchParams();
+  const { signUp, isAuthenticated } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({
     full_name: "",
@@ -16,6 +17,18 @@ export default function Register() {
     confirm_password: "",
   });
   const [isLoading, setIsLoading] = useState(false);
+
+  console.log('[Register] Render - isAuthenticated:', isAuthenticated, 'redirect:', searchParams.get("redirect"));
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      const redirectPath = searchParams.get("redirect") || "/generate";
+      const timer = setTimeout(() => {
+        navigate(redirectPath);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [isAuthenticated, navigate, searchParams]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -62,7 +75,6 @@ export default function Register() {
         description: "Your account is ready and visible in super admin",
         duration: 2000,
       });
-      navigate("/");
     } catch (error) {
       toast({
         title: "Registration failed",
@@ -266,7 +278,7 @@ export default function Register() {
               <p className="text-sm text-muted-foreground">
                 Already have an account?{" "}
                 <Link
-                  to="/login"
+                  to={`/login${searchParams.toString() ? `?${searchParams.toString()}` : ''}`}
                   className="text-primary hover:underline font-medium"
                 >
                   Sign in

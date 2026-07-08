@@ -20,6 +20,8 @@ import {
   ExternalLink,
   Building2,
   ArrowRightLeft,
+  ArrowRight,
+  Newspaper,
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import ConfirmDialog from "@/components/dialogs/ConfirmDialog";
@@ -40,8 +42,8 @@ export default function Settings() {
 
   const generationsThisMonth = userMetrics?.generationsThisMonth ?? 0;
   const planName = userMetrics?.planName ?? 'Free';
-  const companyPersonaCount = userMetrics?.companyPersonaCount ?? 0;
-  const companyPersonaLimit = userMetrics?.companyPersonaLimit ?? 0;
+  const companyCount = userMetrics?.companyCount ?? 0;
+  const companyLimit = userMetrics?.companyLimit ?? 0;
   const activeCompanyName = user?.company || user?.full_name || 'Current Company';
   const activeCompanyInitial = activeCompanyName.charAt(0).toUpperCase();
   const isDarkTheme = theme !== 'light';
@@ -185,14 +187,15 @@ export default function Settings() {
             </span>
           </div>
           <div className="mt-3 flex items-center justify-between">
-            <p className="text-sm text-foreground">Company personas</p>
+            <p className="text-sm text-foreground">Company profiles</p>
             <span className="text-sm font-medium text-foreground">
-              {metricsLoading ? '—' : `${companyPersonaCount}/${companyPersonaLimit}`}
+              {metricsLoading ? '—' : `${companyCount}/${companyLimit}`}
             </span>
           </div>
         </CardContent>
       </Card>
 
+      {/* Personas List */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-display flex items-center gap-2">
@@ -218,6 +221,34 @@ export default function Settings() {
               </div>
             ))
           )}
+        </CardContent>
+      </Card>
+
+
+      {/* Publishing */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-display flex items-center gap-2">
+            <Newspaper className="w-4 h-4 text-primary" />
+            Publishing
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <p className="text-sm text-foreground">Publish to Social Media</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Manage your publishing accounts and publish content to LinkedIn, Twitter, and other platforms
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            className="w-full gap-2"
+            onClick={() => navigate("/publishing")}
+          >
+            <Newspaper className="w-4 h-4" />
+            Go to Publishing
+            <ArrowRight className="w-4 h-4 ml-auto" />
+          </Button>
         </CardContent>
       </Card>
 

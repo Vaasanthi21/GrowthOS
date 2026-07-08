@@ -14,6 +14,7 @@ export async function generateContent(params) {
 
   const safePrompt = params?.prompt ? params.prompt.slice(0, 7500) : '';
   const response = await apiClient.post('/generate-text', { prompt: safePrompt }, token);
+  
   const variants = Array.isArray(response?.variants) ? response.variants : [];
   if (variants.length === 0) {
     throw new Error('No content generated from AI');
@@ -163,7 +164,6 @@ export async function fetchRagContext(query) {
  * @param {Object} historyData - History entry data
  * @returns {Promise<Object>} Created history entry
  */
-
 export async function saveToHistory(historyData) {
   const token = tokenStorage.getUserToken();
   if (!token) {
@@ -171,7 +171,6 @@ export async function saveToHistory(historyData) {
     return null;
   }
 
-  // Strip large fields to avoid CloudFront/WAF body size limits returning 403.
   const safeData = {
     topic: String(historyData.topic || '').slice(0, 200),
     conversation_key: historyData.conversation_key || null,
@@ -270,4 +269,18 @@ export async function submitSupportRequest(payload) {
   }
 
   return await apiClient.post('/support-requests', payload, token);
+}
+
+/**
+ * Add a history entry for Image/Video Studio creations
+ * @param {object} entry - History entry data
+ * @returns {Promise<object>} - Created entry
+ */
+export async function addHistoryEntry(entry) {
+  const token = tokenStorage.getUserToken();
+  if (!token) {
+    throw new Error('User token not available');
+  }
+
+  return await apiClient.post('/history', entry, token);
 }

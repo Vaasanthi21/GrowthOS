@@ -6,7 +6,7 @@
 
 @layer base {
   :root {
-    --font-display: 'Syne', sans-serif;
+    --font-display: 'DM Sans', sans-serif;
     --font-body: 'DM Sans', sans-serif;
 
     --background: 42 33% 97%;
@@ -102,3 +102,113 @@
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 4px; }
+
+/* ────────────────────────────────────────────────────────────────────────
+   Dark Mode Overrides for Brand Setup
+   ──────────────────────────────────────────────────────────────────────── */
+.dark {
+  color: #f1f5f9;
+}
+
+.dark .bg-white {
+  background-color: #0f172a !important; /* bg-slate-900 */
+}
+
+.dark .bg-white\/40 {
+  background-color: rgba(30, 41, 59, 0.2) !important;
+}
+
+.dark .bg-white\/95 {
+  background-color: rgba(15, 23, 42, 0.95) !important;
+}
+
+.dark .bg-slate-50 {
+  background-color: #1e293b !important; /* bg-slate-800 */
+}
+
+.dark .bg-slate-50\/50 {
+  background-color: rgba(30, 41, 59, 0.4) !important;
+}
+
+.dark .bg-slate-50\/40 {
+  background-color: rgba(30, 41, 59, 0.3) !important;
+}
+
+.dark .bg-slate-50\/30 {
+  background-color: rgba(30, 41, 59, 0.2) !important;
+}
+
+.dark .bg-slate-50\/20 {
+  background-color: rgba(30, 41, 59, 0.1) !important;
+}
+
+.dark .bg-slate-100 {
+  background-color: #1e293b !important;
+}
+
+.dark .text-slate-800 {
+  color: #f1f5f9 !important;
+}
+
+.dark .text-slate-700 {
+  color: #e2e8f0 !important;
+}
+
+.dark .text-slate-650 {
+  color: #cbd5e1 !important;
+}
+
+.dark .text-slate-600 {
+  color: #cbd5e1 !important;
+}
+
+.dark .text-slate-500 {
+  color: #94a3b8 !important;
+}
+
+.dark .text-slate-900 {
+  color: #f8fafc !important;
+}
+
+.dark .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+.dark .border-slate-100 {
+  border-color: rgba(51, 65, 85, 0.4) !important;
+}
+
+.dark .border-slate-200 {
+  border-color: #334155 !important; /* border-slate-700 */
+}
+
+.dark .border-slate-300 {
+  border-color: #475569 !important;
+}
+
+.dark .bg-black\/75 {
+  background-color: rgba(0, 0, 0, 0.75) !important;
+}
+
+.dark input[type="text"],
+.dark input[type="url"],
+.dark textarea {
+  background-color: #0b0f19 !important; /* very dark background for inputs */
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+.dark input[type="text"]:focus,
+.dark input[type="url"]:focus,
+.dark textarea:focus {
+  border-color: #f25b18 !important;
+}
+
+/* Force high-contrast text colors on canonical blog preview prose elements */
+.prose p, .prose li, .prose strong, .prose em {
+  color: #1e293b !important;
+}
+
+.dark .prose p, .dark .prose li, .dark .prose strong, .dark .prose em {
+  color: #cbd5e1 !important;
+}

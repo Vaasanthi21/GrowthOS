@@ -1,0 +1,24 @@
+# CreativeOS
+
+> CreativeOS is an AI-powered content workspace that generates images, videos, blog articles, and social posts from a single prompt bar, with built-in LinkedIn performance tracking. Pricing is usage-based (credits per generation) — no recurring subscription required.
+
+## Product
+
+- [Content Studio](/#content): One prompt bar generates text, image, video or combined posts, routed through the right AI models with brand voice and keywords applied.
+- [Image Studio](/image-studio): Text-to-image generation, four HD styles per prompt.
+- [Video Studio](/video-studio): Text-to-video generation with timeline, multiple aspect ratios, and export.
+- [Blog Studio](/blog-studio): SEO-tuned, source-cited long-form articles in a Notion-style editor.
+- [LinkedIn Tracker](/linkedinads): Dashboard for impressions, engagement, CTR and follower growth.
+
+## Pricing
+
+- [Pricing](/pricing): Usage-based credits, pay only for what you generate. No recurring subscription.
+
+## Resources
+
+- [FAQ](/faq): Common questions about credits, generation limits, and studio features.
+- [Blog](/blog): Articles generated on the CreativeOS platform, publicly browsable.
+
+## Company
+
+- [Homepage](/): Overview of all five studios and the CreativeOS Core.

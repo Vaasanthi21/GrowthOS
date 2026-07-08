@@ -1,0 +1,29 @@
+User-agent: *
+Allow: /
+Disallow: /login
+Disallow: /generate
+Disallow: /image-studio
+Disallow: /video-studio
+Disallow: /blog-studio
+Disallow: /linkedinads
+Disallow: /api/
+Disallow: /*?redirect=
+
+# AI answer-engine crawlers (Perplexity, ChatGPT browsing, Google AI Overviews, etc.)
+# explicitly allowed on public marketing + blog content
+User-agent: GPTBot
+Allow: /
+Disallow: /login
+Disallow: /generate
+Disallow: /image-studio
+Disallow: /video-studio
+Disallow: /blog-studio
+Disallow: /linkedinads
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+Sitemap: https://uden.tech/sitemap.xml

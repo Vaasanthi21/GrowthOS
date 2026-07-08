@@ -337,6 +337,33 @@ export async function fetchCreditSettings() {
   return await apiClient.get('/superadmin/credits/settings', token);
 }
 
+export async function fetchSuperAdminSettings() {
+  const token = tokenStorage.getSuperAdminToken();
+  if (!token) {
+    throw new Error('Super admin token not available');
+  }
+
+  return await apiClient.get('/superadmin/settings', token);
+}
+
+export async function updateSuperAdminSettings(payload) {
+  const token = tokenStorage.getSuperAdminToken();
+  if (!token) {
+    throw new Error('Super admin token not available');
+  }
+
+  return await apiClient.patch('/superadmin/settings', payload, token);
+}
+
+export async function changeSuperAdminPassword(payload) {
+  const token = tokenStorage.getSuperAdminToken();
+  if (!token) {
+    throw new Error('Super admin token not available');
+  }
+
+  return await apiClient.post('/superadmin/change-password', payload, token);
+}
+
 export async function updateCreditSettings(payload) {
   const token = tokenStorage.getSuperAdminToken();
   if (!token) {

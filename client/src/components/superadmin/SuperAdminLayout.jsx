@@ -5,13 +5,14 @@ import {
   Building2,
   Users,
   CreditCard,
+
+  Inbox,
   Settings,
   ShieldCheck,
   LogOut,
   BarChart3,
   Zap,
   Layers,
-  Inbox,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -22,10 +23,10 @@ const NAV = [
   { label: "Analytics", icon: BarChart3, path: "/superadmin/analytics" },
   { label: "Companies", icon: Building2, path: "/superadmin/companies" },
   { label: "Users", icon: Users, path: "/superadmin/users" },
-  { label: "Requests", icon: Inbox, path: "/superadmin/requests" },
   { label: "Usage", icon: Zap, path: "/superadmin/usage" },
   { label: "Plans", icon: Layers, path: "/superadmin/plans" },
   { label: "Billing", icon: CreditCard, path: "/superadmin/billing" },
+  { label: "Requests", icon: Inbox, path: "/superadmin/requests" },
   { label: "Settings", icon: Settings, path: "/superadmin/settings" },
 ];
 

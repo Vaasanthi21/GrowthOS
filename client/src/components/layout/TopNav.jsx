@@ -14,28 +14,6 @@ export default function TopNav({ onToggleSidebar }) {
     queryFn: fetchCreditBalance,
   });
 
-  const token = tokenStorage.getUserToken();
-
-  const { data: companyPersonas = [] } = useQuery({
-    queryKey: ["company-personas"],
-    queryFn: async () => {
-      const response = await apiClient.get("/company-personas", token);
-      return Array.isArray(response) ? response : response?.items || [];
-    },
-    enabled: !!token,
-  });
-
-  const selectedCompanyPersonaId = localStorage.getItem(
-    "selectedCompanyPersonaId",
-  );
-
-  const selectedCompanyPersona =
-    companyPersonas.find(
-      (persona) => persona.id === selectedCompanyPersonaId,
-    ) ||
-    companyPersonas[0] ||
-    null;
-
   const location = useLocation();
   const navigate = useNavigate();
   const { signOut } = useAuth();
@@ -50,7 +28,11 @@ export default function TopNav({ onToggleSidebar }) {
   const getPageTitle = () => {
     switch (location.pathname) {
       case "/":
-        return "Content Generation";
+        return "Content Studio";
+      case "/brand-setup":
+        return "Brand Setup";
+      case "/blog-studio":
+        return "Blog Studio";
       case "/history":
         return "Content History";
       case "/refine":
@@ -81,18 +63,6 @@ export default function TopNav({ onToggleSidebar }) {
           <h1 className="text-base sm:text-lg font-display font-bold leading-tight text-primary">
             {getPageTitle()}
           </h1>
-
-          {!isMobile && selectedCompanyPersona && (
-            <div className="ml-2 flex items-center gap-2">
-              <span className="rounded-full border border-orange-500/40 px-3 py-1 text-xs font-medium text-muted-foreground">
-                {selectedCompanyPersona.name}
-              </span>
-
-              <span className="rounded-full border border-orange-500/40 bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-500">
-                {selectedCompanyPersona.company}
-              </span>
-            </div>
-          )}
         </div>
       </div>
 

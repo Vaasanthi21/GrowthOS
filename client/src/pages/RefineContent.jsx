@@ -1042,7 +1042,7 @@ export default function RefineContent() {
             <p className="text-sm text-muted-foreground">
               No refinement context found.
             </p>
-            <Button onClick={() => navigate("/")}>Back to Generate</Button>
+            <Button onClick={() => navigate("/generate")}>Back to Generate</Button>
           </CardContent>
         </Card>
       </div>

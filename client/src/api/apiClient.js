@@ -4,10 +4,11 @@ const SUPERADMIN_TOKEN_KEY = 'creative_studio_superadmin_token';
 
 function buildAuthHeaders(token, extraHeaders = {}) {
   const headers = { ...(extraHeaders || {}) };
+  const activeToken = token || tokenStorage.getUserToken();
 
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-    headers['X-Auth-Token'] = token;
+  if (activeToken) {
+    headers.Authorization = `Bearer ${activeToken}`;
+    headers['X-Auth-Token'] = activeToken;
   }
 
   return headers;
@@ -35,7 +36,6 @@ export const tokenStorage = {
 };
 
 async function request(path, options = {}) {
-  let response;
   const headers = {
     ...(options.headers || {}),
   };
@@ -44,16 +44,27 @@ async function request(path, options = {}) {
     headers['Content-Type'] = 'application/json';
   }
 
+  let response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       ...options,
       headers,
     });
   } catch (error) {
-    throw new Error('Backend API is not reachable. Check the API service or reverse proxy and try again.');
+    const err = new Error(
+      'Backend API is not reachable. Check the API service or reverse proxy and try again.'
+    );
+    err.cause = error;
+    throw err;
   }
 
-  const data = await response.json().catch(() => ({}));
+  let data = {};
+  try {
+    data = await response.json();
+  } catch {
+    data = {};
+  }
+
   if (!response.ok) {
     const error = new Error(data.message || `Request failed: ${response.status}`);
     error.status = response.status;
@@ -78,13 +89,12 @@ function xhrRequest(path, { method = 'GET', body, headers = {}, onUploadProgress
     xhr.responseType = 'text';
 
     xhr.onload = () => {
-      const data = (() => {
-        try {
-          return xhr.responseText ? JSON.parse(xhr.responseText) : {};
-        } catch {
-          return {};
-        }
-      })();
+      let data = {};
+      try {
+        data = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+      } catch {
+        data = {};
+      }
 
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve(data);
@@ -98,16 +108,20 @@ function xhrRequest(path, { method = 'GET', body, headers = {}, onUploadProgress
     };
 
     xhr.onerror = () => {
-      reject(new Error('Backend API is not reachable. Check the API service or reverse proxy and try again.'));
+      const err = new Error(
+        'Backend API is not reachable. Check the API service or reverse proxy and try again.'
+      );
+      reject(err);
     };
 
     if (xhr.upload && typeof onUploadProgress === 'function') {
       xhr.upload.onprogress = (event) => {
-        if (!event.lengthComputable) {
-          return;
-        }
-
-        onUploadProgress({ loaded: event.loaded, total: event.total, percent: Math.round((event.loaded / event.total) * 100) });
+        if (!event.lengthComputable) return;
+        onUploadProgress({
+          loaded: event.loaded,
+          total: event.total,
+          percent: Math.round((event.loaded / event.total) * 100),
+        });
       };
     }
 
@@ -118,6 +132,7 @@ function xhrRequest(path, { method = 'GET', body, headers = {}, onUploadProgress
 export const apiClient = {
   get: (path, token) => request(path, { headers: buildAuthHeaders(token) }),
   post: (path, body, token) => request(path, { method: 'POST', body: body instanceof FormData ? body : JSON.stringify(body), headers: buildAuthHeaders(token) }),
+  put: (path, body, token) => request(path, { method: 'PUT', body: body instanceof FormData ? body : JSON.stringify(body), headers: buildAuthHeaders(token) }),
   patch: (path, body, token) => request(path, { method: 'PATCH', body: JSON.stringify(body || {}), headers: buildAuthHeaders(token) }),
   delete: (path, token) => request(path, { method: 'DELETE', headers: buildAuthHeaders(token) }),
   upload: (path, body, token, onUploadProgress) => xhrRequest(path, { method: 'POST', body, headers: buildAuthHeaders(token), onUploadProgress }),

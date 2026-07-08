@@ -384,10 +384,6 @@ export default function GenerationForm({
                     the sidebar.
                   </p>
                 </div>
-                <div className="rounded-2xl border border-border/70 bg-background/70 px-3 py-2 text-xs text-muted-foreground">
-                  {companyPersonas.length}/{user?.companyPersonaLimit ?? "-"}{" "}
-                  personas on {planName}
-                </div>
               </div>
 
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -426,7 +422,7 @@ export default function GenerationForm({
                         variant="outline"
                         size="sm"
                         className="mt-3 gap-2"
-                        onClick={() => navigate("/personas")}
+                        onClick={() => navigate("/brand-setup")}
                       >
                         <Plus className="h-4 w-4" />
                         Add Persona

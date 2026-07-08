@@ -1,7 +1,5 @@
 import React, { useState } from "react";
 import {
-  Copy,
-  Check,
   Maximize2,
   Download,
   Share2,
@@ -84,7 +82,6 @@ export default function VariantCard({
   onExport,
   onEnhance,
 }) {
-  const [copied, setCopied] = useState(false);
   const hasText = Boolean(String(variant.content || "").trim());
   const hasImage = Boolean(variant.image_url || variant.image_base64);
   const hasVideo = Boolean(variant.video_url);
@@ -170,17 +167,6 @@ export default function VariantCard({
     await downloadFile(resolvedVideoUrl, filename);
   };
 
-  const handleCopy = async () => {
-    if (!hasText) {
-      return;
-    }
-
-    await navigator.clipboard.writeText(variant.content);
-    setCopied(true);
-    toast({ title: "Copied to clipboard", duration: 1500 });
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   return (
     <div className="bg-card border border-border rounded-lg p-5 flex flex-col gap-3 group hover:border-muted-foreground/30 transition-colors">
       <div className="flex items-center justify-between">
@@ -260,7 +246,7 @@ export default function VariantCard({
 
       <div className="flex items-center gap-1.5 pt-1 border-t border-border">
         <Button
-          variant="ghost"
+          variant="transparent"
           size="sm"
           className="h-7 text-xs text-muted-foreground hover:text-foreground"
           onClick={() => onExpand(variant)}

@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { apiClient, tokenStorage } from '@/api/apiClient';
+import { queryClientInstance } from './query-client';
 
 const AUTH_CONTEXT_KEY = '__creative_studio_auth_context__';
 const AuthContext = globalThis[AUTH_CONTEXT_KEY] || createContext();
@@ -33,6 +34,12 @@ export const AuthProvider = ({ children }) => {
     setAuthError(null);
     setAuthChecked(true);
     setIsLoadingAuth(false);
+    try {
+      queryClientInstance.clear();
+      console.log('[AUTH] React Query cache cleared successfully on logout.');
+    } catch (err) {
+      console.error('[AUTH] Failed to clear React Query cache:', err);
+    }
   };
 
   const checkUserAuth = async () => {
