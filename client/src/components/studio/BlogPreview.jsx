@@ -522,9 +522,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
           // Find the image for the target platform that is fully generated
           const readyImg = list.find(img => img.dimensions === targetDim && img.imageUrl !== 'generating');
           if (readyImg) {
-            setTimeout(() => {
-              window.location.reload();
-            }, 1000);
+            queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
             return readyImg;
           }
           attempts++;
@@ -532,9 +530,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
         throw new Error('Image generation timed out.');
       }
       
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+      queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
       return imgData;
     });
   };
@@ -581,9 +577,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
     startTask(adaptTaskId, async () => {
       try {
         const response = await api.post(`/render/${resolvedPlatformName.replace(' ', '-')}`, { blogId });
-        setTimeout(() => {
-          window.location.reload();
-        }, 1000);
+        queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
         return response.data.data;
       } catch (err) {
         console.warn('Adaptation request timed out or failed, starting polling...', err);
@@ -595,9 +589,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
           try {
             const getRes = await api.get(`/render/blog/${blogId}/platform/${resolvedPlatformName}`);
             if (getRes.data && getRes.data.data) {
-              setTimeout(() => {
-                window.location.reload();
-              }, 1000);
+              queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
               return getRes.data.data;
             }
           } catch (getErr) {
@@ -615,9 +607,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
     startTask(optimizeRenderTaskId, async () => {
       try {
         const response = await api.post(`/render/${renderedRecord._id}/optimize`);
-        setTimeout(() => {
-          window.location.reload();
-        }, 1000);
+        queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
         return response.data.data;
       } catch (err) {
         console.warn('Optimize request timed out or failed, starting polling...', err);
@@ -629,9 +619,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
           try {
             const getRes = await api.get(`/render/blog/${blogId}/platform/${resolvedPlatformName}`);
             if (getRes.data && getRes.data.data) {
-              setTimeout(() => {
-                window.location.reload();
-              }, 1000);
+              queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
               return getRes.data.data;
             }
           } catch (getErr) {
