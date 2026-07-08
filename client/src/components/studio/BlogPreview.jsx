@@ -843,7 +843,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
         plainText += `![Cover Image](${imageLink})\n\n`;
       }
       plainText += strippedContent;
-      filename = `${blogRecord.slug || 'canonical'}.md.txt`;
+      filename = `${blogRecord.slug || 'canonical'}.md`;
     } else {
       if (!renderedRecord) return;
       const slugName = blogRecord?.slug || 'post';
@@ -858,7 +858,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
         if (renderedRecord.hashtags && renderedRecord.hashtags.length > 0) {
           plainText += `\n\n${renderedRecord.hashtags.map(t => `#${t}`).join(' ')}`;
         }
-        filename = `linkedin_${slugName}.txt`;
+        filename = `linkedin_${slugName}.md`;
       } else if (activeTab === 'medium') {
         const titleText = renderedRecord.title || blogRecord.title;
         const { subtitle, cleanCopy } = extractSubtitle(renderedRecord.copy);
@@ -872,7 +872,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
           plainText += `![Cover Image](${imageLink})\n\n`;
         }
         plainText += copyWithCodeBlockTables;
-        filename = `medium_${slugName}.md.txt`;
+        filename = `medium_${slugName}.md`;
       } else if (activeTab === 'substack') {
         const titleText = renderedRecord.title || blogRecord.title;
         const { subtitle: extractedSub, cleanCopy } = extractSubtitle(renderedRecord.copy);
@@ -886,7 +886,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
           plainText += `![Cover Image](${imageLink})\n\n`;
         }
         plainText += strippedCopy;
-        filename = `substack_${slugName}.md.txt`;
+        filename = `substack_${slugName}.md`;
       } else if (activeTab === 'blog') {
         const titleText = renderedRecord.title || blogRecord.title;
         const { subtitle, cleanCopy } = extractSubtitle(renderedRecord.copy);
@@ -899,19 +899,19 @@ export const BlogPreview = ({ blogId, onBack }) => {
           plainText += `![Cover Image](${imageLink})\n\n`;
         }
         plainText += strippedCopy;
-        filename = `blog_${slugName}.md.txt`;
+        filename = `blog_${slugName}.md`;
       } else if (activeTab === 'devto') {
         const titleText = renderedRecord.title || blogRecord.title;
         const strippedCopy = cleanPlatformCopy(renderedRecord.copy, titleText);
         plainText = cleanCopyWithoutTrailingHashtags(strippedCopy);
-        filename = `devto_${slugName}.md.txt`;
+        filename = `devto_${slugName}.md`;
       }
     }
 
     if (!plainText) return;
 
     try {
-      const blob = new Blob([plainText], { type: 'text/plain;charset=utf-8;' });
+      const blob = new Blob([plainText], { type: 'text/markdown;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -943,7 +943,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
       const strippedContent = stripLeadingTitle(blogRecord.content, blogRecord.title);
       titleText = blogRecord.title;
       bodyHtml = renderMarkdownToHTML(strippedContent);
-      filename = `${blogRecord.slug || 'canonical'}.html.txt`;
+      filename = `${blogRecord.slug || 'canonical'}.html`;
     } else {
       if (!renderedRecord) return;
       const slugName = blogRecord?.slug || 'post';
@@ -957,31 +957,31 @@ export const BlogPreview = ({ blogId, onBack }) => {
           htmlPart += `<p>${renderedRecord.hashtags.map(t => `#${t}`).join(' ')}</p>`;
         }
         bodyHtml = htmlPart;
-        filename = `linkedin_${slugName}.html.txt`;
+        filename = `linkedin_${slugName}.html`;
       } else if (activeTab === 'medium') {
         const { subtitle, cleanCopy } = extractSubtitle(renderedRecord.copy);
         const strippedCopy = cleanPlatformCopy(cleanCopy, titleText);
         const copyWithCodeBlockTables = convertTablesToCodeBlocks(strippedCopy);
         subtitleText = subtitle;
         bodyHtml = renderMarkdownToHTML(copyWithCodeBlockTables);
-        filename = `medium_${slugName}.html.txt`;
+        filename = `medium_${slugName}.html`;
       } else if (activeTab === 'substack') {
         const { subtitle: extractedSub, cleanCopy } = extractSubtitle(renderedRecord.copy);
         const displaySubtitle = renderedRecord.metaDescription || extractedSub;
         const strippedCopy = cleanPlatformCopy(cleanCopy, titleText);
         subtitleText = displaySubtitle;
         bodyHtml = renderMarkdownToHTML(strippedCopy);
-        filename = `substack_${slugName}.html.txt`;
+        filename = `substack_${slugName}.html`;
       } else if (activeTab === 'blog') {
         const { subtitle, cleanCopy } = extractSubtitle(renderedRecord.copy);
         const strippedCopy = cleanPlatformCopy(cleanCopy, titleText);
         subtitleText = subtitle;
         bodyHtml = renderMarkdownToHTML(strippedCopy);
-        filename = `blog_${slugName}.html.txt`;
+        filename = `blog_${slugName}.html`;
       } else if (activeTab === 'devto') {
         const strippedCopy = cleanPlatformCopy(renderedRecord.copy, titleText);
         bodyHtml = renderMarkdownToHTML(cleanCopyWithoutTrailingHashtags(strippedCopy));
-        filename = `devto_${slugName}.html.txt`;
+        filename = `devto_${slugName}.html`;
       }
     }
 
@@ -1202,7 +1202,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
     }
 
     try {
-      const blob = new Blob([htmlContent], { type: 'text/plain;charset=utf-8;' });
+      const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
