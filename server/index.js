@@ -5599,44 +5599,10 @@ app.post('/api/images/generate', authRequired, async (req, res) => {
     const resolvedPrompt = await generateBrandedImagePrompt(blog, company, campaign, persona, platform);
     
     let imageUrl;
+    let tempImageUrl = null;
     try {
       imageUrl = await generateImage(resolvedPrompt, dimensions);
-      if (imageUrl && !imageUrl.includes('unsplash.com')) {
-        try {
-          let buffer;
-          let mimeType = 'image/png';
-          if (imageUrl.startsWith('data:image')) {
-            const parts = imageUrl.split(',');
-            const base64Data = parts[1];
-            const match = parts[0].match(/data:(.*?);/);
-            if (match) mimeType = match[1];
-            buffer = Buffer.from(base64Data, 'base64');
-          } else {
-            const bufferResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-            buffer = Buffer.from(bufferResponse.data, 'binary');
-            const contentType = bufferResponse.headers['content-type'];
-            if (contentType) mimeType = contentType;
-          }
-          let s3Url = await uploadToS3(buffer, `dalle_${blogId}_${Date.now()}.png`, mimeType);
-          if (company && company.logo) {
-            try {
-              console.log('[IMAGE GENERATION LOGO OVERLAY] Overlaying logo:', company.logo);
-              const overlaidUrl = await overlayLogoOnImage({
-                imageUrl: s3Url,
-                logoUrl: company.logo,
-                logoPlacement: 'bottom-right',
-                logoScale: 0.08,
-              });
-              s3Url = overlaidUrl;
-            } catch (overlayErr) {
-              console.error('[IMAGE GENERATION LOGO OVERLAY FAILED]', overlayErr);
-            }
-          }
-          imageUrl = s3Url;
-        } catch (uploadErr) {
-          console.warn('[IMAGE UPLOAD WARNING] Failed to upload image to S3, using source/temp URL:', uploadErr.message);
-        }
-      }
+      tempImageUrl = imageUrl;
     } catch (dalleErr) {
       console.warn('[DALL-E WARNING] Image generation failed, falling back to mock unsplash image:', dalleErr.message);
       imageUrl = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1024&q=80';
@@ -5655,6 +5621,8 @@ app.post('/api/images/generate', authRequired, async (req, res) => {
 
     const result = await rawDb.collection('image_metadata').insertOne(img);
     const created = await rawDb.collection('image_metadata').findOne({ _id: result.insertedId });
+    
+    // Respond immediately to the client to avoid CloudFront / Nginx timeouts
     res.status(201).json({
       success: true,
       data: {
@@ -5666,6 +5634,52 @@ app.post('/api/images/generate', authRequired, async (req, res) => {
         imageUrl
       }
     });
+
+    // Start background task to upload to S3 and overlay logo if it's not a mock unsplash URL
+    if (tempImageUrl && !tempImageUrl.includes('unsplash.com')) {
+      (async () => {
+        try {
+          console.log('[IMAGE CONTROLLER BACKGROUND] Starting background S3 upload and logo overlay...');
+          let buffer;
+          let mimeType = 'image/png';
+          if (tempImageUrl.startsWith('data:image')) {
+            const parts = tempImageUrl.split(',');
+            const base64Data = parts[1];
+            const match = parts[0].match(/data:(.*?);/);
+            if (match) mimeType = match[1];
+            buffer = Buffer.from(base64Data, 'base64');
+          } else {
+            const bufferResponse = await axios.get(tempImageUrl, { responseType: 'arraybuffer' });
+            buffer = Buffer.from(bufferResponse.data, 'binary');
+            const contentType = bufferResponse.headers['content-type'];
+            if (contentType) mimeType = contentType;
+          }
+          let s3Url = await uploadToS3(buffer, `dalle_${blogId}_${Date.now()}.png`, mimeType);
+          if (company && company.logo) {
+            try {
+              console.log('[IMAGE GENERATION LOGO OVERLAY BACKGROUND] Overlaying logo:', company.logo);
+              const overlaidUrl = await overlayLogoOnImage({
+                imageUrl: s3Url,
+                logoUrl: company.logo,
+                logoPlacement: 'bottom-right',
+                logoScale: 0.08,
+              });
+              s3Url = overlaidUrl;
+            } catch (overlayErr) {
+              console.error('[IMAGE GENERATION LOGO OVERLAY BACKGROUND FAILED]', overlayErr);
+            }
+          }
+          // Update the database with the final permanent S3 URL
+          await rawDb.collection('image_metadata').updateOne(
+            { _id: result.insertedId },
+            { $set: { imageUrl: s3Url } }
+          );
+          console.log('[IMAGE CONTROLLER BACKGROUND] Image successfully updated to permanent S3 URL:', s3Url);
+        } catch (uploadErr) {
+          console.warn('[IMAGE UPLOAD BACKGROUND WARNING] Failed to upload image to S3 in background:', uploadErr.message);
+        }
+      })();
+    }
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
