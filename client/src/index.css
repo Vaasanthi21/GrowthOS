@@ -6,26 +6,26 @@
 
 @layer base {
   :root {
-    --font-display: 'Syne', sans-serif;
+    --font-display: 'DM Sans', sans-serif;
     --font-body: 'DM Sans', sans-serif;
 
-    --background: 42 33% 97%;          /* #faf6f0 (warm creamy sand) */
-    --foreground: 220 20% 12%;          /* #181c25 (dark slate text) */
-    --card: 0 0% 100%;                  /* #ffffff (white card background) */
+    --background: 42 33% 97%;
+    --foreground: 220 20% 12%;
+    --card: 0 0% 100%;
     --card-foreground: 220 20% 12%;
     --popover: 0 0% 100%;
     --popover-foreground: 220 20% 12%;
-    --primary: 18 80% 51%;              /* #f25b18 (warm coral orange) */
+    --primary: 18 80% 51%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 42 18% 92%;            /* #ebe6dd (warm sand-gray) */
+    --secondary: 42 18% 92%;
     --secondary-foreground: 220 12% 28%;
-    --muted: 42 18% 94%;                /* #ede9e1 */
+    --muted: 42 18% 94%;
     --muted-foreground: 220 8% 42%;
     --accent: 18 80% 51%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 220 12% 88%;              /* #e1e3e7 (light gray border) */
+    --border: 220 12% 88%;
     --input: 220 12% 88%;
     --ring: 18 80% 51%;
     --chart-1: 18 80% 51%;
@@ -86,189 +86,129 @@
   html.dark {
     color-scheme: dark;
   }
+}
 
+@layer base {
   * {
-    @apply border-border;
+    @apply border-border outline-ring/50;
   }
-
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background text-foreground;
     font-family: var(--font-body);
-    background-image: 
-      radial-gradient(at 0% 0%, hsla(var(--secondary) / 0.15) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, hsla(var(--primary) / 0.15) 0px, transparent 50%);
-    background-attachment: fixed;
-    color: hsl(var(--foreground));
   }
 }
 
-/* Global design overrides to adapt a dark-themed app to Light Mode cleanly */
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 4px; }
 
-.text-white, .text-slate-100, .text-slate-200, .text-slate-300 {
-  color: hsl(var(--foreground)) !important;
+/* ────────────────────────────────────────────────────────────────────────
+   Dark Mode Overrides for Brand Setup
+   ──────────────────────────────────────────────────────────────────────── */
+.dark {
+  color: #f1f5f9;
 }
 
-.text-slate-400, .text-slate-500 {
-  color: hsl(var(--muted-foreground)) !important;
+.dark .bg-white {
+  background-color: #0f172a !important; /* bg-slate-900 */
 }
 
-.hover\:text-white:hover, .hover\:text-slate-100:hover, .hover\:text-slate-200:hover {
-  color: hsl(var(--primary)) !important;
+.dark .bg-white\/40 {
+  background-color: rgba(30, 41, 59, 0.2) !important;
 }
 
-/* Ensure high contrast white text on elements with dark/solid background hover classes */
-.hover\:bg-primary:hover,
-.hover\:bg-primary-dark:hover,
-.hover\:bg-primary-hover:hover,
-.hover\:bg-destructive:hover,
-.hover\:bg-slate-950:hover,
-.hover\:bg-slate-900:hover,
-.hover\:bg-slate-850:hover,
-.hover\:bg-slate-800:hover,
-.hover\:bg-slate-700:hover,
-.hover\:bg-slate-600:hover,
-.hover\:bg-red-600:hover,
-.hover\:bg-red-500:hover,
-.hover\:bg-black:hover,
-.hover\:bg-accent:hover {
-  color: #ffffff !important;
+.dark .bg-white\/95 {
+  background-color: rgba(15, 23, 42, 0.95) !important;
 }
 
-/* Ensure icons and other child elements inside these hovered elements inherit the white color */
-.hover\:bg-primary:hover *,
-.hover\:bg-primary-dark:hover *,
-.hover\:bg-primary-hover:hover *,
-.hover\:bg-destructive:hover *,
-.hover\:bg-slate-950:hover *,
-.hover\:bg-slate-900:hover *,
-.hover\:bg-slate-850:hover *,
-.hover\:bg-slate-800:hover *,
-.hover\:bg-slate-700:hover *,
-.hover\:bg-slate-600:hover *,
-.hover\:bg-red-600:hover *,
-.hover\:bg-red-500:hover *,
-.hover\:bg-black:hover *,
-.hover\:bg-accent:hover * {
-  color: inherit !important;
+.dark .bg-slate-50 {
+  background-color: #1e293b !important; /* bg-slate-800 */
 }
 
-/* Glassmorphism card utility updated for light mode */
-.glass-card, [class*="glass-card"] {
-  background: rgba(255, 255, 255, 0.75) !important;
-  backdrop-filter: blur(12px) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
-  border: 1px solid hsla(var(--border) / 0.6) !important;
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.04) !important;
+.dark .bg-slate-50\/50 {
+  background-color: rgba(30, 41, 59, 0.4) !important;
 }
 
-.glass-card-hover {
-  @apply transition-all duration-300 ease-out;
+.dark .bg-slate-50\/40 {
+  background-color: rgba(30, 41, 59, 0.3) !important;
 }
 
-.glass-card-hover:hover {
-  background: rgba(255, 255, 255, 0.9) !important;
-  border-color: hsla(var(--primary) / 0.35) !important;
-  box-shadow: 0 10px 30px rgba(242, 91, 24, 0.08) !important;
-  transform: translateY(-2px);
+.dark .bg-slate-50\/30 {
+  background-color: rgba(30, 41, 59, 0.2) !important;
 }
 
-/* Transparent card overlays */
-[class*="bg-white/5"] {
-  background: rgba(0, 0, 0, 0.04) !important;
+.dark .bg-slate-50\/20 {
+  background-color: rgba(30, 41, 59, 0.1) !important;
 }
 
-[class*="bg-white/8"] {
-  background: rgba(0, 0, 0, 0.06) !important;
+.dark .bg-slate-100 {
+  background-color: #1e293b !important;
 }
 
-[class*="bg-white/10"], [class*="bg-white/15"] {
-  background: rgba(0, 0, 0, 0.08) !important;
+.dark .text-slate-800 {
+  color: #f1f5f9 !important;
 }
 
-[class*="bg-[#0B0F1C]"], [class*="bg-[#0b0f1c]"], [class*="bg-[#0a0f1d]"], [class*="bg-[#0A0F1D]"], [class*="bg-[#0B0F19]"], [class*="bg-[#0b0f19]"] {
-  background: hsl(var(--card)) !important;
+.dark .text-slate-700 {
+  color: #e2e8f0 !important;
 }
 
-/* White borders map to border variables */
-[class*="border-white/5"], [class*="border-white/10"], [class*="border-white/8"], [class*="border-white/20"] {
-  border-color: hsl(var(--border)) !important;
+.dark .text-slate-650 {
+  color: #cbd5e1 !important;
 }
 
-/* Custom Scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+.dark .text-slate-600 {
+  color: #cbd5e1 !important;
 }
 
-::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.03);
+.dark .text-slate-500 {
+  color: #94a3b8 !important;
 }
 
-::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.1);
-  border-radius: 9999px;
+.dark .text-slate-900 {
+  color: #f8fafc !important;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: hsla(var(--primary) / 0.5);
+.dark .text-slate-400 {
+  color: #94a3b8 !important;
 }
 
-/* Inputs, text areas & selects styling overrides */
-input, textarea, select {
-  background-color: hsl(var(--card)) !important;
-  color: hsl(var(--foreground)) !important;
-  border-color: hsl(var(--border)) !important;
+.dark .border-slate-100 {
+  border-color: rgba(51, 65, 85, 0.4) !important;
 }
 
-input::placeholder, textarea::placeholder {
-  color: hsl(var(--muted-foreground)) !important;
+.dark .border-slate-200 {
+  border-color: #334155 !important; /* border-slate-700 */
 }
 
-/* Button & interactive text fixes for readability */
-button.bg-primary, 
-.bg-primary, 
-button.bg-destructive,
-.bg-destructive,
-button.bg-gradient-to-r:not([class*="/"]),
-.bg-gradient-to-r:not([class*="/"]),
-.shadow-glow:not([class*="/"]):not(.shadow-glow-sm) {
-  color: #ffffff !important;
+.dark .border-slate-300 {
+  border-color: #475569 !important;
 }
 
-.text-background {
-  color: #ffffff !important;
+.dark .bg-black\/75 {
+  background-color: rgba(0, 0, 0, 0.75) !important;
 }
 
-/* Gradient text utility */
-.text-gradient {
-  @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent;
+.dark input[type="text"],
+.dark input[type="url"],
+.dark textarea {
+  background-color: #0b0f19 !important; /* very dark background for inputs */
+  color: #f8fafc !important;
+  border-color: #334155 !important;
 }
 
-.text-gradient-purple {
-  @apply bg-clip-text text-transparent bg-gradient-to-r from-secondary to-accent;
+.dark input[type="text"]:focus,
+.dark input[type="url"]:focus,
+.dark textarea:focus {
+  border-color: #f25b18 !important;
 }
 
-/* Custom Animations for Toasts and Alerts */
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+/* Force high-contrast text colors on canonical blog preview prose elements */
+.prose p, .prose li, .prose strong, .prose em {
+  color: #1e293b !important;
 }
 
-@keyframes slideDownCenter {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -20px);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, 0);
-  }
-}
-
-.animate-fade-in {
-  animation: fadeIn 0.25s ease-out forwards;
-}
-
-.animate-slide-down-center {
-  animation: slideDownCenter 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
+.dark .prose p, .dark .prose li, .dark .prose strong, .dark .prose em {
+  color: #cbd5e1 !important;
+}
