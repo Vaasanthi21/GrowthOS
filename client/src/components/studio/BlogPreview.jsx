@@ -1239,23 +1239,23 @@ export const BlogPreview = ({ blogId, onBack }) => {
         </div>
 
         {/* Cover Image Assistant Panel */}
-        <div className="glass-card rounded-2xl border border-white/5 p-4 w-full max-w-4xl flex flex-col sm:flex-row items-center justify-between gap-4 bg-white/[0.02] select-none mx-auto">
+        <div className="bg-card text-card-foreground border border-border/60 rounded-2xl p-4 w-full max-w-4xl flex flex-col sm:flex-row items-center justify-between gap-4 select-none mx-auto shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-primary relative overflow-hidden shrink-0 select-none">
+            <div className="w-12 h-12 rounded-xl bg-secondary border border-border flex items-center justify-center text-primary relative overflow-hidden shrink-0 select-none">
               {resolvedCoverImageUrl ? (
                 <img src={resolvedCoverImageUrl} alt="Cover preview" className="w-full h-full object-cover" />
               ) : (
-                <ImageIcon size={20} className="text-slate-500" />
+                <ImageIcon size={20} className="text-muted-foreground/80" />
               )}
             </div>
             <div className="text-left">
-              <h4 className="text-xs font-bold text-white flex items-center gap-1.5 uppercase tracking-wider">
+              <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5 uppercase tracking-wider">
                 <span>Cover Image Assistant</span>
-                <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-slate-400 font-mono font-medium lowercase">
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-mono font-medium lowercase">
                   {getPlatformDisplaySize()}
                 </span>
               </h4>
-              <p className="text-[10px] text-slate-400 mt-0.5">
+              <p className="text-[10px] text-muted-foreground mt-0.5">
                 {resolvedCoverImageUrl
                   ? `Loaded cover visual for this topic/platform. Will embed in downloaded files.`
                   : `No tailored cover image found. Generate one matching active platform rules.`}
@@ -1267,7 +1267,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
             {resolvedCoverImageUrl && (
               <button
                 onClick={handleDownloadCoverImage}
-                className="px-4 py-2 bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 hover:border-white/20 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                className="px-4 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground border border-border font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
               >
                 <Download size={13} />
                 <span>Download Image</span>
@@ -1297,33 +1297,33 @@ export const BlogPreview = ({ blogId, onBack }) => {
         <div className="min-h-[480px]">
           {/* A. CANONICAL PREVIEW TAB */}
           {activeTab === 'canonical' && (
-            <div className="glass-card rounded-3xl border border-white/5 p-8 w-full max-w-4xl space-y-6 mx-auto">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-white/5 pb-4 gap-4">
+            <div className="bg-card text-card-foreground border border-border/60 rounded-3xl p-8 w-full max-w-4xl space-y-6 mx-auto shadow-sm">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-border/50 pb-4 gap-4">
                 <div>
-                  <span className="inline-block text-[9px] font-bold px-2 py-0.5 rounded-full bg-white/5 text-slate-400 border border-white/10 uppercase tracking-widest font-mono mb-2">
+                  <span className="inline-block text-[9px] font-bold px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground border border-border uppercase tracking-widest font-mono mb-2">
                     Canonical Article Draft
                   </span>
-                  <h3 className="text-2xl font-bold text-white tracking-tight">{blogRecord.title}</h3>
-                  <p className="text-xs text-slate-400 mt-2 font-mono leading-relaxed">Meta Description: {blogRecord.metaDescription}</p>
+                  <h3 className="text-2xl font-bold text-foreground tracking-tight">{blogRecord.title}</h3>
+                  <p className="text-xs text-muted-foreground mt-2 font-mono leading-relaxed">Meta Description: {blogRecord.metaDescription}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0 self-start">
                   <button
                     onClick={handleCopy}
-                    className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 hover:border-white/20 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                    className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 text-secondary-foreground border border-border font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
                   >
                     <Share2 size={13} />
                     <span>Copy</span>
                   </button>
                   <button
                     onClick={handleDownloadMD}
-                    className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 hover:border-white/20 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                    className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 text-secondary-foreground border border-border font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
                   >
                     <Download size={13} />
                     <span>MD</span>
                   </button>
                   <button
                     onClick={handleDownloadHTML}
-                    className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 hover:border-white/20 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                    className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 text-secondary-foreground border border-border font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
                   >
                     <Download size={13} />
                     <span>HTML</span>
@@ -1332,43 +1332,43 @@ export const BlogPreview = ({ blogId, onBack }) => {
               </div>
 
               {/* Canonical SEO scorecard */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-white/5 border border-white/5 rounded-2xl text-center text-xs">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-secondary/40 border border-border/60 rounded-2xl text-center text-xs">
                 <div>
-                  <span className="text-[9px] text-slate-500 font-bold uppercase block">SEO Score</span>
+                  <span className="text-[9px] text-muted-foreground/85 font-bold uppercase block">SEO Score</span>
                   <span className={`text-base font-extrabold font-mono ${
-                    blogRecord.seoScore >= 80 ? 'text-emerald-400' : blogRecord.seoScore >= 50 ? 'text-amber-400' : 'text-rose-400'
+                    blogRecord.seoScore >= 80 ? 'text-emerald-500' : blogRecord.seoScore >= 50 ? 'text-amber-500' : 'text-rose-500'
                   }`}>
                     {blogRecord.seoScore || 0}/100
                   </span>
                 </div>
                 <div>
-                  <span className="text-[9px] text-slate-500 font-bold uppercase block">Words</span>
-                  <span className="text-base font-extrabold font-mono text-slate-300">
+                  <span className="text-[9px] text-muted-foreground/85 font-bold uppercase block">Words</span>
+                  <span className="text-base font-extrabold font-mono text-foreground">
                     {blogRecord.content ? blogRecord.content.trim().split(/\s+/).filter(Boolean).length : 0}
                   </span>
                 </div>
                 <div>
-                  <span className="text-[9px] text-slate-500 font-bold uppercase block">Readability</span>
-                  <span className="text-base font-extrabold font-mono text-slate-300">
+                  <span className="text-[9px] text-muted-foreground/85 font-bold uppercase block">Readability</span>
+                  <span className="text-base font-extrabold font-mono text-foreground">
                     {blogRecord.seoAnalysis?.readabilityScore || 0}
                   </span>
                 </div>
                 <div>
-                  <span className="text-[9px] text-slate-500 font-bold uppercase block">Density</span>
-                  <span className="text-base font-extrabold font-mono text-slate-300">
+                  <span className="text-[9px] text-muted-foreground/85 font-bold uppercase block">Density</span>
+                  <span className="text-base font-extrabold font-mono text-foreground">
                     {blogRecord.seoAnalysis?.keywordDensity !== undefined ? `${blogRecord.seoAnalysis.keywordDensity}%` : '0%'}
                   </span>
                 </div>
               </div>
               
               {resolvedCoverImageUrl && (
-                <div className="w-full rounded-2xl overflow-hidden border border-white/5 max-h-[300px] bg-slate-950 select-none mb-6">
+                <div className="w-full rounded-2xl overflow-hidden border border-border/60 max-h-[300px] bg-secondary select-none mb-6">
                   <img src={resolvedCoverImageUrl} alt="Canonical Cover" className="w-full h-full object-cover" />
                 </div>
               )}
               
               <div 
-                className="prose prose-invert max-w-none text-slate-300 text-sm leading-relaxed max-h-[420px] overflow-y-auto pr-2 scrollbar-glass"
+                className="prose dark:prose-invert max-w-none text-foreground/85 text-sm leading-relaxed max-h-[420px] overflow-y-auto pr-2 scrollbar-glass"
                 dangerouslySetInnerHTML={{ __html: renderMarkdownToHTML(stripLeadingTitle(blogRecord.content, blogRecord.title)) }}
               />
             </div>
