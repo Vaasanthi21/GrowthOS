@@ -549,29 +549,20 @@ export const BlogPreview = ({ blogId, onBack }) => {
     ? (coverImage.startsWith('/uploads') ? `http://localhost:4000${coverImage}` : coverImage)
     : null;
 
-  const handleDownloadCoverImage = async () => {
+  const handleDownloadCoverImage = () => {
     if (!resolvedCoverImageUrl) return;
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`/api/images/download?url=${encodeURIComponent(resolvedCoverImageUrl)}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const downloadUrl = `/api/images/download?url=${encodeURIComponent(resolvedCoverImageUrl)}&token=${encodeURIComponent(token)}`;
       
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.href = url;
+      link.href = downloadUrl;
       const extension = resolvedCoverImageUrl.split('.').pop().split('?')[0] || 'png';
       link.setAttribute("download", `cover_image_${activeTab}_${blogRecord?.slug || 'post'}.${extension}`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      triggerToast('Cover image downloaded successfully!');
+      triggerToast('Cover image download started!');
     } catch (err) {
       console.error('Failed to download cover image: ', err);
       window.open(resolvedCoverImageUrl, '_blank');

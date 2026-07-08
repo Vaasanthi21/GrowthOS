@@ -2717,7 +2717,10 @@ const refundGenerationCredits = async ({ userId, amount, type, note }) => {
 
 const authRequired = async (req, res, next) => {
   const header = req.headers.authorization || req.headers['x-auth-token'] || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : (header || null);
+  let token = header.startsWith('Bearer ') ? header.slice(7) : (header || null);
+  if (!token && req.query.token) {
+    token = req.query.token;
+  }
 
   if (!token) {
     return res.status(401).json({ message: 'Authentication required' });
