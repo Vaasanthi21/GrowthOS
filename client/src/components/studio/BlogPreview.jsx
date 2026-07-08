@@ -1191,20 +1191,20 @@ export const BlogPreview = ({ blogId, onBack }) => {
       )}
 
       {/* Preview Header & Back Button */}
-      <div className="flex items-center justify-between border-b border-white/5 pb-4">
+      <div className="flex items-center justify-between border-b border-border pb-4">
         <button
           onClick={onBack}
-          className="px-3 py-2 border border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+          className="px-3 py-2 border border-border hover:border-border/80 bg-secondary hover:bg-secondary/80 text-foreground text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
         >
           <ArrowLeft size={13} />
           <span>Back to directory</span>
         </button>
-        <span className="text-xs text-slate-500 font-mono">Platform Simulator Previews</span>
+        <span className="text-xs text-muted-foreground font-mono">Platform Simulator Previews</span>
       </div>
 
       <div className="space-y-6">
         {/* Platform Tab Selector */}
-        <div className="flex overflow-x-auto scrollbar-none border border-white/5 rounded-2xl bg-background/50 p-1.5 shrink-0 w-full max-w-4xl gap-1 mx-auto whitespace-nowrap">
+        <div className="flex overflow-x-auto scrollbar-none border border-border/80 rounded-2xl bg-secondary/30 p-1.5 shrink-0 w-full max-w-4xl gap-1 mx-auto whitespace-nowrap">
           {['canonical', 'linkedin', 'medium', 'blog', 'devto', 'substack'].map((tab) => {
             const label =
               tab === 'canonical'
@@ -1229,7 +1229,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
                 className={`flex-1 py-3 text-center text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer ${
                   activeTab === tab
                     ? 'bg-gradient-to-r from-primary/10 to-primary/20 text-primary border border-primary/20 shadow-glow-sm'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary border border-transparent'
                 }`}
               >
                 {label}
