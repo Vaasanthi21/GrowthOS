@@ -522,6 +522,9 @@ export const BlogPreview = ({ blogId, onBack }) => {
           // Find the image for the target platform that is fully generated
           const readyImg = list.find(img => img.dimensions === targetDim && img.imageUrl !== 'generating');
           if (readyImg) {
+            setTimeout(() => {
+              window.location.reload();
+            }, 1000);
             return readyImg;
           }
           attempts++;
@@ -529,6 +532,9 @@ export const BlogPreview = ({ blogId, onBack }) => {
         throw new Error('Image generation timed out.');
       }
       
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
       return imgData;
     });
   };
@@ -573,16 +579,68 @@ export const BlogPreview = ({ blogId, onBack }) => {
   const handleAdapt = () => {
     if (!blogId || !resolvedPlatformName || !adaptTaskId) return;
     startTask(adaptTaskId, async () => {
-      const response = await api.post(`/render/${resolvedPlatformName.replace(' ', '-')}`, { blogId });
-      return response.data.data;
+      try {
+        const response = await api.post(`/render/${resolvedPlatformName.replace(' ', '-')}`, { blogId });
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+        return response.data.data;
+      } catch (err) {
+        console.warn('Adaptation request timed out or failed, starting polling...', err);
+        
+        let attempts = 0;
+        const maxAttempts = 20; // 60 seconds max
+        while (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          try {
+            const getRes = await api.get(`/render/blog/${blogId}/platform/${resolvedPlatformName}`);
+            if (getRes.data && getRes.data.data) {
+              setTimeout(() => {
+                window.location.reload();
+              }, 1000);
+              return getRes.data.data;
+            }
+          } catch (getErr) {
+            // Keep polling on 404
+          }
+          attempts++;
+        }
+        throw new Error('Content adaptation timed out. Please try again.');
+      }
     });
   };
 
   const handleOptimizeRender = () => {
     if (!renderedRecord || !optimizeRenderTaskId) return;
     startTask(optimizeRenderTaskId, async () => {
-      const response = await api.post(`/render/${renderedRecord._id}/optimize`);
-      return response.data.data;
+      try {
+        const response = await api.post(`/render/${renderedRecord._id}/optimize`);
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+        return response.data.data;
+      } catch (err) {
+        console.warn('Optimize request timed out or failed, starting polling...', err);
+        
+        let attempts = 0;
+        const maxAttempts = 20; // 60 seconds max
+        while (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          try {
+            const getRes = await api.get(`/render/blog/${blogId}/platform/${resolvedPlatformName}`);
+            if (getRes.data && getRes.data.data) {
+              setTimeout(() => {
+                window.location.reload();
+              }, 1000);
+              return getRes.data.data;
+            }
+          } catch (getErr) {
+            // Keep polling on 404
+          }
+          attempts++;
+        }
+        throw new Error('Optimize adaptation timed out. Please try again.');
+      }
     });
   };
 
