@@ -1332,7 +1332,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
               ) : (
                 <>
                   <Sparkles size={13} />
-                  <span>{resolvedCoverImageUrl ? 'Regenerate Cover' : 'Generate Cover'}</span>
+                  <span>{resolvedCoverImageUrl ? 'Regenerate Cover (3 Credits)' : 'Generate Cover (3 Credits)'}</span>
                 </>
               )}
             </button>
@@ -1424,7 +1424,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
           {activeTab !== 'canonical' && (
             <div className="w-full">
               {(adaptTaskId && tasks[adaptTaskId]?.status === 'running') ? (
-                <div className="glass-card rounded-3xl p-12 border border-white/5 flex flex-col items-center justify-center text-center space-y-8 min-h-[460px] relative overflow-hidden bg-[#0B0F19]/90 w-full max-w-3xl mx-auto">
+                <div className="bg-card text-card-foreground border border-border/60 rounded-3xl p-12 flex flex-col items-center justify-center text-center space-y-8 min-h-[460px] relative overflow-hidden w-full max-w-3xl mx-auto shadow-sm">
                   <div className="absolute inset-0 bg-gradient-to-tr from-primary/5 to-accent/5 pointer-events-none" />
                   
                   {/* Progress Circular Loader */}
@@ -1432,26 +1432,26 @@ export const BlogPreview = ({ blogId, onBack }) => {
                     {activeProgressStep < 5 ? (
                       <>
                         <div className="absolute inset-0 rounded-full border-4 border-primary/10 border-t-primary animate-spin" />
-                        <div className="absolute inset-2 bg-[#0B0F19] rounded-full flex items-center justify-center text-primary font-extrabold text-xs">
+                        <div className="absolute inset-2 bg-card rounded-full flex items-center justify-center text-primary font-extrabold text-xs">
                           {activeProgressStep * 20}%
                         </div>
                       </>
                     ) : (
-                      <div className="w-20 h-20 bg-emerald-500/10 border border-emerald-500/20 rounded-full flex items-center justify-center text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.15)] animate-bounce">
+                      <div className="w-20 h-20 bg-emerald-500/10 border border-emerald-500/20 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.15)] animate-bounce">
                         <CheckCircle2 size={36} />
                       </div>
                     )}
                   </div>
 
                   <div className="space-y-2">
-                    <h3 className="text-xl font-bold tracking-tight text-white animate-pulse">Adapting Content for {resolvedPlatformName}</h3>
-                    <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                    <h3 className="text-xl font-bold tracking-tight text-foreground animate-pulse">Adapting Content for {resolvedPlatformName}</h3>
+                    <p className="text-xs text-muted-foreground max-w-sm mx-auto">
                       Restructuring canonical Markdown copy for <strong>{resolvedPlatformName}</strong> specific settings...
                     </p>
                   </div>
 
                   {/* Progress Steps Checklist */}
-                  <div className="glass-card rounded-2xl p-6 border border-white/5 text-left space-y-3.5 max-w-sm w-full mx-auto bg-black/30">
+                  <div className="bg-secondary/40 border border-border/60 rounded-2xl p-6 text-left space-y-3.5 max-w-sm w-full mx-auto shadow-inner">
                     {[
                       { id: 0, label: 'Reading Canonical Blog Draft' },
                       { id: 1, label: `Aligning Style with ${resolvedPlatformName} Spec` },
@@ -1465,17 +1465,17 @@ export const BlogPreview = ({ blogId, onBack }) => {
                       return (
                         <div key={step.id} className="flex items-center justify-between text-xs">
                           <span className={`font-semibold ${
-                            isCompleted ? 'text-emerald-400' : isActive ? 'text-primary' : 'text-slate-500'
+                            isCompleted ? 'text-emerald-600 dark:text-emerald-400' : isActive ? 'text-primary' : 'text-muted-foreground/80'
                           }`}>
                             {step.label}
                           </span>
 
                           {isCompleted ? (
-                            <CheckCircle2 size={12} className="text-emerald-400 font-bold shrink-0" />
+                            <CheckCircle2 size={12} className="text-emerald-600 dark:text-emerald-400 font-bold shrink-0" />
                           ) : isActive ? (
                             <Loader2 size={12} className="animate-spin text-primary shrink-0" />
                           ) : (
-                            <div className="w-2 h-2 rounded-full bg-slate-700/50 border border-slate-600 shrink-0" />
+                            <div className="w-2 h-2 rounded-full bg-secondary border border-border shrink-0" />
                           )}
                         </div>
                       );
@@ -1488,13 +1488,13 @@ export const BlogPreview = ({ blogId, onBack }) => {
                   <p className="text-sm font-semibold tracking-wider text-slate-400">Loading platform rendering...</p>
                 </div>
               ) : !renderedRecord ? (
-                <div className="glass-card rounded-3xl p-12 border border-white/5 flex flex-col items-center justify-center text-center space-y-6 min-h-[400px] w-full max-w-xl mx-auto">
+                <div className="bg-card text-card-foreground border border-border/60 rounded-3xl p-12 flex flex-col items-center justify-center text-center space-y-6 min-h-[400px] w-full max-w-xl mx-auto shadow-sm">
                   <div className="w-16 h-16 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary animate-pulse">
                     <Zap size={32} />
                   </div>
                   <div className="space-y-2">
-                    <h3 className="text-xl font-bold text-gradient">Adaptation Required</h3>
-                    <p className="text-sm text-slate-400 max-w-sm mx-auto">
+                    <h3 className="text-xl font-bold text-foreground">Adaptation Required</h3>
+                    <p className="text-sm text-muted-foreground max-w-sm mx-auto">
                       No customized post rendered for <strong>{resolvedPlatformName}</strong> yet. Adapt the canonical content dynamically.
                     </p>
                   </div>
@@ -1503,7 +1503,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
                     className="px-6 py-3 bg-gradient-to-r from-primary to-accent text-background font-bold rounded-xl shadow-glow transition-all hover:opacity-90 flex items-center gap-2 cursor-pointer"
                   >
                     <Sparkles size={16} />
-                    <span>Render for {resolvedPlatformName}</span>
+                    <span>Render for {resolvedPlatformName} (5 Credits)</span>
                   </button>
                 </div>
               ) : (
@@ -1531,7 +1531,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
                           ) : (
                             <Sparkles size={13} />
                           )}
-                          <span>Auto Optimize SEO</span>
+                          <span>Auto Optimize SEO (5 Credits)</span>
                         </button>
                       </>
                     )}
@@ -1562,7 +1562,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
                       className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 hover:border-primary/30 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-glow-sm cursor-pointer"
                     >
                       <Repeat2 size={13} className={(adaptTaskId && tasks[adaptTaskId]?.status === 'running') ? "animate-spin" : ""} />
-                      <span>Regenerate</span>
+                      <span>Regenerate (5 Credits)</span>
                     </button>
                   </div>
 
