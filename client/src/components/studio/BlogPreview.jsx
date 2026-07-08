@@ -552,7 +552,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
   const handleDownloadCoverImage = () => {
     if (!resolvedCoverImageUrl) return;
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('creative_studio_token') || localStorage.getItem('token');
       const downloadUrl = `/api/images/download?url=${encodeURIComponent(resolvedCoverImageUrl)}&token=${encodeURIComponent(token)}`;
       
       const link = document.createElement("a");
