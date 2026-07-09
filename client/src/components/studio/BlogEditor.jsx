@@ -173,10 +173,39 @@ export const BlogEditor = ({ blogId, onBack }) => {
       keyword: keyword.trim()
     }, {
       onSuccess: () => {
+        const startTime = new Date().toISOString();
         startTask(optimizeTaskId, async () => {
-          const response = await api.post(`/blogs/${blogRecord._id}/optimize`);
-          queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
-          return response.data;
+          try {
+            const response = await api.post(`/blogs/${blogRecord._id}/optimize`);
+            queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
+            return response.data;
+          } catch (err) {
+            console.warn('Optimize request timed out or failed, starting polling...', err);
+            let attempts = 0;
+            const maxAttempts = 20; // 60 seconds max
+            while (attempts < maxAttempts) {
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              try {
+                const getRes = await api.get(`/blogs/${blogRecord._id}`);
+                const updatedBlog = getRes.data?.data;
+                if (updatedBlog && updatedBlog.updatedAt && new Date(updatedBlog.updatedAt) > new Date(startTime)) {
+                  queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
+                  queryClient.invalidateQueries({ queryKey: ['blog-edit', blogId] });
+                  return {
+                    success: true,
+                    oldScore: blogRecord.seoScore || 0,
+                    newScore: updatedBlog.seoScore || 0,
+                    improvements: ['SEO Auto-Optimized successfully'],
+                    data: updatedBlog
+                  };
+                }
+              } catch (getErr) {
+                // Keep polling
+              }
+              attempts++;
+            }
+            throw new Error('Optimize adaptation timed out. Please try again.');
+          }
         });
       }
     });
@@ -185,13 +214,36 @@ export const BlogEditor = ({ blogId, onBack }) => {
   const handleGenerate = () => {
     if (!blogRecord || !taskId) return;
     const topicId = blogRecord.topicId?._id || blogRecord.topicId;
+    const startTime = new Date().toISOString();
     startTask(taskId, async () => {
-      const response = await api.post('/blogs/generate', {
-        topicId,
-        blogId: blogRecord._id
-      });
-      queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
-      return response.data.data;
+      try {
+        const response = await api.post('/blogs/generate', {
+          topicId,
+          blogId: blogRecord._id
+        });
+        queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
+        return response.data.data;
+      } catch (err) {
+        console.warn('Regeneration request timed out or failed, starting polling...', err);
+        let attempts = 0;
+        const maxAttempts = 20; // 60 seconds max
+        while (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          try {
+            const getRes = await api.get(`/blogs/${blogRecord._id}`);
+            const updatedBlog = getRes.data?.data;
+            if (updatedBlog && updatedBlog.updatedAt && new Date(updatedBlog.updatedAt) > new Date(startTime)) {
+              queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
+              queryClient.invalidateQueries({ queryKey: ['blog-edit', blogId] });
+              return updatedBlog;
+            }
+          } catch (getErr) {
+            // Keep polling
+          }
+          attempts++;
+        }
+        throw new Error('Regeneration timed out. Please check your dashboard or try again.');
+      }
     });
   };
 

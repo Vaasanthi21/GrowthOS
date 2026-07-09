@@ -367,8 +367,34 @@ export const BrandSetup = () => {
   const crawlMutation = useMutation({
     mutationFn: async (url) => {
       startProgressSimulation('Analyzing Website & Extracting Brand');
-      const response = await api.post('/knowledge/crawl', { url });
-      return response.data.data;
+      try {
+        const response = await api.post('/knowledge/crawl', { url });
+        return response.data.data;
+      } catch (err) {
+        console.warn('Website crawl timed out or failed, starting polling...', err);
+        
+        let attempts = 0;
+        const maxAttempts = 20; // 60 seconds max
+        const cleanUrl = url.trim().toLowerCase();
+        while (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          try {
+            const getRes = await api.get('/knowledge');
+            const list = getRes.data?.data || [];
+            const matchingDoc = list.find(doc => {
+              const docUrl = String(doc.fileUrl || doc.file_url || '').trim().toLowerCase();
+              return docUrl === cleanUrl;
+            });
+            if (matchingDoc) {
+              return matchingDoc;
+            }
+          } catch (getErr) {
+            // Keep polling
+          }
+          attempts++;
+        }
+        throw new Error('Website analysis timed out. Please refresh the page to check if it completed.');
+      }
     },
     onSuccess: () => {
       stopProgressSimulationSuccess();
