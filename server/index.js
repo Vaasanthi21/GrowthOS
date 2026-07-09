@@ -24,7 +24,6 @@ import { fileURLToPath } from 'url';
 import mammoth from 'mammoth';
 import { createWorker } from 'tesseract.js';
 import { spawn } from 'child_process';
-import ffmpegPath from 'ffmpeg-static';
 import { v2 as cloudinary } from 'cloudinary';
 import { Worker } from 'bullmq';
 import jobRoutes from './routes/jobRoutes.js';
@@ -613,7 +612,7 @@ const overlayLogoOnVideo = async ({
   await fs.writeFile(inputLogoPath, logoBuffer);
 
   await new Promise((resolve, reject) => {
-    const ffmpeg = spawn(ffmpegPath, [
+    const ffmpeg = spawn('ffmpeg', [
       '-y',
       '-i', inputVideoPath,
       '-i', inputLogoPath,
@@ -1718,35 +1717,22 @@ const fetchImageBufferFromUrl = async (url) => {
     return null;
   }
 
-  // If it's a local relative upload path
-  if (url.startsWith('/uploads/') || url.startsWith('uploads/')) {
-    const filename = url.replace(/^\/?uploads\//, '');
-    const filePath = path.join(uploadsDir, filename);
-    return await fs.readFile(filePath);
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch image from URL: ${response.status}`);
   }
 
-  // If it's a full local URL containing /uploads/
-  if (url.includes('/uploads/')) {
-    const filename = url.split('/uploads/')[1];
-    const filePath = path.join(uploadsDir, filename);
-    try {
-      await fs.access(filePath);
-      return await fs.readFile(filePath);
-    } catch {
-      // Fall back to fetch if not found on local disk
-    }
-  }
+  const arrayBuffer = await response.arrayBuffer();
 
-  // Use axios instead of fetch to avoid native fetch SSL failures on local machines
-  const response = await axios.get(url, { responseType: 'arraybuffer' });
-  return Buffer.from(response.data);
+  return Buffer.from(arrayBuffer);
 };
 
 const overlayLogoOnImage = async ({
   imageUrl,
   logoUrl,
   logoPlacement = 'bottom-right',
-  logoScale = 0.02,
+  logoScale = 0.15,
 }) => {
   const imageBuffer = await fetchImageBufferFromUrl(imageUrl);
   const logoBuffer = await fetchImageBufferFromUrl(logoUrl);
@@ -2043,31 +2029,17 @@ if (logoUrl && (logoUrl.includes('/home/ec2-user') || logoUrl.includes('Arth Gan
   activeLogoUrl = arthGangaLogoUrl;
 }
 
-console.log('[IMAGE GENERATION OVERLAY] Input parameters:', {
-  finalImageUrl,
-  activeLogoUrl,
-  logoPlacement,
-});
-
 if (finalImageUrl && activeLogoUrl && logoPlacement && logoPlacement !== 'none') {
   try {
-    console.log('[IMAGE OVERLAY] Starting overlay with:', {
-      imageUrl: finalImageUrl,
-      logoUrl: activeLogoUrl,
-      logoPlacement,
-    });
     finalImageUrl = await overlayLogoOnImage({
       imageUrl: finalImageUrl,
       logoUrl: activeLogoUrl,
       logoPlacement,
-      logoScale: 0.08,
+      logoScale: 0.15,
     });
-    console.log('[IMAGE OVERLAY] Overlay success! New URL:', finalImageUrl);
   } catch (err) {
-    console.error('[IMAGE OVERLAY] Sharp overlay failed:', err);
+    console.warn('[IMAGE OVERLAY] Sharp overlay failed:', err);
   }
-} else {
-  console.log('[IMAGE OVERLAY] Skipped overlay. Condition failed.');
 }
 
 if (finalImageUrl && targetWidth && targetHeight) {
@@ -2745,7 +2717,10 @@ const refundGenerationCredits = async ({ userId, amount, type, note }) => {
 
 const authRequired = async (req, res, next) => {
   const header = req.headers.authorization || req.headers['x-auth-token'] || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : (header || null);
+  let token = header.startsWith('Bearer ') ? header.slice(7) : (header || null);
+  if (!token && req.query.token) {
+    token = req.query.token;
+  }
 
   if (!token) {
     return res.status(401).json({ message: 'Authentication required' });
@@ -2767,85 +2742,39 @@ const authRequired = async (req, res, next) => {
 };
 
 app.get('/api/download-asset', authRequired, async (req, res) => {
-  const assetUrl = String(req.query.url || '').trim();
-  const rawFilename = String(req.query.filename || 'download').trim();
-  const filename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, '_') || 'download';
-
-  console.log('[DOWNLOAD ASSET] Request received:', {
-    assetUrl,
-    filename,
-    userId: req.user?._id,
-  });
-
   try {
-    if (!assetUrl) {
-      console.log('[DOWNLOAD ASSET] Missing assetUrl');
-      return res.status(400).json({ message: 'Asset URL is required' });
-    }
+    const assetUrl = String(req.query.url || '').trim();
+    const rawFilename = String(req.query.filename || 'download').trim();
+    const filename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, '_') || 'download';
 
-    // Handle relative uploads path
-    if (assetUrl.startsWith('/uploads/') || assetUrl.startsWith('uploads/')) {
-      const relativeName = assetUrl.replace(/^\/?uploads\//, '');
-      const filePath = path.join(uploadsDir, relativeName);
-      console.log('[DOWNLOAD ASSET] Handling relative path:', filePath);
-      try {
-        await fs.access(filePath);
-        res.setHeader('Content-Type', 'image/png');
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        res.setHeader('Cache-Control', 'no-store');
-        return res.sendFile(filePath);
-      } catch (err) {
-        console.log('[DOWNLOAD ASSET] Local file not found:', filePath);
-        return res.status(404).json({ message: 'Local asset not found' });
-      }
+    if (!assetUrl) {
+      return res.status(400).json({ message: 'Asset URL is required' });
     }
 
     let parsedUrl;
     try {
       parsedUrl = new URL(assetUrl);
     } catch {
-      console.log('[DOWNLOAD ASSET] Invalid URL string:', assetUrl);
       return res.status(400).json({ message: 'Invalid asset URL' });
-    }
-
-    // Handle local absolute URL (e.g. http://localhost:4000/uploads/...)
-    if (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1') {
-      if (parsedUrl.pathname.includes('/uploads/')) {
-        const relativeName = parsedUrl.pathname.split('/uploads/')[1];
-        const filePath = path.join(uploadsDir, relativeName);
-        console.log('[DOWNLOAD ASSET] Handling local absolute path:', filePath);
-        try {
-          await fs.access(filePath);
-          res.setHeader('Content-Type', 'image/png');
-          res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-          res.setHeader('Cache-Control', 'no-store');
-          return res.sendFile(filePath);
-        } catch (err) {
-          console.log('[DOWNLOAD ASSET] Local file not found for local absolute URL:', filePath);
-          return res.status(404).json({ message: 'Local asset not found' });
-        }
-      }
     }
 
     const allowedHosts = new Set([
       `${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`,
-      `${process.env.AWS_BUCKET_NAME}.s3.amazonaws.com`,
       'res.cloudinary.com',
     ]);
 
-    const isS3Host = parsedUrl.hostname.endsWith('.amazonaws.com');
-    console.log('[DOWNLOAD ASSET] Checking host:', parsedUrl.hostname, 'isS3Host:', isS3Host);
-
-    if (!allowedHosts.has(parsedUrl.hostname) && !isS3Host) {
-      console.log('[DOWNLOAD ASSET] Host rejection:', parsedUrl.hostname);
+    if (!allowedHosts.has(parsedUrl.hostname)) {
       return res.status(400).json({ message: 'Unsupported asset host' });
     }
 
-    console.log('[DOWNLOAD ASSET] Fetching remote asset via Axios...');
-    const assetResponse = await axios.get(assetUrl, { responseType: 'arraybuffer' });
-    const contentType = assetResponse.headers['content-type'] || 'application/octet-stream';
-    const contentLength = assetResponse.headers['content-length'];
-    console.log('[DOWNLOAD ASSET] Remote asset fetched successfully. Content-Type:', contentType);
+    const assetResponse = await fetch(assetUrl);
+
+    if (!assetResponse.ok) {
+      return res.status(502).json({ message: 'Unable to fetch asset' });
+    }
+
+    const contentType = assetResponse.headers.get('content-type') || 'application/octet-stream';
+    const contentLength = assetResponse.headers.get('content-length');
 
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -2855,7 +2784,7 @@ app.get('/api/download-asset', authRequired, async (req, res) => {
       res.setHeader('Content-Length', contentLength);
     }
 
-    const buffer = Buffer.from(assetResponse.data);
+    const buffer = Buffer.from(await assetResponse.arrayBuffer());
     return res.send(buffer);
   } catch (error) {
     console.error('[DOWNLOAD ASSET FAILED]', error?.message || error);
@@ -5584,6 +5513,24 @@ Optimize and return JSON now:`;
   }
 });
 
+app.get('/api/images/view/:filename', async (req, res) => {
+  try {
+    const { filename } = req.params;
+    if (!/^[a-zA-Z0-9_\-\.]+$/i.test(filename)) {
+      return res.status(400).send('Invalid filename');
+    }
+    const s3Url = `https://creative-os-assets.s3.ap-south-1.amazonaws.com/images/${filename}`;
+    const response = await axios.get(s3Url, {
+      responseType: 'stream',
+      timeout: 10000
+    });
+    res.setHeader('Content-Type', response.headers['content-type'] || 'image/png');
+    response.data.pipe(res);
+  } catch (error) {
+    res.status(404).send('Image not found');
+  }
+});
+
 // 8. Images endpoints
 app.get('/api/images/download', authRequired, async (req, res) => {
   try {
@@ -5672,56 +5619,13 @@ app.post('/api/images/generate', authRequired, async (req, res) => {
 
     const resolvedPrompt = await generateBrandedImagePrompt(blog, company, campaign, persona, platform);
     
-    let imageUrl;
-    try {
-      imageUrl = await generateImage(resolvedPrompt, dimensions);
-      if (imageUrl && !imageUrl.includes('unsplash.com')) {
-        try {
-          let buffer;
-          let mimeType = 'image/png';
-          if (imageUrl.startsWith('data:image')) {
-            const parts = imageUrl.split(',');
-            const base64Data = parts[1];
-            const match = parts[0].match(/data:(.*?);/);
-            if (match) mimeType = match[1];
-            buffer = Buffer.from(base64Data, 'base64');
-          } else {
-            const bufferResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-            buffer = Buffer.from(bufferResponse.data, 'binary');
-            const contentType = bufferResponse.headers['content-type'];
-            if (contentType) mimeType = contentType;
-          }
-          let s3Url = await uploadToS3(buffer, `dalle_${blogId}_${Date.now()}.png`, mimeType);
-          if (company && company.logo) {
-            try {
-              console.log('[IMAGE GENERATION LOGO OVERLAY] Overlaying logo:', company.logo);
-              const overlaidUrl = await overlayLogoOnImage({
-                imageUrl: s3Url,
-                logoUrl: company.logo,
-                logoPlacement: 'bottom-right',
-                logoScale: 0.08,
-              });
-              s3Url = overlaidUrl;
-            } catch (overlayErr) {
-              console.error('[IMAGE GENERATION LOGO OVERLAY FAILED]', overlayErr);
-            }
-          }
-          imageUrl = s3Url;
-        } catch (uploadErr) {
-          console.warn('[IMAGE UPLOAD WARNING] Failed to upload image to S3, using source/temp URL:', uploadErr.message);
-        }
-      }
-    } catch (dalleErr) {
-      console.warn('[DALL-E WARNING] Image generation failed, falling back to mock unsplash image:', dalleErr.message);
-      imageUrl = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1024&q=80';
-    }
-
+    // 1. Create a placeholder metadata record in the database with status 'generating'
     const img = {
       user_id: req.user._id,
       blog_id: blogId,
       blogId: blogId,
       prompt: resolvedPrompt,
-      imageUrl,
+      imageUrl: 'generating', // Placeholder status indicator
       dimensions: dimensions || '1792x1024',
       created_at: new Date().toISOString(),
       createdAt: new Date().toISOString()
@@ -5729,6 +5633,8 @@ app.post('/api/images/generate', authRequired, async (req, res) => {
 
     const result = await rawDb.collection('image_metadata').insertOne(img);
     const created = await rawDb.collection('image_metadata').findOne({ _id: result.insertedId });
+    
+    // 2. Respond immediately to the client to avoid CloudFront / Nginx timeouts
     res.status(201).json({
       success: true,
       data: {
@@ -5737,9 +5643,83 @@ app.post('/api/images/generate', authRequired, async (req, res) => {
         blogId: created.blog_id,
         createdAt: created.created_at,
         dimensions: created.dimensions,
-        imageUrl
+        imageUrl: 'generating'
       }
     });
+
+    // 3. Start background task to generate the image, upload to S3, and update DB
+    (async () => {
+      let finalImageUrl = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1024&q=80';
+      let isSuccess = false;
+      try {
+        console.log('[IMAGE CONTROLLER BACKGROUND] Requesting DALL-E image generation...');
+        const tempImageUrl = await generateImage(resolvedPrompt, dimensions);
+        finalImageUrl = tempImageUrl;
+        isSuccess = true;
+
+        if (tempImageUrl && !tempImageUrl.includes('unsplash.com')) {
+          try {
+            console.log('[IMAGE CONTROLLER BACKGROUND] Starting background S3 upload and logo overlay...');
+            let buffer;
+            let mimeType = 'image/png';
+            if (tempImageUrl.startsWith('data:image')) {
+              const parts = tempImageUrl.split(',');
+              const base64Data = parts[1];
+              const match = parts[0].match(/data:(.*?);/);
+              if (match) mimeType = match[1];
+              buffer = Buffer.from(base64Data, 'base64');
+            } else {
+              const bufferResponse = await axios.get(tempImageUrl, { responseType: 'arraybuffer' });
+              buffer = Buffer.from(bufferResponse.data, 'binary');
+              const contentType = bufferResponse.headers['content-type'];
+              if (contentType) mimeType = contentType;
+            }
+            let s3Url = await uploadToS3(buffer, `dalle_${blogId}_${Date.now()}.png`, mimeType);
+            if (company && company.logo) {
+              try {
+                console.log('[IMAGE GENERATION LOGO OVERLAY BACKGROUND] Overlaying logo:', company.logo);
+                const overlaidUrl = await overlayLogoOnImage({
+                  imageUrl: s3Url,
+                  logoUrl: company.logo,
+                  logoPlacement: 'bottom-right',
+                  logoScale: 0.15,
+                });
+                s3Url = overlaidUrl;
+              } catch (overlayErr) {
+                console.error('[IMAGE GENERATION LOGO OVERLAY BACKGROUND FAILED]', overlayErr);
+              }
+            }
+            finalImageUrl = s3Url;
+          } catch (uploadErr) {
+            console.warn('[IMAGE UPLOAD BACKGROUND WARNING] Failed to upload image to S3 in background:', uploadErr.message);
+          }
+        }
+      } catch (dalleErr) {
+        console.warn('[DALL-E WARNING] Background image generation failed, falling back to mock unsplash image:', dalleErr.message);
+      }
+
+      // Update the database with the final URL
+      await rawDb.collection('image_metadata').updateOne(
+        { _id: result.insertedId },
+        { $set: { imageUrl: finalImageUrl } }
+      );
+      console.log('[IMAGE CONTROLLER BACKGROUND] Image successfully updated in database to:', finalImageUrl);
+
+      // If generation failed, refund the credits in the background
+      if (!isSuccess && coverImageChargeResult) {
+        try {
+          await refundGenerationCredits({
+            userId,
+            amount: COST_COVER_IMAGE,
+            type: 'cover_image_generation_refund',
+            note: 'Refund for failed background image generation',
+          });
+          console.log('[IMAGE CONTROLLER BACKGROUND] Credits successfully refunded for failed generation.');
+        } catch (refundErr) {
+          console.error('[IMAGE CONTROLLER BACKGROUND REFUND ERROR] Failed to refund credits:', refundErr.message);
+        }
+      }
+    })();
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -6944,26 +6924,17 @@ app.post('/api/create-share-link', authRequired, async (req, res) => {
 
     let parsedUrl;
     try {
-      if (assetUrl.startsWith('/uploads/') || assetUrl.startsWith('uploads/')) {
-        parsedUrl = new URL(assetUrl, 'http://localhost');
-      } else {
-        parsedUrl = new URL(assetUrl);
-      }
+      parsedUrl = new URL(assetUrl);
     } catch {
       return res.status(400).json({ message: 'Invalid asset URL' });
     }
 
     const allowedHosts = new Set([
       `${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`,
-      `${process.env.AWS_BUCKET_NAME}.s3.amazonaws.com`,
       'res.cloudinary.com',
-      'localhost',
-      '127.0.0.1',
     ]);
 
-    const isS3Host = parsedUrl.hostname.endsWith('.amazonaws.com');
-
-    if (!allowedHosts.has(parsedUrl.hostname) && !isS3Host) {
+    if (!allowedHosts.has(parsedUrl.hostname)) {
       return res.status(400).json({ message: 'Unsupported asset host' });
     }
 
@@ -6979,7 +6950,7 @@ app.post('/api/create-share-link', authRequired, async (req, res) => {
     });
 
     const baseUrl = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-    return res.json({ shareUrl: `${baseUrl}/share/${shareId}` });
+    return res.json({ shareUrl: `${baseUrl}/api/share/${shareId}` });
   } catch (error) {
     console.error('[CREATE SHARE LINK FAILED]', error?.message || error);
     return res.status(500).json({ message: 'Failed to create share link' });
@@ -6987,7 +6958,7 @@ app.post('/api/create-share-link', authRequired, async (req, res) => {
 });
 
 // Public — no auth. This is the page Facebook/WhatsApp/LinkedIn crawlers hit.
-app.get('/share/:id', async (req, res) => {
+app.get('/api/share/:id', async (req, res) => {
   try {
     const record = await rawDb.collection('shared_assets').findOne({ share_id: req.params.id });
     if (!record) {
@@ -6996,7 +6967,7 @@ app.get('/share/:id', async (req, res) => {
 
     const baseUrl = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
     const imageProxyUrl = `${baseUrl}/api/public-asset/${req.params.id}`;
-    const shareUrl = `${baseUrl}/share/${req.params.id}`;
+    const shareUrl = `${baseUrl}/api/share/${req.params.id}`;
 
     const escapeHtml = (str) => String(str || '')
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -7071,11 +7042,13 @@ app.get('/api/media-proxy', async (req, res) => {
 
     const allowedHosts = new Set([
       `${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`,
+      `${process.env.AWS_BUCKET_NAME}.s3.amazonaws.com`,
       'res.cloudinary.com',
-      'creative-os-assets.s3.ap-south-1.amazonaws.com'
     ]);
 
-    if (!allowedHosts.has(parsedUrl.hostname) && !parsedUrl.hostname.includes('s3.ap-south-1.amazonaws.com')) {
+    const isS3Host = parsedUrl.hostname.endsWith('.amazonaws.com');
+
+    if (!allowedHosts.has(parsedUrl.hostname) && !isS3Host) {
       return res.status(400).send('Unsupported asset host');
     }
 
