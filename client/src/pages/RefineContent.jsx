@@ -51,6 +51,12 @@ import {
   restoreRefineSession,
 } from "@/utils";
 import ExportDialog from "@/components/dialogs/ExportDialog";
+import { tokenStorage } from "@/api/apiClient";
+
+const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || "/api").replace(
+  /\/api\/?$/,
+  "",
+);
 
 const toneToLabel = (value) => {
   if (value < 30) return "formal";
@@ -1160,7 +1166,39 @@ export default function RefineContent() {
     const filename = `${(currentContent?.title || "generated_visual").replace(/[^a-z0-9]/gi, "_").toLowerCase()}_image.png`;
 
     try {
-      const response = await fetch(imageSource);
+      if (imageSource.startsWith('data:')) {
+        const parts = imageSource.split(',');
+        const byteString = atob(parts[1]);
+        const mimeString = parts[0].split(':')[1].split(';')[0];
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i);
+        }
+        const blob = new Blob([ab], { type: mimeString });
+        const blobUrl = window.URL.createObjectURL(blob);
+
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
+        return;
+      }
+
+      const token = tokenStorage.getUserToken();
+      const downloadUrl = `${API_ORIGIN}/api/download-asset?url=${encodeURIComponent(
+        imageSource,
+      )}&filename=${encodeURIComponent(filename)}`;
+
+      const response = await fetch(downloadUrl, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "X-Auth-Token": token,
+        },
+      });
 
       if (!response.ok) {
         throw new Error("Download failed");
@@ -1200,6 +1238,36 @@ export default function RefineContent() {
     }
 
     try {
+      let finalShareUrl = imageSource;
+      const isExternalUrl = /^https?:\/\//i.test(imageSource);
+
+      if (isExternalUrl && (imageSource.includes('.amazonaws.com') || imageSource.includes('s3.'))) {
+        try {
+          const token = tokenStorage.getUserToken();
+          const shareResponse = await fetch(`${API_ORIGIN}/api/create-share-link`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              assetUrl: imageSource,
+              title: currentContent?.title || "Generated image",
+              caption: currentContent?.image_revised_prompt || currentContent?.title || "Check out this visual",
+            }),
+          });
+
+          if (shareResponse.ok) {
+            const shareData = await shareResponse.json();
+            if (shareData.shareUrl) {
+              finalShareUrl = shareData.shareUrl;
+            }
+          }
+        } catch (err) {
+          console.error("Failed to create brand share link, falling back to direct URL:", err);
+        }
+      }
+
       if (navigator.share) {
         await navigator.share({
           title: currentContent?.title || "Generated image",
@@ -1208,16 +1276,16 @@ export default function RefineContent() {
             currentContent?.image_prompt ||
             currentContent?.title ||
             "Generated image",
-          url: currentContent?.image_url || undefined,
+          url: finalShareUrl,
         });
         return;
       }
 
-      await navigator.clipboard.writeText(imageSource);
+      await navigator.clipboard.writeText(finalShareUrl);
       toast({
         title: "Image link copied",
         description:
-          "Native share is unavailable here, so the image source was copied instead.",
+          "Native share is unavailable here, so the image link was copied instead.",
         duration: 2000,
       });
     } catch (error) {
@@ -1245,7 +1313,39 @@ export default function RefineContent() {
     const filename = `${(message?.title || currentContent?.title || "generated_visual").replace(/[^a-z0-9]/gi, "_").toLowerCase()}_image.png`;
 
     try {
-      const response = await fetch(imageSource);
+      if (imageSource.startsWith('data:')) {
+        const parts = imageSource.split(',');
+        const byteString = atob(parts[1]);
+        const mimeString = parts[0].split(':')[1].split(';')[0];
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i);
+        }
+        const blob = new Blob([ab], { type: mimeString });
+        const blobUrl = window.URL.createObjectURL(blob);
+
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
+        return;
+      }
+
+      const token = tokenStorage.getUserToken();
+      const downloadUrl = `${API_ORIGIN}/api/download-asset?url=${encodeURIComponent(
+        imageSource,
+      )}&filename=${encodeURIComponent(filename)}`;
+
+      const response = await fetch(downloadUrl, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "X-Auth-Token": token,
+        },
+      });
 
       if (!response.ok) {
         throw new Error("Download failed");
@@ -1281,6 +1381,36 @@ export default function RefineContent() {
     }
 
     try {
+      let finalShareUrl = imageSource;
+      const isExternalUrl = /^https?:\/\//i.test(imageSource);
+
+      if (isExternalUrl && (imageSource.includes('.amazonaws.com') || imageSource.includes('s3.'))) {
+        try {
+          const token = tokenStorage.getUserToken();
+          const shareResponse = await fetch(`${API_ORIGIN}/api/create-share-link`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              assetUrl: imageSource,
+              title: message?.title || currentContent?.title || "Generated image",
+              caption: message?.image_revised_prompt || message?.image_prompt || "Check out this visual",
+            }),
+          });
+
+          if (shareResponse.ok) {
+            const shareData = await shareResponse.json();
+            if (shareData.shareUrl) {
+              finalShareUrl = shareData.shareUrl;
+            }
+          }
+        } catch (err) {
+          console.error("Failed to create brand share link, falling back to direct URL:", err);
+        }
+      }
+
       if (navigator.share) {
         await navigator.share({
           title: message?.title || currentContent?.title || "Generated image",
@@ -1289,16 +1419,16 @@ export default function RefineContent() {
             message?.image_prompt ||
             message?.content ||
             "Generated image",
-          url: message?.image_url || undefined,
+          url: finalShareUrl,
         });
         return;
       }
 
-      await navigator.clipboard.writeText(imageSource);
+      await navigator.clipboard.writeText(finalShareUrl);
       toast({
         title: "Image link copied",
         description:
-          "Native share is unavailable here, so the image source was copied instead.",
+          "Native share is unavailable here, so the image link was copied instead.",
         duration: 2000,
       });
     } catch (error) {

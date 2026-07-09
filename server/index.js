@@ -24,6 +24,7 @@ import { fileURLToPath } from 'url';
 import mammoth from 'mammoth';
 import { createWorker } from 'tesseract.js';
 import { spawn } from 'child_process';
+import ffmpegPath from 'ffmpeg-static';
 import { v2 as cloudinary } from 'cloudinary';
 import { Worker } from 'bullmq';
 import jobRoutes from './routes/jobRoutes.js';
@@ -612,7 +613,7 @@ const overlayLogoOnVideo = async ({
   await fs.writeFile(inputLogoPath, logoBuffer);
 
   await new Promise((resolve, reject) => {
-    const ffmpeg = spawn('ffmpeg', [
+    const ffmpeg = spawn(ffmpegPath, [
       '-y',
       '-i', inputVideoPath,
       '-i', inputLogoPath,
@@ -1717,15 +1718,28 @@ const fetchImageBufferFromUrl = async (url) => {
     return null;
   }
 
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch image from URL: ${response.status}`);
+  // If it's a local relative upload path
+  if (url.startsWith('/uploads/') || url.startsWith('uploads/')) {
+    const filename = url.replace(/^\/?uploads\//, '');
+    const filePath = path.join(uploadsDir, filename);
+    return await fs.readFile(filePath);
   }
 
-  const arrayBuffer = await response.arrayBuffer();
+  // If it's a full local URL containing /uploads/
+  if (url.includes('/uploads/')) {
+    const filename = url.split('/uploads/')[1];
+    const filePath = path.join(uploadsDir, filename);
+    try {
+      await fs.access(filePath);
+      return await fs.readFile(filePath);
+    } catch {
+      // Fall back to fetch if not found on local disk
+    }
+  }
 
-  return Buffer.from(arrayBuffer);
+  // Use axios instead of fetch to avoid native fetch SSL failures on local machines
+  const response = await axios.get(url, { responseType: 'arraybuffer' });
+  return Buffer.from(response.data);
 };
 
 const overlayLogoOnImage = async ({
@@ -2029,17 +2043,31 @@ if (logoUrl && (logoUrl.includes('/home/ec2-user') || logoUrl.includes('Arth Gan
   activeLogoUrl = arthGangaLogoUrl;
 }
 
+console.log('[IMAGE GENERATION OVERLAY] Input parameters:', {
+  finalImageUrl,
+  activeLogoUrl,
+  logoPlacement,
+});
+
 if (finalImageUrl && activeLogoUrl && logoPlacement && logoPlacement !== 'none') {
   try {
+    console.log('[IMAGE OVERLAY] Starting overlay with:', {
+      imageUrl: finalImageUrl,
+      logoUrl: activeLogoUrl,
+      logoPlacement,
+    });
     finalImageUrl = await overlayLogoOnImage({
       imageUrl: finalImageUrl,
       logoUrl: activeLogoUrl,
       logoPlacement,
       logoScale: 0.08,
     });
+    console.log('[IMAGE OVERLAY] Overlay success! New URL:', finalImageUrl);
   } catch (err) {
-    console.warn('[IMAGE OVERLAY] Sharp overlay failed:', err);
+    console.error('[IMAGE OVERLAY] Sharp overlay failed:', err);
   }
+} else {
+  console.log('[IMAGE OVERLAY] Skipped overlay. Condition failed.');
 }
 
 if (finalImageUrl && targetWidth && targetHeight) {
@@ -2739,39 +2767,85 @@ const authRequired = async (req, res, next) => {
 };
 
 app.get('/api/download-asset', authRequired, async (req, res) => {
-  try {
-    const assetUrl = String(req.query.url || '').trim();
-    const rawFilename = String(req.query.filename || 'download').trim();
-    const filename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, '_') || 'download';
+  const assetUrl = String(req.query.url || '').trim();
+  const rawFilename = String(req.query.filename || 'download').trim();
+  const filename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, '_') || 'download';
 
+  console.log('[DOWNLOAD ASSET] Request received:', {
+    assetUrl,
+    filename,
+    userId: req.user?._id,
+  });
+
+  try {
     if (!assetUrl) {
+      console.log('[DOWNLOAD ASSET] Missing assetUrl');
       return res.status(400).json({ message: 'Asset URL is required' });
+    }
+
+    // Handle relative uploads path
+    if (assetUrl.startsWith('/uploads/') || assetUrl.startsWith('uploads/')) {
+      const relativeName = assetUrl.replace(/^\/?uploads\//, '');
+      const filePath = path.join(uploadsDir, relativeName);
+      console.log('[DOWNLOAD ASSET] Handling relative path:', filePath);
+      try {
+        await fs.access(filePath);
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Cache-Control', 'no-store');
+        return res.sendFile(filePath);
+      } catch (err) {
+        console.log('[DOWNLOAD ASSET] Local file not found:', filePath);
+        return res.status(404).json({ message: 'Local asset not found' });
+      }
     }
 
     let parsedUrl;
     try {
       parsedUrl = new URL(assetUrl);
     } catch {
+      console.log('[DOWNLOAD ASSET] Invalid URL string:', assetUrl);
       return res.status(400).json({ message: 'Invalid asset URL' });
+    }
+
+    // Handle local absolute URL (e.g. http://localhost:4000/uploads/...)
+    if (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1') {
+      if (parsedUrl.pathname.includes('/uploads/')) {
+        const relativeName = parsedUrl.pathname.split('/uploads/')[1];
+        const filePath = path.join(uploadsDir, relativeName);
+        console.log('[DOWNLOAD ASSET] Handling local absolute path:', filePath);
+        try {
+          await fs.access(filePath);
+          res.setHeader('Content-Type', 'image/png');
+          res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+          res.setHeader('Cache-Control', 'no-store');
+          return res.sendFile(filePath);
+        } catch (err) {
+          console.log('[DOWNLOAD ASSET] Local file not found for local absolute URL:', filePath);
+          return res.status(404).json({ message: 'Local asset not found' });
+        }
+      }
     }
 
     const allowedHosts = new Set([
       `${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`,
+      `${process.env.AWS_BUCKET_NAME}.s3.amazonaws.com`,
       'res.cloudinary.com',
     ]);
 
-    if (!allowedHosts.has(parsedUrl.hostname)) {
+    const isS3Host = parsedUrl.hostname.endsWith('.amazonaws.com');
+    console.log('[DOWNLOAD ASSET] Checking host:', parsedUrl.hostname, 'isS3Host:', isS3Host);
+
+    if (!allowedHosts.has(parsedUrl.hostname) && !isS3Host) {
+      console.log('[DOWNLOAD ASSET] Host rejection:', parsedUrl.hostname);
       return res.status(400).json({ message: 'Unsupported asset host' });
     }
 
-    const assetResponse = await fetch(assetUrl);
-
-    if (!assetResponse.ok) {
-      return res.status(502).json({ message: 'Unable to fetch asset' });
-    }
-
-    const contentType = assetResponse.headers.get('content-type') || 'application/octet-stream';
-    const contentLength = assetResponse.headers.get('content-length');
+    console.log('[DOWNLOAD ASSET] Fetching remote asset via Axios...');
+    const assetResponse = await axios.get(assetUrl, { responseType: 'arraybuffer' });
+    const contentType = assetResponse.headers['content-type'] || 'application/octet-stream';
+    const contentLength = assetResponse.headers['content-length'];
+    console.log('[DOWNLOAD ASSET] Remote asset fetched successfully. Content-Type:', contentType);
 
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -2781,7 +2855,7 @@ app.get('/api/download-asset', authRequired, async (req, res) => {
       res.setHeader('Content-Length', contentLength);
     }
 
-    const buffer = Buffer.from(await assetResponse.arrayBuffer());
+    const buffer = Buffer.from(assetResponse.data);
     return res.send(buffer);
   } catch (error) {
     console.error('[DOWNLOAD ASSET FAILED]', error?.message || error);
@@ -6870,17 +6944,26 @@ app.post('/api/create-share-link', authRequired, async (req, res) => {
 
     let parsedUrl;
     try {
-      parsedUrl = new URL(assetUrl);
+      if (assetUrl.startsWith('/uploads/') || assetUrl.startsWith('uploads/')) {
+        parsedUrl = new URL(assetUrl, 'http://localhost');
+      } else {
+        parsedUrl = new URL(assetUrl);
+      }
     } catch {
       return res.status(400).json({ message: 'Invalid asset URL' });
     }
 
     const allowedHosts = new Set([
       `${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`,
+      `${process.env.AWS_BUCKET_NAME}.s3.amazonaws.com`,
       'res.cloudinary.com',
+      'localhost',
+      '127.0.0.1',
     ]);
 
-    if (!allowedHosts.has(parsedUrl.hostname)) {
+    const isS3Host = parsedUrl.hostname.endsWith('.amazonaws.com');
+
+    if (!allowedHosts.has(parsedUrl.hostname) && !isS3Host) {
       return res.status(400).json({ message: 'Unsupported asset host' });
     }
 
@@ -6950,16 +7033,13 @@ app.get('/api/public-asset/:id', async (req, res) => {
       return res.status(404).send('Not found');
     }
 
-    const assetResponse = await fetch(record.asset_url);
-    if (!assetResponse.ok) {
-      return res.status(502).send('Unable to fetch asset');
-    }
-
-    const contentType = assetResponse.headers.get('content-type') || 'image/png';
+    // Use axios to bypass local SSL cert validation blocks
+    const assetResponse = await axios.get(record.asset_url, { responseType: 'arraybuffer' });
+    const contentType = assetResponse.headers['content-type'] || 'image/png';
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=86400');
 
-    const buffer = Buffer.from(await assetResponse.arrayBuffer());
+    const buffer = Buffer.from(assetResponse.data);
     return res.send(buffer);
   } catch (error) {
     console.error('[PUBLIC ASSET PROXY FAILED]', error?.message || error);
@@ -6999,16 +7079,13 @@ app.get('/api/media-proxy', async (req, res) => {
       return res.status(400).send('Unsupported asset host');
     }
 
-    const assetResponse = await fetch(assetUrl);
-    if (!assetResponse.ok) {
-      return res.status(502).send('Unable to fetch asset');
-    }
-
-    const contentType = assetResponse.headers.get('content-type') || 'image/png';
+    // Use axios to bypass local SSL cert validation blocks
+    const assetResponse = await axios.get(assetUrl, { responseType: 'arraybuffer' });
+    const contentType = assetResponse.headers['content-type'] || 'image/png';
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=86400');
 
-    const buffer = Buffer.from(await assetResponse.arrayBuffer());
+    const buffer = Buffer.from(assetResponse.data);
     return res.send(buffer);
   } catch (error) {
     console.error('[MEDIA PROXY FAILED]', error?.message || error);

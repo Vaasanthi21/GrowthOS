@@ -35,11 +35,13 @@ const resolveAssetUrl = (value) => {
 const downloadFile = async (url, filename) => {
   try {
     const token = tokenStorage.getUserToken();
+    console.log('[FRONTEND DOWNLOAD] Triggered:', { url, filename, hasToken: !!token });
 
     const downloadUrl = `${API_ORIGIN}/api/download-asset?url=${encodeURIComponent(
       url,
     )}&filename=${encodeURIComponent(filename)}`;
 
+    console.log('[FRONTEND DOWNLOAD] Requesting URL:', downloadUrl);
     const response = await fetch(downloadUrl, {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -47,8 +49,9 @@ const downloadFile = async (url, filename) => {
       },
     });
 
+    console.log('[FRONTEND DOWNLOAD] Response status:', response.status);
     if (!response.ok) {
-      throw new Error("Download failed");
+      throw new Error(`Download failed with status: ${response.status}`);
     }
 
     const blob = await response.blob();
@@ -131,6 +134,35 @@ export default function VariantExpandedModal({
     const canShareUrl = /^https?:\/\//i.test(resolvedImageUrl);
 
     try {
+      let finalShareUrl = resolvedImageUrl;
+
+      if (canShareUrl && (resolvedImageUrl.includes('.amazonaws.com') || resolvedImageUrl.includes('s3.'))) {
+        try {
+          const token = tokenStorage.getUserToken();
+          const shareResponse = await fetch(`${API_ORIGIN}/api/create-share-link`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              assetUrl: resolvedImageUrl,
+              title: variant.title || "Generated image",
+              caption: variant.image_revised_prompt || variant.title || "Check out this visual",
+            }),
+          });
+
+          if (shareResponse.ok) {
+            const shareData = await shareResponse.json();
+            if (shareData.shareUrl) {
+              finalShareUrl = shareData.shareUrl;
+            }
+          }
+        } catch (err) {
+          console.error("Failed to create brand share link, falling back to direct URL:", err);
+        }
+      }
+
       if (navigator.share && canShareUrl) {
         await navigator.share({
           title: variant.title || "Generated image",
@@ -139,13 +171,13 @@ export default function VariantExpandedModal({
             variant.image_prompt ||
             variant.title ||
             "Generated image",
-          url: resolvedImageUrl,
+          url: finalShareUrl,
         });
         return;
       }
 
       if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(resolvedImageUrl);
+        await navigator.clipboard.writeText(finalShareUrl);
         toast({
           title: "Image link copied",
           description:
@@ -155,7 +187,7 @@ export default function VariantExpandedModal({
         return;
       }
 
-      window.open(resolvedImageUrl, "_blank", "noopener,noreferrer");
+      window.open(finalShareUrl, "_blank", "noopener,noreferrer");
       toast({
         title: "Image opened",
         description:
@@ -221,7 +253,7 @@ export default function VariantExpandedModal({
                   `data:image/png;base64,${variant.image_base64}`
                 }
                 alt={variant.title || "Generated image"}
-                className="max-h-[420px] w-full object-cover"
+                className="max-h-[420px] w-full object-contain bg-black/10"
               />
             </div>
           )}
@@ -230,7 +262,7 @@ export default function VariantExpandedModal({
               <video
                 src={resolvedVideoUrl}
                 controls
-                className="max-h-[420px] w-full object-cover"
+                className="max-h-[420px] w-full object-contain bg-black/10"
               />
             </div>
           )}
