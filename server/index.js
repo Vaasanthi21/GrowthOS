@@ -7004,16 +7004,13 @@ app.get('/api/public-asset/:id', async (req, res) => {
       return res.status(404).send('Not found');
     }
 
-    const assetResponse = await fetch(record.asset_url);
-    if (!assetResponse.ok) {
-      return res.status(502).send('Unable to fetch asset');
-    }
-
-    const contentType = assetResponse.headers.get('content-type') || 'image/png';
+    // Use axios to bypass local SSL cert validation blocks
+    const assetResponse = await axios.get(record.asset_url, { responseType: 'arraybuffer' });
+    const contentType = assetResponse.headers['content-type'] || 'image/png';
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=86400');
 
-    const buffer = Buffer.from(await assetResponse.arrayBuffer());
+    const buffer = Buffer.from(assetResponse.data);
     return res.send(buffer);
   } catch (error) {
     console.error('[PUBLIC ASSET PROXY FAILED]', error?.message || error);
@@ -7045,24 +7042,23 @@ app.get('/api/media-proxy', async (req, res) => {
 
     const allowedHosts = new Set([
       `${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`,
+      `${process.env.AWS_BUCKET_NAME}.s3.amazonaws.com`,
       'res.cloudinary.com',
-      'creative-os-assets.s3.ap-south-1.amazonaws.com'
     ]);
 
-    if (!allowedHosts.has(parsedUrl.hostname) && !parsedUrl.hostname.includes('s3.ap-south-1.amazonaws.com')) {
+    const isS3Host = parsedUrl.hostname.endsWith('.amazonaws.com');
+
+    if (!allowedHosts.has(parsedUrl.hostname) && !isS3Host) {
       return res.status(400).send('Unsupported asset host');
     }
 
-    const assetResponse = await fetch(assetUrl);
-    if (!assetResponse.ok) {
-      return res.status(502).send('Unable to fetch asset');
-    }
-
-    const contentType = assetResponse.headers.get('content-type') || 'image/png';
+    // Use axios to bypass local SSL cert validation blocks
+    const assetResponse = await axios.get(assetUrl, { responseType: 'arraybuffer' });
+    const contentType = assetResponse.headers['content-type'] || 'image/png';
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=86400');
 
-    const buffer = Buffer.from(await assetResponse.arrayBuffer());
+    const buffer = Buffer.from(assetResponse.data);
     return res.send(buffer);
   } catch (error) {
     console.error('[MEDIA PROXY FAILED]', error?.message || error);
