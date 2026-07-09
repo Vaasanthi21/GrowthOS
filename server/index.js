@@ -6950,7 +6950,7 @@ app.post('/api/create-share-link', authRequired, async (req, res) => {
     });
 
     const baseUrl = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-    return res.json({ shareUrl: `${baseUrl}/share/${shareId}` });
+    return res.json({ shareUrl: `${baseUrl}/api/share/${shareId}` });
   } catch (error) {
     console.error('[CREATE SHARE LINK FAILED]', error?.message || error);
     return res.status(500).json({ message: 'Failed to create share link' });
@@ -6958,7 +6958,7 @@ app.post('/api/create-share-link', authRequired, async (req, res) => {
 });
 
 // Public — no auth. This is the page Facebook/WhatsApp/LinkedIn crawlers hit.
-app.get('/share/:id', async (req, res) => {
+app.get('/api/share/:id', async (req, res) => {
   try {
     const record = await rawDb.collection('shared_assets').findOne({ share_id: req.params.id });
     if (!record) {
@@ -6967,7 +6967,7 @@ app.get('/share/:id', async (req, res) => {
 
     const baseUrl = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
     const imageProxyUrl = `${baseUrl}/api/public-asset/${req.params.id}`;
-    const shareUrl = `${baseUrl}/share/${req.params.id}`;
+    const shareUrl = `${baseUrl}/api/share/${req.params.id}`;
 
     const escapeHtml = (str) => String(str || '')
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
