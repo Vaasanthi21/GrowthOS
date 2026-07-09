@@ -396,17 +396,25 @@ export const BlogPreview = ({ blogId, onBack }) => {
   useEffect(() => {
     if (!coverImageTaskId) return;
     const task = tasks[coverImageTaskId];
-    if (task) {
-      if (task.status === 'success') {
-        queryClient.invalidateQueries({ queryKey: ['images', blogId] });
-        triggerToast('Cover image generated successfully!');
-        clearTask(coverImageTaskId);
-      } else if (task.status === 'error') {
-        const err = task.error;
-        console.error(err);
-        triggerToast(err.response?.data?.error || 'Cover image generation failed.', 'error');
-        clearTask(coverImageTaskId);
+    if (task && task.status === 'success') {
+      if (task.result) {
+        queryClient.setQueryData(['images', blogId], (oldData) => {
+          const list = Array.isArray(oldData) ? oldData : [];
+          const newImg = task.result;
+          const exists = list.some(img => img.id === newImg.id || img._id === newImg._id);
+          if (exists) {
+            return list.map(img => (img.id === newImg.id || img._id === newImg._id) ? newImg : img);
+          }
+          return [newImg, ...list];
+        });
       }
+      queryClient.invalidateQueries({ queryKey: ['images', blogId] });
+      triggerToast('Cover image generated successfully!');
+      clearTask(coverImageTaskId);
+    } else if (task && task.status === 'error') {
+      const err = task.error;
+      triggerToast(err.response?.data?.error || 'Cover image generation failed.', 'error');
+      clearTask(coverImageTaskId);
     }
   }, [tasks, coverImageTaskId, blogId, queryClient, clearTask]);
 
@@ -1421,9 +1429,16 @@ export const BlogPreview = ({ blogId, onBack }) => {
               </div>
               
               {resolvedCoverImageUrl && (
-                <div className="w-full rounded-2xl overflow-hidden border border-border/60 max-h-[300px] bg-secondary select-none mb-6">
-                  <img src={resolvedCoverImageUrl} alt="Canonical Cover" className="w-full h-full object-cover" />
-                </div>
+                resolvedCoverImageUrl === 'generating' ? (
+                  <div className="w-full rounded-2xl overflow-hidden border border-border/60 min-h-[200px] flex flex-col items-center justify-center bg-secondary/35 select-none mb-6">
+                    <Loader2 className="w-8 h-8 animate-spin text-primary mb-2" />
+                    <span className="text-xs text-muted-foreground font-medium">Generating cover image...</span>
+                  </div>
+                ) : (
+                  <div className="w-full rounded-2xl overflow-hidden border border-border/60 max-h-[300px] bg-secondary select-none mb-6">
+                    <img src={resolvedCoverImageUrl} alt="Canonical Cover" className="w-full h-full object-cover" />
+                  </div>
+                )
               )}
               
               <div 
