@@ -21,6 +21,12 @@ const resolveAssetUrl = (value) => {
     return "";
   }
 
+  if (source.includes('amazonaws.com') || source.includes('/images/')) {
+    const filename = source.split('/').pop();
+    const baseUrl = window.location.origin;
+    return `${baseUrl}/api/images/view/${filename}`;
+  }
+
   if (
     /^https?:\/\//i.test(source) ||
     source.startsWith("data:") ||
