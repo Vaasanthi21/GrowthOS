@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { startAsyncImageGeneration, createGenerationPoller } from '@/services/generationPollingService';
 import { useGenerationJobs } from '@/contexts/GenerationJobsContext';
 import { buildCompanyPersonaPayload } from '@/utils/personaPayload';
@@ -101,6 +101,7 @@ const getShareLinks = (shareUrl, caption) => {
 };
 
 export default function ImageStudio() {
+  const queryClient = useQueryClient();
   const location = useLocation();
   const [prompt, setPrompt] = useState(location.state?.prompt || '');
   const [style, setStyle] = useState('realistic');
@@ -200,6 +201,7 @@ export default function ImageStudio() {
             };
             addHistoryEntry(imageEntry).catch(err => console.error("Failed history save:", err));
             setJob('image', { generatedImage: imageUrl });
+            queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
           }
         }
       },
@@ -210,16 +212,19 @@ export default function ImageStudio() {
           const imageUrl = finalStatus?.result?.image_url || finalStatus?.result?.imageUrl;
           if (imageUrl) {
             setJob('image', { isPolling: false, stageStartedAt: null, pollingStatus: 'completed', generatedImage: imageUrl });
+            queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
           } else {
             setJob('image', { isPolling: false, stageStartedAt: null, pollingStatus: 'failed' });
+            queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
           }
         } else {
           setJob('image', { isPolling: false, stageStartedAt: null, pollingStatus: 'failed' });
+          queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
         }
       },
       3000
     );
-  }, [prompt, style, selectedFormat, setJob]);
+  }, [prompt, style, selectedFormat, setJob, queryClient]);
 
   useEffect(() => {
     if (hasResumedRef.current) return;
@@ -268,6 +273,7 @@ export default function ImageStudio() {
         generatedImage: null,
       });
 
+      queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
       attachPoller(jobId);
     },
     onError: () => {

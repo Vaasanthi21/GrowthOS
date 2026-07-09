@@ -98,11 +98,13 @@ export const BlogEditor = ({ blogId, onBack }) => {
       if (task.status === 'success') {
         const resData = task.data;
         queryClient.invalidateQueries({ queryKey: ['blog-edit', blogId] });
+        queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
         triggerToast(`SEO Auto-Optimized successfully! Score: ${resData.oldScore} -> ${resData.newScore}`);
         clearTask(optimizeTaskId);
       } else if (task.status === 'error') {
         const err = task.error;
         console.error(err);
+        queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
         triggerToast(err.response?.data?.error || 'SEO optimization failed.', 'error');
         clearTask(optimizeTaskId);
       }
@@ -116,11 +118,13 @@ export const BlogEditor = ({ blogId, onBack }) => {
     if (task) {
       if (task.status === 'success') {
         queryClient.invalidateQueries({ queryKey: ['blog-edit', blogId] });
+        queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
         triggerToast('AI Canonical Blog successfully regenerated!');
         clearTask(taskId);
       } else if (task.status === 'error') {
         const err = task.error;
         console.error(err);
+        queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
         triggerToast(err.response?.data?.error || 'Generation failed.', 'error');
         clearTask(taskId);
       }
@@ -171,6 +175,7 @@ export const BlogEditor = ({ blogId, onBack }) => {
       onSuccess: () => {
         startTask(optimizeTaskId, async () => {
           const response = await api.post(`/blogs/${blogRecord._id}/optimize`);
+          queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
           return response.data;
         });
       }
@@ -185,6 +190,7 @@ export const BlogEditor = ({ blogId, onBack }) => {
         topicId,
         blogId: blogRecord._id
       });
+      queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
       return response.data.data;
     });
   };
