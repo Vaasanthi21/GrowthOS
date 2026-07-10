@@ -6724,6 +6724,62 @@ const cloudinaryGravityMap = {
   'bottom-right': 'south_east',
 };
 
+app.post('/api/generate-caption', authRequired, async (req, res) => {
+  const prompt = String(req.body?.prompt || '').trim();
+  if (!prompt) {
+    return res.status(400).json({ message: 'Prompt is required' });
+  }
+
+  try {
+    const config = getTextGenerationConfig();
+    if (!config.apiKey || !config.apiUrl) {
+      return res.json({ caption: prompt });
+    }
+
+    const headers = { 'Content-Type': 'application/json' };
+    let requestUrl = String(config.apiUrl || '').trim();
+    if (config.isAzure) {
+      headers['api-key'] = config.apiKey;
+      const normalizedUrl = requestUrl.replace(/\/$/, '');
+      requestUrl = normalizedUrl.includes('api-version=')
+        ? normalizedUrl
+        : `${normalizedUrl}${normalizedUrl.includes('?') ? '&' : '?'}api-version=${encodeURIComponent(config.apiVersion)}`;
+    } else {
+      headers.Authorization = `Bearer ${config.apiKey}`;
+    }
+
+    const response = await fetch(requestUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a social media copywriter. Generate a single highly-engaging, short social media caption (max 2 sentences) with 2-3 relevant hashtags based on the user prompt. Return only the caption text directly. Do not include quotes, wrappers, or explanations.',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.7,
+        max_completion_tokens: 300,
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    const content = data?.choices?.[0]?.message?.content;
+    if (!content) {
+      return res.json({ caption: prompt });
+    }
+
+    res.json({ caption: String(content).trim().replace(/^["']|["']$/g, '') });
+  } catch (error) {
+    console.error('Failed to generate caption:', error);
+    res.json({ caption: prompt });
+  }
+});
+
 app.post('/api/generate-text', authRequired, async (req, res) => {
   const userId = req.user.id || req.user._id.toString();
   const prompt = String(req.body?.prompt || '').trim();
