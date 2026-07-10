@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from "@/components/ui/progress";
-import { Loader2, Sparkles, Download, Share2, RefreshCw, Video, Play, Pause, Volume2, Film, Sliders, Eye, Wand2, Maximize2, Layers, Building2 } from 'lucide-react';
+import { Loader2, Sparkles, Download, Share2, RefreshCw, Video, Play, Pause, Volume2, Film, Sliders, Eye, Wand2, Maximize2, Layers, Building2, Copy } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { apiClient, tokenStorage } from '@/api/apiClient';
 import { addHistoryEntry } from '@/services/aiService';
@@ -137,10 +137,55 @@ export default function VideoStudio() {
   const [stageElapsedMs, setStageElapsedMs] = useState(0);
   const navigate = useNavigate();
   const [includeCaption, setIncludeCaption] = useState(true);
+  const [generatedCaption, setGeneratedCaption] = useState("");
+  const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
 
   useEffect(() => {
     setShareUrl(null);
+    setGeneratedCaption("");
   }, [includeCaption]);
+
+  useEffect(() => {
+    if (generatedVideo && includeCaption && !generatedCaption && !isGeneratingCaption) {
+      const fetchCaption = async () => {
+        setIsGeneratingCaption(true);
+        try {
+          const token = tokenStorage.getUserToken();
+          const captionRes = await apiClient.post('/generate-caption', { prompt }, token);
+          setGeneratedCaption(captionRes?.caption || prompt);
+        } catch (e) {
+          console.error("Failed to auto-generate caption:", e);
+          setGeneratedCaption(prompt);
+        } finally {
+          setIsGeneratingCaption(false);
+        }
+      };
+      fetchCaption();
+    }
+  }, [generatedVideo, includeCaption, generatedCaption, isGeneratingCaption, prompt]);
+
+  const handleCopyCaption = async () => {
+    if (!generatedCaption) return;
+    try {
+      await navigator.clipboard.writeText(generatedCaption);
+      alert('Caption copied to clipboard!');
+    } catch (err) {
+      console.error('Failed to copy caption:', err);
+    }
+  };
+
+  const handleRegenerateCaption = async () => {
+    setIsGeneratingCaption(true);
+    try {
+      const token = tokenStorage.getUserToken();
+      const captionRes = await apiClient.post('/generate-caption', { prompt }, token);
+      setGeneratedCaption(captionRes?.caption || prompt);
+    } catch (e) {
+      console.error("Failed to regenerate caption:", e);
+    } finally {
+      setIsGeneratingCaption(false);
+    }
+  };
 
   const openRefinePage = () => {
     if (!generatedVideo) return;
@@ -479,9 +524,9 @@ export default function VideoStudio() {
     if (!shareUrl) {
       setIsCreatingShareLink(true);
       try {
-        const caption = includeCaption ? `Check out this video I made: ${prompt}` : "";
+        const captionText = includeCaption ? (generatedCaption || prompt) : "";
         const title = `${platform.toUpperCase()} Studio Video (${aspectRatio})`;
-        const url = await createShareLink(generatedVideo, caption, title);
+        const url = await createShareLink(generatedVideo, captionText, title);
         setShareUrl(url);
       } catch (err) {
         console.error('Failed to create share link:', err);
@@ -576,6 +621,25 @@ export default function VideoStudio() {
                   className="min-h-[140px] resize-none"
                   disabled={generateMutation.isPending || isPolling}
                 />
+                <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-background/50 transition-all hover:bg-background">
+                  <div className="flex flex-col text-left">
+                    <span className="text-xs font-semibold text-foreground">Include generated caption</span>
+                    <span className="text-[9px] text-muted-foreground mt-0.5">Generate social media text when sharing</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIncludeCaption(!includeCaption)}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      includeCaption ? "bg-primary" : "bg-muted"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        includeCaption ? "translate-x-4" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -655,6 +719,8 @@ export default function VideoStudio() {
                 </Select>
               </div>
 
+
+
               <div className="pt-2 flex flex-col sm:flex-row gap-3">
                 <Button onClick={handleAnimate} disabled={!prompt.trim() || generateMutation.isPending || isPolling} className="flex-1 gap-2" variant="outline">
                   <Sliders className="w-4 h-4" /> Camera Controls ({pan !== 0 || zoom !== 1 || motionStrength !== 5 ? "Modified" : "Default"})
@@ -695,50 +761,25 @@ export default function VideoStudio() {
                 Studio Viewport
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex-1 flex flex-col items-center justify-center min-h-[440px] bg-muted/10 rounded-b-xl p-6">
-              {isPolling || generateMutation.isPending ? (
-                <div className="w-full space-y-6">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-3">
-                      <div className="rounded-full bg-primary/10 p-2 text-primary mt-0.5 relative">
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        <span className="absolute inset-0 flex items-center justify-center animate-pulse text-[9px] font-bold">🎬</span>
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">Generating video</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {pollingStatus === 'queued'
-                            ? 'Queued in frame sequencer pipeline. Preparing simulation context...'
-                            : 'Video generation is asynchronous. The preview will update automatically when the provider finishes processing.'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-primary tracking-tight">{displayProgressValue}%</p>
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Estimated progress</p>
-                    </div>
+            <CardContent className="flex-1 flex flex-col items-center justify-center p-6 min-h-[400px]">
+              {pollingStatus === 'preparing' || pollingStatus === 'queued' || pollingStatus === 'processing' || isPolling ? (
+                <div className="w-full max-w-sm space-y-4 text-center">
+                  <div className="flex justify-between text-xs font-semibold text-foreground">
+                    <span>Rendering Cinematic Asset...</span>
+                    <span>{displayProgressValue}%</span>
                   </div>
-
-                  <div className="space-y-2">
-                    <Progress value={displayProgressValue} className="h-2.5" />
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Elapsed: {formatRemainingTime(stageElapsedMs)}</span>
-                      <span>
-                        {displayRemainingMs > 0
-                          ? `About ${formatRemainingTime(displayRemainingMs)} remaining`
-                          : 'Finalizing timeline encoding...'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 rounded-2xl border border-border/70 bg-muted/20 p-4 grid-cols-3 mt-2">
-                    <div className={`rounded-xl border px-3 py-3 ${pollingStatus === 'preparing' ? 'border-primary/50 bg-primary/5' : 'border-border/70 bg-background/60'}`}>
+                  <Progress value={displayProgressValue} className="h-2 bg-muted" />
+                  <p className="text-[10px] text-muted-foreground font-mono">
+                    Estimated remaining: {formatRemainingTime(Math.max(0, VIDEO_STAGE_ESTIMATES_MS - stageElapsedMs))}
+                  </p>
+                  <div className="grid grid-cols-3 gap-2 mt-4 text-center">
+                    <div className="rounded-xl border border-primary/50 bg-primary/5 px-3 py-3">
                       <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Step 1</p>
-                      <p className="mt-1 text-xs font-medium text-foreground">Prepare Prompt</p>
+                      <p className="mt-1 text-xs font-medium text-foreground">Prepare Job</p>
                     </div>
                     <div className={`rounded-xl border px-3 py-3 ${pollingStatus === 'queued' || pollingStatus === 'processing' || isPolling ? 'border-primary/50 bg-primary/5' : 'border-border/70 bg-background/60'}`}>
                       <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Step 2</p>
-                      <p className="mt-1 text-xs font-medium text-foreground">Generate Video</p>
+                      <p className="mt-1 text-xs font-medium text-foreground">Render Video</p>
                     </div>
                     <div className={`rounded-xl border px-3 py-3 ${displayProgressValue >= 92 ? 'border-primary/50 bg-primary/5' : 'border-border/70 bg-background/60'}`}>
                       <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Step 3</p>
@@ -760,25 +801,45 @@ export default function VideoStudio() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between w-full max-w-[440px] px-4 py-2.5 rounded-xl border border-white/5 bg-white/[0.02] backdrop-blur-md shadow-inner transition-all hover:border-white/10">
-                    <div className="flex flex-col text-left">
-                      <span className="text-xs font-semibold text-neutral-200 font-sans">Include prompt as caption</span>
-                      <span className="text-[10px] text-neutral-500 mt-0.5 font-sans">Attach prompt query when sharing this asset</span>
+
+                  {includeCaption && (
+                    <div className="w-full max-w-[440px] p-3.5 rounded-xl border border-border/50 bg-background/50 text-left relative group">
+                      <div className="flex justify-between items-center mb-1.5">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-primary">Generated AI Caption</span>
+                        <div className="flex items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                            onClick={handleCopyCaption}
+                            title="Copy Caption"
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                            onClick={handleRegenerateCaption}
+                            disabled={isGeneratingCaption}
+                            title="Regenerate Caption"
+                          >
+                            <RefreshCw className={`h-3 w-3 ${isGeneratingCaption ? 'animate-spin' : ''}`} />
+                          </Button>
+                        </div>
+                      </div>
+                      {isGeneratingCaption ? (
+                        <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Generating caption...
+                        </div>
+                      ) : (
+                        <p className="text-xs text-foreground/95 leading-relaxed font-sans select-all whitespace-pre-wrap">
+                          {generatedCaption || "Generating caption..."}
+                        </p>
+                      )}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setIncludeCaption(!includeCaption)}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        includeCaption ? "bg-primary" : "bg-neutral-800"
-                      }`}
-                    >
-                      <span
-                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                          includeCaption ? "translate-x-4" : "translate-x-0"
-                        }`}
-                      />
-                    </button>
-                  </div>
+                  )}
 
                   <div className="flex gap-2 w-full max-w-[440px]">
                     <Button onClick={handleDownload} className="flex-1 gap-1.5"><Download className="w-4 h-4" /> Download</Button>
@@ -803,7 +864,7 @@ export default function VideoStudio() {
                       {showSharePopover && shareUrl && (
                         <div className="absolute bottom-full mb-2 left-0 right-0 bg-background border border-border rounded-lg shadow-lg p-2 space-y-1 z-10">
                           {Object.entries(
-                            getShareLinks(shareUrl, includeCaption ? `Check out this video I made: ${prompt}` : "")
+                            getShareLinks(shareUrl, generatedCaption)
                           ).map(([platformName, url]) => (
                             <a
                               key={platformName}
