@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from "@/components/ui/progress";
-import { Loader2, Sparkles, Download, Share2, RefreshCw, Camera, Layers, Sliders, Flame, Wand2, Maximize2, Building2 } from 'lucide-react';
+import { Loader2, Sparkles, Download, Share2, RefreshCw, Camera, Layers, Sliders, Flame, Wand2, Maximize2, Building2, Copy } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { apiClient, tokenStorage } from '@/api/apiClient';
 import { addHistoryEntry } from '@/services/aiService';
@@ -167,11 +167,54 @@ export default function ImageStudio() {
   const [stageElapsedMs, setStageElapsedMs] = useState(0);
   const [includeCaption, setIncludeCaption] = useState(true);
   const [generatedCaption, setGeneratedCaption] = useState("");
+  const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
 
   useEffect(() => {
     setShareUrl(null);
     setGeneratedCaption("");
   }, [includeCaption]);
+
+  useEffect(() => {
+    if (generatedImage && includeCaption && !generatedCaption && !isGeneratingCaption) {
+      const fetchCaption = async () => {
+        setIsGeneratingCaption(true);
+        try {
+          const token = tokenStorage.getUserToken();
+          const captionRes = await apiClient.post('/generate-caption', { prompt }, token);
+          setGeneratedCaption(captionRes?.caption || prompt);
+        } catch (e) {
+          console.error("Failed to auto-generate caption:", e);
+          setGeneratedCaption(prompt);
+        } finally {
+          setIsGeneratingCaption(false);
+        }
+      };
+      fetchCaption();
+    }
+  }, [generatedImage, includeCaption, generatedCaption, isGeneratingCaption, prompt]);
+
+  const handleCopyCaption = async () => {
+    if (!generatedCaption) return;
+    try {
+      await navigator.clipboard.writeText(generatedCaption);
+      alert('Caption copied to clipboard!');
+    } catch (err) {
+      console.error('Failed to copy caption:', err);
+    }
+  };
+
+  const handleRegenerateCaption = async () => {
+    setIsGeneratingCaption(true);
+    try {
+      const token = tokenStorage.getUserToken();
+      const captionRes = await apiClient.post('/generate-caption', { prompt }, token);
+      setGeneratedCaption(captionRes?.caption || prompt);
+    } catch (e) {
+      console.error("Failed to regenerate caption:", e);
+    } finally {
+      setIsGeneratingCaption(false);
+    }
+  };
 
   const hasResumedRef = useRef(false);
 
@@ -423,18 +466,7 @@ export default function ImageStudio() {
     if (!shareUrl) {
       setIsCreatingShareLink(true);
       try {
-        let captionText = "";
-        if (includeCaption) {
-          try {
-            const token = tokenStorage.getUserToken();
-            const captionRes = await apiClient.post('/generate-caption', { prompt }, token);
-            captionText = captionRes?.caption || prompt;
-          } catch (e) {
-            console.error("Failed to generate caption, using fallback prompt:", e);
-            captionText = prompt;
-          }
-        }
-        setGeneratedCaption(captionText);
+        const captionText = includeCaption ? (generatedCaption || prompt) : "";
         const title = `${style.toUpperCase()} Studio Design (${selectedFormat.label})`;
         const url = await createShareLink(generatedImage, captionText, title);
         setShareUrl(url);
@@ -710,6 +742,45 @@ export default function ImageStudio() {
                   >
                     <img src={generatedImage} alt="Studio output viewport preview" className="w-full h-auto max-h-[500px] object-contain rounded-lg" />
                   </div>
+
+                  {includeCaption && (
+                    <div className="w-full max-w-[440px] p-3.5 rounded-xl border border-border/50 bg-background/50 text-left relative group">
+                      <div className="flex justify-between items-center mb-1.5">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-primary">Generated AI Caption</span>
+                        <div className="flex items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                            onClick={handleCopyCaption}
+                            title="Copy Caption"
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                            onClick={handleRegenerateCaption}
+                            disabled={isGeneratingCaption}
+                            title="Regenerate Caption"
+                          >
+                            <RefreshCw className={`h-3 w-3 ${isGeneratingCaption ? 'animate-spin' : ''}`} />
+                          </Button>
+                        </div>
+                      </div>
+                      {isGeneratingCaption ? (
+                        <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Generating caption...
+                        </div>
+                      ) : (
+                        <p className="text-xs text-foreground/95 leading-relaxed font-sans select-all whitespace-pre-wrap">
+                          {generatedCaption || "Generating caption..."}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   <div className="flex gap-2 w-full max-w-[440px]">
                     <Button onClick={handleDownload} className="flex-1 gap-1.5"><Download className="w-4 h-4" /> Download</Button>
