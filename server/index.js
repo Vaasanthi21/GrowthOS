@@ -6629,13 +6629,16 @@ const cloudinaryGravityMap = {
 
 app.post('/api/generate-caption', authRequired, async (req, res) => {
   const prompt = String(req.body?.prompt || '').trim();
+  console.log('[GENERATE CAPTION REQUEST] prompt:', prompt);
   if (!prompt) {
     return res.status(400).json({ message: 'Prompt is required' });
   }
 
   try {
     const config = getTextGenerationConfig();
+    console.log('[GENERATE CAPTION CONFIG] config apiKey exists:', !!config.apiKey, 'apiUrl:', config.apiUrl);
     if (!config.apiKey || !config.apiUrl) {
+      console.log('[GENERATE CAPTION] Missing config, falling back to prompt');
       return res.json({ caption: prompt });
     }
 
@@ -6644,9 +6647,13 @@ app.post('/api/generate-caption', authRequired, async (req, res) => {
     if (config.isAzure) {
       headers['api-key'] = config.apiKey;
       const normalizedUrl = requestUrl.replace(/\/$/, '');
-      requestUrl = normalizedUrl.includes('api-version=')
-        ? normalizedUrl
-        : `${normalizedUrl}${normalizedUrl.includes('?') ? '&' : '?'}api-version=${encodeURIComponent(config.apiVersion)}`;
+      if (/chat\/completions/i.test(normalizedUrl)) {
+        requestUrl = normalizedUrl.includes('api-version=')
+          ? normalizedUrl
+          : `${normalizedUrl}${normalizedUrl.includes('?') ? '&' : '?'}api-version=${encodeURIComponent(config.apiVersion)}`;
+      } else {
+        requestUrl = `${normalizedUrl}/openai/deployments/${encodeURIComponent(config.model)}/chat/completions?api-version=${encodeURIComponent(config.apiVersion)}`;
+      }
     } else {
       headers.Authorization = `Bearer ${config.apiKey}`;
     }
