@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import axios from 'axios';
 
 const getEmailFrom = () => process.env.EMAIL_FROM || process.env.SMTP_FROM || 'productmanager.uden@digverve.com';
 
@@ -30,6 +31,37 @@ const createTransporter = () => {
 };
 
 export const sendPasswordResetOtpEmail = async ({ to, otp, expiresInMinutes = 10 }) => {
+  const from = getEmailFrom();
+  const subject = 'Creative Studio OS password reset OTP';
+  const text = `Your password reset OTP is ${otp}. It will expire in ${expiresInMinutes} minutes.`;
+
+  // Try Resend API first if configured
+  if (process.env.RESEND_API_KEY) {
+    try {
+      console.log(`[EMAIL] Sending OTP email to ${to} using Resend API...`);
+      const response = await axios.post(
+        'https://api.resend.com/emails',
+        {
+          from,
+          to: [to],
+          subject,
+          text,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.RESEND_API_KEY.trim()}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      console.log(`[EMAIL] Resend API response:`, response.status, response.data);
+      return;
+    } catch (resendError) {
+      console.error('[EMAIL] Resend API failed:', resendError.response?.data || resendError.message);
+      // fallback to nodemailer if resend fails
+    }
+  }
+
   const transporter = createTransporter();
 
   if (!transporter) {
@@ -39,9 +71,9 @@ export const sendPasswordResetOtpEmail = async ({ to, otp, expiresInMinutes = 10
   }
 
   await transporter.sendMail({
-    from: getEmailFrom(),
+    from,
     to,
-    subject: 'Creative Studio OS password reset OTP',
-    text: `Your password reset OTP is ${otp}. It will expire in ${expiresInMinutes} minutes.`,
+    subject,
+    text,
   });
 };
