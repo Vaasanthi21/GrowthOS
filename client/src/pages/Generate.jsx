@@ -758,7 +758,7 @@ export default function Generate() {
         }
 
         return {
-          primary: allResults[0] || null,
+          primary: allResults,
           params,
           ragContext: "",
           originalPrompt: "",
