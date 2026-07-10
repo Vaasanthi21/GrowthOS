@@ -5992,7 +5992,7 @@ app.post('/api/wallet/recharge', authRequired, async (req, res) => {
     amount: requestedAmount,
     balance_after: normalizeCreditValue(req.user.credits_balance),
     type: 'purchase_request',
-    note: String(note || '').trim(),
+    note: String(note || '').trim() || `Credit purchase request (${requestedAmount} credits)`,
     created_at: nowIso(),
     created_by: req.user.id || req.user._id.toString(),
   });
