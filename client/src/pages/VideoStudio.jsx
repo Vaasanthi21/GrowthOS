@@ -135,6 +135,11 @@ export default function VideoStudio() {
   const errorMessage = videoJob?.errorMessage || null;
   const [stageElapsedMs, setStageElapsedMs] = useState(0);
   const navigate = useNavigate();
+  const [includeCaption, setIncludeCaption] = useState(true);
+
+  useEffect(() => {
+    setShareUrl(null);
+  }, [includeCaption]);
 
   const openRefinePage = () => {
     if (!generatedVideo) return;
@@ -469,7 +474,7 @@ export default function VideoStudio() {
     if (!shareUrl) {
       setIsCreatingShareLink(true);
       try {
-        const caption = `Check out this video I made: ${prompt}`;
+        const caption = includeCaption ? `Check out this video I made: ${prompt}` : "";
         const title = `${platform.toUpperCase()} Studio Video (${aspectRatio})`;
         const url = await createShareLink(generatedVideo, caption, title);
         setShareUrl(url);
@@ -750,6 +755,26 @@ export default function VideoStudio() {
                       </div>
                     </div>
                   </div>
+                  <div className="flex items-center justify-between w-full max-w-[440px] px-4 py-2.5 rounded-xl border border-white/5 bg-white/[0.02] backdrop-blur-md shadow-inner transition-all hover:border-white/10">
+                    <div className="flex flex-col text-left">
+                      <span className="text-xs font-semibold text-neutral-200 font-sans">Include prompt as caption</span>
+                      <span className="text-[10px] text-neutral-500 mt-0.5 font-sans">Attach prompt query when sharing this asset</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIncludeCaption(!includeCaption)}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        includeCaption ? "bg-primary" : "bg-neutral-800"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          includeCaption ? "translate-x-4" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+
                   <div className="flex gap-2 w-full max-w-[440px]">
                     <Button onClick={handleDownload} className="flex-1 gap-1.5"><Download className="w-4 h-4" /> Download</Button>
 
@@ -773,7 +798,7 @@ export default function VideoStudio() {
                       {showSharePopover && shareUrl && (
                         <div className="absolute bottom-full mb-2 left-0 right-0 bg-background border border-border rounded-lg shadow-lg p-2 space-y-1 z-10">
                           {Object.entries(
-                            getShareLinks(shareUrl, `Check out this video I made: ${prompt}`)
+                            getShareLinks(shareUrl, includeCaption ? `Check out this video I made: ${prompt}` : "")
                           ).map(([platformName, url]) => (
                             <a
                               key={platformName}
