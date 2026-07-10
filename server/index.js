@@ -7033,6 +7033,19 @@ app.get('/api/share/:id', async (req, res) => {
     const imageProxyUrl = `${baseUrl}/api/public-asset/${req.params.id}`;
     const shareUrl = `${baseUrl}/api/share/${req.params.id}`;
 
+    const isVideo = record.asset_url.toLowerCase().match(/\.(mp4|webm|ogg|mov|m4v)$/) || 
+                    record.asset_url.includes('/videos/') || 
+                    (record.asset_url.includes('cloudinary.com') && record.asset_url.includes('/video/'));
+
+    const ogImage = isVideo 
+      ? `${baseUrl}/snowy-mountains.png` 
+      : imageProxyUrl;
+
+    const videoTags = isVideo ? `
+  <meta property="og:video" content="${imageProxyUrl}" />
+  <meta property="og:video:secure_url" content="${imageProxyUrl}" />
+  <meta property="og:video:type" content="video/mp4" />` : '';
+
     const escapeHtml = (str) => String(str || '')
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -7044,16 +7057,16 @@ app.get('/api/share/:id', async (req, res) => {
   <title>${escapeHtml(record.title)}</title>
   <meta property="og:title" content="${escapeHtml(record.title)}" />
   <meta property="og:description" content="${escapeHtml(record.caption)}" />
-  <meta property="og:image" content="${imageProxyUrl}" />
+  <meta property="og:image" content="${ogImage}" />
   <meta property="og:url" content="${shareUrl}" />
-  <meta property="og:type" content="website" />
-  <meta name="twitter:card" content="summary_large_image" />
+  <meta property="og:type" content="${isVideo ? 'video.other' : 'website'}" />
+  <meta name="twitter:card" content="summary_large_image" />${videoTags}
   <script>
     window.location.href = "${imageProxyUrl}";
   </script>
 </head>
 <body>
-  <p>Redirecting... <a href="${imageProxyUrl}">View image</a></p>
+  <p>Redirecting... <a href="${imageProxyUrl}">View asset</a></p>
 </body>
 </html>`);
   } catch (error) {
