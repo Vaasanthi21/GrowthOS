@@ -343,11 +343,38 @@ export const BlogGenerator = ({ initialTopicId, initialCustomAngle, onBack, onGe
   const handleGenerate = () => {
     if (!selectedTopicId || !taskId) return;
     startTask(taskId, async () => {
-      const response = await api.post('/blogs/generate', { 
-        topicId: selectedTopicId,
-        customAngle: selectedAngle
-      });
-      return response.data.data;
+      try {
+        const response = await api.post('/blogs/generate', { 
+          topicId: selectedTopicId,
+          customAngle: selectedAngle
+        });
+        queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
+        return response.data.data;
+      } catch (err) {
+        console.warn('Blog generation timed out or failed, starting polling...', err);
+        
+        let attempts = 0;
+        const maxAttempts = 20; // 60 seconds max
+        while (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          try {
+            const getRes = await api.get('/blogs');
+            const blogsList = getRes.data?.data || [];
+            const matchingBlog = blogsList.find(
+              b => (b.topicId?._id || b.topicId) === selectedTopicId
+            );
+            if (matchingBlog) {
+              queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
+              queryClient.invalidateQueries({ queryKey: ['blogs-list'] });
+              return matchingBlog;
+            }
+          } catch (getErr) {
+            // Keep polling
+          }
+          attempts++;
+        }
+        throw new Error('Blog generation timed out. Please check your dashboard or try again.');
+      }
     });
   };
 

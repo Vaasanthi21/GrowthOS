@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useGenerationJobs } from '@/contexts/GenerationJobsContext';
 import { buildCompanyPersonaPayload } from '@/utils/personaPayload';
 import { Button } from '@/components/ui/button';
@@ -100,6 +100,7 @@ const getShareLinks = (videoUrl, caption) => {
 };
 
 export default function VideoStudio() {
+  const queryClient = useQueryClient();
   const location = useLocation();
   const [prompt, setPrompt] = useState(location.state?.prompt || '');
   const [platform, setPlatform] = useState('instagram');
@@ -273,8 +274,10 @@ export default function VideoStudio() {
               generatedVideo: statusResponse.video_url,
               errorMessage: null,
             });
+            queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
           } else {
             setJob('video', { isPolling: false, stageStartedAt: null, pollingStatus: 'failed' });
+            queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
           }
         } else if (statusCode === 'failed') {
           clearInterval(pollInterval);
@@ -284,12 +287,13 @@ export default function VideoStudio() {
             pollingStatus: 'failed',
             errorMessage: statusResponse.error || 'Video generation failed',
           });
+          queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
         }
       } catch (error) {
         console.error('Polling error:', error);
       }
     }, 3000);
-  }, [prompt, platform, setJob]);
+  }, [prompt, platform, setJob, queryClient]);
 
   // On mount: if a job was already in flight when the user navigated away, resume
   // polling it here instead of starting fresh. Runs once per mount.
@@ -352,6 +356,7 @@ export default function VideoStudio() {
         generatedVideo: null,
       });
 
+      queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
       attachPoller(jobId);
     },
     onError: (error) => {

@@ -1,5 +1,44 @@
 import nodemailer from 'nodemailer';
-import axios from 'axios';
+import { Resend } from 'resend';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+// Initialize Resend with your API key
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+
+/**
+ * Sends a system notification email from the no-reply address.
+ * @param {string} toEmail - The recipient's email address.
+ * @param {string} subject - The subject line of the email.
+ * @param {string} htmlContent - The HTML body content of the email.
+ */
+export const sendNoReplyEmail = async (toEmail, subject, htmlContent) => {
+  try {
+    if (!resend) {
+      console.warn('[EMAIL] Resend API key is not configured.');
+      return { success: false, error: 'Resend API key is not configured' };
+    }
+
+    const { data, error } = await resend.emails.send({
+      from: 'CreativeOS <no-reply@udenai.com>',
+      to: [toEmail],
+      subject: subject,
+      html: htmlContent,
+    });
+
+    if (error) {
+      console.error('Failed to send email:', error);
+      return { success: false, error };
+    }
+
+    console.log('Email sent successfully:', data.id);
+    return { success: true, data };
+  } catch (err) {
+    console.error('Unexpected error sending email:', err);
+    return { success: false, error: err.message };
+  }
+};
 
 const getEmailFrom = () => process.env.EMAIL_FROM || process.env.SMTP_FROM || 'productmanager.uden@digverve.com';
 
@@ -31,38 +70,34 @@ const createTransporter = () => {
 };
 
 export const sendPasswordResetOtpEmail = async ({ to, otp, expiresInMinutes = 10 }) => {
-  const from = getEmailFrom();
   const subject = 'Creative Studio OS password reset OTP';
-  const text = `Your password reset OTP is ${otp}. It will expire in ${expiresInMinutes} minutes.`;
+  const htmlContent = `
+    <div style="font-family: sans-serif; padding: 20px; line-height: 1.6; color: #333;">
+      <h2>Password Reset OTP</h2>
+      <p>You requested a password reset for your Creative Studio OS account.</p>
+      <p>Use the following 6-digit One-Time Password (OTP) to reset your password:</p>
+      <div style="font-size: 24px; font-weight: bold; background: #f0f0f0; padding: 15px; border-radius: 5px; display: inline-block; letter-spacing: 2px; margin: 10px 0;">
+        ${otp}
+      </div>
+      <p>This code will expire in <strong>${expiresInMinutes} minutes</strong>.</p>
+      <p>If you did not request a password reset, please ignore this email.</p>
+    </div>
+  `;
 
-  // Try Resend API first if configured
+  // Try the new Resend SDK helper first
   if (process.env.RESEND_API_KEY) {
-    try {
-      console.log(`[EMAIL] Sending OTP email to ${to} using Resend API...`);
-      const response = await axios.post(
-        'https://api.resend.com/emails',
-        {
-          from,
-          to: [to],
-          subject,
-          text,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${process.env.RESEND_API_KEY.trim()}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-      console.log(`[EMAIL] Resend API response:`, response.status, response.data);
+    console.log(`[EMAIL] Sending OTP email to ${to} using Resend SDK...`);
+    const result = await sendNoReplyEmail(to, subject, htmlContent);
+    if (result.success) {
       return;
-    } catch (resendError) {
-      console.error('[EMAIL] Resend API failed:', resendError.response?.data || resendError.message);
-      // fallback to nodemailer if resend fails
     }
+    console.warn('[EMAIL] Resend SDK failed, trying fallback transporter...');
   }
 
+  // Fallback to custom SMTP / SendGrid / local logging
   const transporter = createTransporter();
+  const from = getEmailFrom();
+  const text = `Your password reset OTP is ${otp}. It will expire in ${expiresInMinutes} minutes.`;
 
   if (!transporter) {
     console.warn('Email service is not configured. OTP email was not sent.');
@@ -75,5 +110,6 @@ export const sendPasswordResetOtpEmail = async ({ to, otp, expiresInMinutes = 10
     to,
     subject,
     text,
+    html: htmlContent
   });
 };
