@@ -842,106 +842,135 @@ export default function Generate() {
     return () => window.clearInterval(intervalId);
   }, [generateMutation.isPending, generationStage, stageStartedAt]);
 
-  const videoIdForPolling = String(generatedContent?.video_id || "").trim();
-  const videoStatusForPolling = String(generatedContent?.video_status || "")
-    .trim()
-    .toLowerCase();
-  const hasVideoUrlForPolling = Boolean(generatedContent?.video_url);
+  // Extract all items that need video status polling
+  const itemsToPoll = useMemo(() => {
+    if (!generatedContent) return [];
+    const arr = Array.isArray(generatedContent) ? generatedContent : [generatedContent];
+    return arr.filter(item => {
+      const vId = String(item?.video_id || "").trim();
+      const status = String(item?.video_status || "").trim().toLowerCase();
+      const hasUrl = Boolean(item?.video_url);
+      return vId && (status === "queued" || status === "processing") && !hasUrl;
+    });
+  }, [generatedContent]);
 
   useEffect(() => {
-    const shouldPoll =
-      Boolean(videoIdForPolling) &&
-      (videoStatusForPolling === "queued" ||
-        videoStatusForPolling === "processing") &&
-      !hasVideoUrlForPolling;
-
-    if (!shouldPoll) {
+    if (itemsToPoll.length === 0) {
       return undefined;
     }
 
-    const poll = async () => {
-      if (
-        !videoIdForPolling ||
-        videoPollingRef.current.has(videoIdForPolling)
-      ) {
+    const activePolls = new Set();
+
+    const pollItem = async (item) => {
+      const vId = item.video_id;
+      if (!vId || activePolls.has(vId) || videoPollingRef.current.has(vId)) {
         return;
       }
-      videoPollingRef.current.add(videoIdForPolling);
+      activePolls.add(vId);
+      videoPollingRef.current.add(vId);
       try {
-        const statusResult = await fetchVideoStatus(videoIdForPolling);
+        const statusResult = await fetchVideoStatus(vId);
         setGeneratedContent((current) => {
-          if (
-            !current ||
-            String(current.video_id || "").trim() !== videoIdForPolling
-          ) {
+          if (!current) return current;
+
+          if (Array.isArray(current)) {
+            return current.map(currItem => {
+              if (String(currItem.video_id || "").trim() === vId) {
+                return mergeVideoStatusIntoVariant(currItem, statusResult);
+              }
+              return currItem;
+            });
+          } else {
+            if (String(current.video_id || "").trim() === vId) {
+              return mergeVideoStatusIntoVariant(current, statusResult);
+            }
             return current;
           }
-          return mergeVideoStatusIntoVariant(current, statusResult);
         });
       } catch (error) {
-        console.warn("Video status polling failed:", error);
+        console.warn(`Video status polling failed for ${vId}:`, error);
       } finally {
-        videoPollingRef.current.delete(videoIdForPolling);
+        activePolls.delete(vId);
+        videoPollingRef.current.delete(vId);
       }
     };
 
-    poll();
-    const intervalId = window.setInterval(poll, VIDEO_POLL_INTERVAL_MS);
+    const pollAll = () => {
+      itemsToPoll.forEach(pollItem);
+    };
 
-    return () => window.clearInterval(intervalId);
-  }, [videoIdForPolling, videoStatusForPolling, hasVideoUrlForPolling]);
+    pollAll();
+    const intervalId = window.setInterval(pollAll, VIDEO_POLL_INTERVAL_MS);
 
-  const previousVideoStatus = useRef(null);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [itemsToPoll]);
+
   useEffect(() => {
-    const status = generatedContent?.video_status;
-    if (status && status !== previousVideoStatus.current) {
-      if (status === "completed" && generatedContent?.video_url) {
-        const syncKey = generatedContent.video_id || generatedContent.video_url;
+    if (!generatedContent) return;
+    const arr = Array.isArray(generatedContent) ? generatedContent : [generatedContent];
 
+    arr.forEach((item) => {
+      const status = String(item?.video_status || "").trim().toLowerCase();
+      if (status === "completed" && item?.video_url) {
+        const syncKey = item.video_id || item.video_url;
         if (syncKey && !videoHistorySyncRef.current.has(syncKey)) {
           videoHistorySyncRef.current.add(syncKey);
 
+          let currentTopic = lastGenerationParams?.topic || "";
+          if (Array.isArray(generatedContent)) {
+            const matchedItem = batchItems.find(b =>
+              b.variants?.some(v => v.video_id === item.video_id)
+            );
+            if (matchedItem) {
+              currentTopic = matchedItem.topic;
+            }
+          }
+
           saveToHistory({
-            topic: lastGenerationParams?.topic || "",
+            topic: currentTopic,
             conversation_key: buildGenerationConversationKey({
               userId: user?.id,
               personaId: activePersona,
               contentType: lastGenerationParams?.contentType,
-              topic: lastGenerationParams?.topic,
+              topic: currentTopic,
             }),
             persona: activePersona,
             persona_label: platform.label,
-            company_persona_id:
-              lastGenerationParams?.companyPersona?.id ?? null,
-            company_persona_name:
-              lastGenerationParams?.companyPersona?.name ?? null,
+            company_persona_id: lastGenerationParams?.companyPersona?.id ?? null,
+            company_persona_name: lastGenerationParams?.companyPersona?.name ?? null,
             content_type: lastGenerationParams?.contentType,
             tone: lastGenerationParams?.tone,
             length: lastGenerationParams?.length,
             keywords: lastGenerationParams?.keywords,
-            variants: [generatedContent],
+            variants: [item],
             status: "completed",
             user_id: user?.id ?? null,
             user_name: user?.full_name || user?.email || null,
             user_email: user?.email ?? null,
+          }).then(() => {
+            toast({
+              title: "Video Generated Successfully",
+              description: "Your video has been rendered and is ready to view.",
+            });
           }).catch((error) => {
             console.warn("History video sync failed:", error);
           });
         }
-        toast({
-          title: "Video Generated Successfully",
-          description: "Your video has been rendered and is ready to view.",
-        });
       } else if (status === "failed") {
-        toast({
-          title: "Video Generation Failed",
-          description: "There was an issue rendering your video.",
-          variant: "destructive",
-        });
+        const syncKey = item.video_id || `failed_${item.title || ""}`;
+        if (syncKey && !videoHistorySyncRef.current.has(syncKey)) {
+          videoHistorySyncRef.current.add(syncKey);
+          toast({
+            title: "Video Generation Failed",
+            description: "There was an issue rendering your video.",
+            variant: "destructive",
+          });
+        }
       }
-      previousVideoStatus.current = status;
-    }
-  }, [generatedContent?.video_status, generatedContent?.video_url]);
+    });
+  }, [generatedContent, lastGenerationParams, activePersona, platform, user, batchItems]);
 
   const isVideoPolling =
     (generatedContent?.video_status === "processing" ||

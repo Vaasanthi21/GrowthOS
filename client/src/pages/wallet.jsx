@@ -6,34 +6,34 @@ import { apiClient, tokenStorage } from "@/api/apiClient";
 import { toast } from "@/components/ui/use-toast";
 const PRICING_TIERS = [
   {
-    id: "starter",
-    label: "Starter",
-    price: 1000,
-    credits: 100,
-    pricePerCredit: 10,
+    id: "trial",
+    label: "Trial Pack",
+    price: 499,
+    credits: 400,
+    pricePerCredit: 1.25,
     badge: null,
     description: "Perfect for trying out the platform.",
-    features: ["100 credits", "Valid forever", "All content types"],
-  },
-  {
-    id: "growth",
-    label: "Growth",
-    price: 4500,
-    credits: 500,
-    pricePerCredit: 9,
-    badge: "Most Popular",
-    description: "Best for regular content creators.",
-    features: ["500 credits", "Valid forever", "All content types", "10% savings vs Starter"],
+    features: ["400 credits", "Unused credits never expire", "All content types", "One-time purchase"],
   },
   {
     id: "pro",
     label: "Pro",
-    price: 8000,
-    credits: 1000,
-    pricePerCredit: 8,
-    badge: "Best Value",
-    description: "For teams running campaigns at scale.",
-    features: ["1000 credits", "Valid forever", "All content types", "20% savings vs Starter"],
+    price: 1899,
+    credits: 1500,
+    pricePerCredit: 1.27,
+    badge: null,
+    description: "For creators shipping content weekly.",
+    features: ["1500 credits", "Unused credits never expire", "All content types", "Billed monthly"],
+  },
+  {
+    id: "studio",
+    label: "Studio",
+    price: 4999,
+    credits: 4500,
+    pricePerCredit: 1.11,
+    badge: "Most Popular",
+    description: "For teams and high-output creators.",
+    features: ["4500 credits", "Unused credits never expire", "All content types", "Billed monthly"],
   },
 ];
 
@@ -261,7 +261,7 @@ export default function WalletPage() {
 
       {/* Footer note */}
       <p className="text-center text-xs text-muted-foreground">
-        All purchases are one-time. Credits never expire. Payments are processed securely.
+        Unused credits never expire, even if the plan expires. Payments are processed securely.
       </p>
     </div>
   );

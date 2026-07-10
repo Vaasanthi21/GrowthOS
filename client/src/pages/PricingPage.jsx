@@ -159,12 +159,12 @@ const PLANS = [
     testid: "pack-pro",
     tagline: "For creators shipping content weekly",
     price: "1,899",
-    videos: 6,
+    credits: "1,500",
     features: [
-      "300 text generations",
-      "80 image generations",
+      "1,500 platform credits",
+      "Unused credits never expire",
+      "Generate text, images & video",
       "Brand-matched styling",
-      "One-time pack or monthly plan",
     ],
     cta: "Start with Pro",
     popular: false,
@@ -174,12 +174,12 @@ const PLANS = [
     testid: "pack-studio",
     tagline: "For teams and high-output creators",
     price: "4,999",
-    videos: 18,
+    credits: "4,500",
     features: [
-      "600 text generations",
-      "200 image generations",
+      "4,500 platform credits",
+      "Unused credits never expire",
+      "Generate text, images & video",
       "Brand-matched styling",
-      "One-time pack or monthly plan",
     ],
     cta: "Start with Studio",
     popular: true,
@@ -477,14 +477,14 @@ export default function PricingPage() {
                 <div className="mt-6 rounded-xl border border-white/10 bg-black/20 p-4">
                   <div className="flex items-baseline gap-2">
                     <span className="text-3xl font-extrabold text-orange-400">
-                      {p.videos}
+                      {p.credits}
                     </span>
                     <span className="text-sm text-neutral-300">
-                      videos per month
+                      credits per month
                     </span>
                   </div>
                   <div className="mt-1 text-xs text-neutral-500">
-                    AI videos, 10–12 sec, with synced audio
+                    Unused credits never expire, even if plan expires
                   </div>
                 </div>
 
@@ -529,18 +529,17 @@ export default function PricingPage() {
                 Try it first
               </h3>
               <p className="mt-1 text-base font-semibold text-white">
-                Trial pack — see your first video before you commit
+                Trial pack — 400 credits to test the workflow
               </p>
               <p className="mt-1 text-sm text-neutral-400">
-                A small one-time pack to test the workflow: a handful of
-                videos plus text and image generation, no subscription.
+                A small one-time pack to test the platform: generate video, image, and text content. Unused credits never expire.
               </p>
             </div>
             <div className="flex shrink-0 flex-col items-center gap-3">
               <div className="flex items-baseline gap-1.5">
                 <span className="text-2xl font-extrabold text-white">₹499</span>
                 <span className="text-xs text-neutral-500">
-                  one-time · no auto-renew
+                  one-time · never expires
                 </span>
               </div>
               <Link
@@ -596,11 +595,11 @@ export default function PricingPage() {
           >
             <Sparkles className="mx-auto h-10 w-10 text-orange-500" />
             <h3 className="mt-4 text-3xl font-bold text-white md:text-4xl">
-              See your first video before you commit
+              Get started with credits today
             </h3>
             <p className="mx-auto mt-3 max-w-lg text-neutral-300">
               Start with the ₹499 trial pack, or jump straight into Pro or
-              Studio — text and image generation are bundled in either way.
+              Studio — unused credits never expire!
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <Link
