@@ -294,6 +294,7 @@ export const buildImagePrompt = ({
       'Translate persona into visual art direction — not metadata.',
       'Match the copy angle: image and text should feel like one campaign asset.',
       'Specific and distinctive over generic stock aesthetics.',
+      'Always generate a single, unified visual scene with a single cohesive focal point. Do not split the image into a grid, quadrants, collage, panels, templates, or multiple separate layout options, even if the topic or copy references multiple points, lists, or steps.',
       userHasVisualOverride
         ? 'User color/theme override takes priority over persona palette defaults.'
         : null,
