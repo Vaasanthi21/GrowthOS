@@ -16,6 +16,16 @@ export default function Login() {
   const [resetEmail, setResetEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => prev - 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
+
   const normalizedEmail = useMemo(() => email.trim().toLowerCase(), [email]);
 
   console.log('[Login] Render - isAuthenticated:', isAuthenticated, 'redirect:', searchParams.get("redirect"));
@@ -69,7 +79,7 @@ export default function Login() {
   };
 
   const handleForgotPassword = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     setIsLoading(true);
 
     try {
@@ -84,6 +94,7 @@ export default function Login() {
 
       setPassword("");
       setAuthMode("reset");
+      setResendCooldown(60);
     } catch (error) {
       toast({
         title: "Request failed",
@@ -327,6 +338,35 @@ export default function Login() {
                   className="text-sm font-medium text-primary hover:underline transition-colors"
                 >
                   Forgot password?
+                </button>
+              )}
+
+              {authMode === "reset" && (
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  disabled={isLoading || resendCooldown > 0}
+                  className="text-sm font-medium text-primary hover:underline transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {resendCooldown > 0
+                    ? `Resend code in ${resendCooldown}s`
+                    : "Didn't receive code? Resend OTP"}
+                </button>
+              )}
+
+              {authMode !== "login" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("login");
+                    setPassword("");
+                    setOtp("");
+                    setNewPassword("");
+                    setResendCooldown(0);
+                  }}
+                  className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Back to sign in
                 </button>
               )}
 
