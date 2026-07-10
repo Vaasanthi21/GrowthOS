@@ -31,8 +31,6 @@ const navItems = [
   { icon: Building2, label: "Brand Setup", path: "/brand-setup" },
   { icon: BookOpen, label: "Blog Studio", path: "/blog-studio" },
   { icon: Clock, label: "Content History", path: "/history" },
-  { icon: Camera, label: "Image Studio", path: "/generate?tab=images" },
-  { icon: Video, label: "Video Studio", path: "/generate?tab=videos" },
   { icon: Linkedin, label: "LinkedIn Tracker", path: "/linkedinads" },
   { icon: Wallet, label: "Wallet", path: "/wallet" },
   { icon: Settings, label: "Settings", path: "/settings" },
