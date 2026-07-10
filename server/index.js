@@ -27,7 +27,7 @@ import { spawn } from 'child_process';
 import { v2 as cloudinary } from 'cloudinary';
 import { Worker } from 'bullmq';
 import jobRoutes from './routes/jobRoutes.js';
-import { sendPasswordResetOtpEmail } from './services/emailService.js';
+import { sendPasswordResetOtpEmail, sendSignupVerificationEmail } from './services/emailService.js';
 import './queues/mockWorker.js';
 import { imageQueue } from './queues/imageQueue.js';
 import { connection } from './queues/redisConnection.js';
@@ -152,6 +152,17 @@ const createPasswordResetOtp = () => {
 };
 
 const hashPasswordResetOtp = (otp) =>
+  crypto.createHash('sha256').update(String(otp || '').trim()).digest('hex');
+
+const createSignupVerificationOtp = () => {
+  const otp = String(crypto.randomInt(100000, 1000000));
+  const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
+
+  return { otp, otpHash, expiresAt };
+};
+
+const hashSignupVerificationOtp = (otp) =>
   crypto.createHash('sha256').update(String(otp || '').trim()).digest('hex');
 
 const isValidPhoneNumber = (value) => {
@@ -5792,13 +5803,17 @@ app.post('/api/auth/register', async (req, res) => {
   const created_at = nowIso();
   const creditSettings = await store.getCreditSettings();
   const defaultSignupCredits = normalizeCreditValue(creditSettings.default_signup_credits, normalizeCreditValue(defaultSignupCreditsEnv, 25));
+  const { otp, otpHash, expiresAt } = createSignupVerificationOtp();
+
   const insertedUser = await store.insertUser({
     email: normalizedEmail,
     full_name: fullName,
     phone: normalizedPhone,
     company,
     role: 'user',
-    status: 'active',
+    status: 'pending_verification',
+    signup_verification_otp_hash: otpHash,
+    signup_verification_otp_expires_at: expiresAt,
     password_hash,
     created_at,
     plan_id: freePlan.id || freePlan._id?.toString?.() || null,
@@ -5821,9 +5836,12 @@ app.post('/api/auth/register', async (req, res) => {
     });
   }
 
-  const user = insertedUser?._id ? insertedUser : (await store.findUserByEmail(normalizedEmail));
-  const token = createToken({ sub: user.id || user._id.toString(), role: user.role, email: user.email });
-  res.status(201).json({ token, user: sanitizeUser(user) });
+  await sendSignupVerificationEmail({
+    to: normalizedEmail,
+    otp,
+  });
+
+  res.status(201).json({ message: 'Verification email sent successfully.', email: normalizedEmail });
 });
 
 app.post('/api/auth/login', async (req, res) => {
@@ -5840,8 +5858,87 @@ app.post('/api/auth/login', async (req, res) => {
     return res.status(401).json({ message: 'Invalid email or password' });
   }
 
+  if (user.status === 'pending_verification') {
+    return res.status(403).json({
+      status: 'pending_verification',
+      message: 'Please verify your email address to activate your account.',
+      email: user.email,
+    });
+  }
+
   const token = createToken({ sub: user.id || user._id.toString(), role: user.role, email: user.email });
   res.json({ token, user: sanitizeUser(user) });
+});
+
+app.post('/api/auth/verify-email', async (req, res) => {
+  const { email, otp } = req.body || {};
+  const normalizedEmail = normalizeEmail(email);
+
+  if (!normalizedEmail || !otp) {
+    return res.status(400).json({ message: 'Email and OTP are required' });
+  }
+
+  const user = await store.findUserByEmail(normalizedEmail);
+
+  if (!user || user.status !== 'pending_verification') {
+    return res.status(400).json({ message: 'Invalid request or account already verified' });
+  }
+
+  if (!user.signup_verification_otp_hash || !user.signup_verification_otp_expires_at) {
+    return res.status(400).json({ message: 'Invalid or expired verification code' });
+  }
+
+  if (new Date(user.signup_verification_otp_expires_at).getTime() < Date.now()) {
+    return res.status(400).json({ message: 'Invalid or expired verification code' });
+  }
+
+  const incomingHash = hashSignupVerificationOtp(otp);
+
+  if (incomingHash !== user.signup_verification_otp_hash) {
+    return res.status(400).json({ message: 'Invalid or expired verification code' });
+  }
+
+  // Update status to active and clear OTP
+  await store.updateUserById(user.id || user._id.toString(), {
+    status: 'active',
+    signup_verification_otp_hash: null,
+    signup_verification_otp_expires_at: null,
+  });
+
+  // Fetch updated user
+  const activeUser = await store.findUserById(user.id || user._id.toString());
+  const token = createToken({ sub: activeUser.id || activeUser._id.toString(), role: activeUser.role, email: activeUser.email });
+
+  res.json({ token, user: sanitizeUser(activeUser), message: 'Account verified successfully.' });
+});
+
+app.post('/api/auth/resend-verification-otp', async (req, res) => {
+  const { email } = req.body || {};
+  const normalizedEmail = normalizeEmail(email);
+
+  if (!normalizedEmail) {
+    return res.status(400).json({ message: 'Email is required' });
+  }
+
+  const user = await store.findUserByEmail(normalizedEmail);
+
+  if (!user || user.status !== 'pending_verification') {
+    return res.status(400).json({ message: 'Invalid request' });
+  }
+
+  const { otp, otpHash, expiresAt } = createSignupVerificationOtp();
+
+  await store.updateUserById(user.id || user._id.toString(), {
+    signup_verification_otp_hash: otpHash,
+    signup_verification_otp_expires_at: expiresAt,
+  });
+
+  await sendSignupVerificationEmail({
+    to: normalizedEmail,
+    otp,
+  });
+
+  res.json({ message: 'Verification OTP has been resent successfully.' });
 });
 
 app.post('/api/auth/forgot-password', async (req, res) => {
