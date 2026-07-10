@@ -341,20 +341,7 @@ export default function Login() {
                 </button>
               )}
 
-              {authMode === "reset" && (
-                <button
-                  type="button"
-                  onClick={handleForgotPassword}
-                  disabled={isLoading || resendCooldown > 0}
-                  className="text-sm font-medium text-primary hover:underline transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {resendCooldown > 0
-                    ? `Resend code in ${resendCooldown}s`
-                    : "Didn't receive code? Resend OTP"}
-                </button>
-              )}
-
-              {authMode !== "login" && (
+              {authMode === "forgot" && (
                 <button
                   type="button"
                   onClick={() => {
@@ -364,10 +351,30 @@ export default function Login() {
                     setNewPassword("");
                     setResendCooldown(0);
                   }}
-                  className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  className="text-sm font-medium text-primary hover:underline transition-colors"
                 >
                   Back to sign in
                 </button>
+              )}
+
+              {authMode === "reset" && (
+                <div className="text-sm">
+                  {resendCooldown > 0 ? (
+                    <div className="flex items-center gap-1.5 text-muted-foreground bg-secondary/60 px-3 py-1.5 rounded-full border border-border/40 select-none">
+                      <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                      <span>Resend code in <strong className="font-mono text-primary">{resendCooldown}s</strong></span>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleForgotPassword}
+                      disabled={isLoading}
+                      className="font-medium text-primary hover:underline transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Didn't receive code? Resend OTP
+                    </button>
+                  )}
+                </div>
               )}
 
               <p className="text-sm text-muted-foreground">
