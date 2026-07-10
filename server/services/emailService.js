@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 
-const getEmailFrom = () => process.env.EMAIL_FROM || process.env.SMTP_FROM || 'noreply@uden.ai';
+const getEmailFrom = () => process.env.EMAIL_FROM || process.env.SMTP_FROM || 'productmanager.uden@digverve.com';
 
 const createTransporter = () => {
   if (process.env.SENDGRID_API_KEY) {
