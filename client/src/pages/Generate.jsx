@@ -1159,53 +1159,68 @@ export default function Generate() {
             Generated Content
           </p>
 
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-            <VariantCard
-              variant={generatedContent}
-              index={0}
-              onExpand={setExpandedVariant}
-              onExport={setExportVariant}
-              onEnhance={() => openRefinePage(generatedContent)}
-            />
+          {Array.isArray(generatedContent) ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {generatedContent.map((variant, idx) => (
+                <VariantCard
+                  key={idx}
+                  variant={variant}
+                  index={idx}
+                  onExpand={setExpandedVariant}
+                  onExport={setExportVariant}
+                  onEnhance={() => openRefinePage(variant)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+              <VariantCard
+                variant={generatedContent}
+                index={0}
+                onExpand={setExpandedVariant}
+                onExport={setExportVariant}
+                onEnhance={() => openRefinePage(generatedContent)}
+              />
 
-            <div className="rounded-lg border border-border bg-card p-5 space-y-4">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                  Enhance Content
-                </p>
-                <h3 className="font-display mt-2 text-sm font-semibold text-foreground">
-                  Open the refinement page for chat-based enhancement
-                </h3>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Review the original prompt, current output, persona, and
-                  platform context, then refine the post through an iterative
-                  chat flow.
-                </p>
-              </div>
-
-              {lastRagContext ? (
-                <div className="rounded-2xl border border-border/70 bg-muted/20 p-3">
+              <div className="rounded-lg border border-border bg-card p-5 space-y-4">
+                <div>
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                    RAG grounding active
+                    Enhance Content
                   </p>
-                  <p className="mt-2 text-xs leading-5 text-muted-foreground line-clamp-6 whitespace-pre-line">
-                    {lastRagContext}
+                  <h3 className="font-display mt-2 text-sm font-semibold text-foreground">
+                    Open the refinement page for chat-based enhancement
+                  </h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Review the original prompt, current output, persona, and
+                    platform context, then refine the post through an iterative
+                    chat flow.
                   </p>
                 </div>
-              ) : null}
 
-              <Button
-                onClick={() => openRefinePage(generatedContent)}
-                disabled={!generatedContent}
-                className="h-11 w-full rounded-2xl bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-              >
-                <>
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Open refinement page
-                </>
-              </Button>
+                {lastRagContext ? (
+                  <div className="rounded-2xl border border-border/70 bg-muted/20 p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                      RAG grounding active
+                    </p>
+                    <p className="mt-2 text-xs leading-5 text-muted-foreground line-clamp-6 whitespace-pre-line">
+                      {lastRagContext}
+                    </p>
+                  </div>
+                ) : null}
+
+                <Button
+                  onClick={() => openRefinePage(generatedContent)}
+                  disabled={!generatedContent}
+                  className="h-11 w-full rounded-2xl bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                >
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Open refinement page
+                  </>
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
