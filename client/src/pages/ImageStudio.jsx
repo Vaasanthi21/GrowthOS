@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { startAsyncImageGeneration, createGenerationPoller } from '@/services/generationPollingService';
 import { useGenerationJobs } from '@/contexts/GenerationJobsContext';
@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { apiClient, tokenStorage } from '@/api/apiClient';
 import { addHistoryEntry } from '@/services/aiService';
 import ConfirmDialog from "@/components/dialogs/ConfirmDialog";
+import { persistRefineSession } from '@/utils';
 
 // Each preset carries the exact pixel output the user expects, plus the
 // platform label used for AI prompt tailoring and the aspect-ratio bucket
@@ -114,6 +115,47 @@ export default function ImageStudio() {
   const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
   const { getJob, setJob, clearJob } = useGenerationJobs();
   const imageJob = getJob('image');
+  const navigate = useNavigate();
+
+  const openRefinePage = () => {
+    if (!generatedImage) return;
+
+    const selectedPersonaObj = personasList?.find(p => p.id === selectedPersona) || null;
+    const activePersonaKey = selectedPersona || 'linkedin';
+
+    const refineState = {
+      activePersona: activePersonaKey,
+      params: {
+        contentType: 'image-only',
+        tone: 50,
+        length: 50,
+        keywords: '',
+        topic: prompt,
+        companyPersona: selectedPersonaObj ? {
+          id: selectedPersonaObj.id,
+          name: selectedPersonaObj.name,
+          company: selectedPersonaObj.company || selectedPersonaObj.name,
+        } : null,
+      },
+      generatedContent: {
+        image_url: generatedImage,
+        content: '',
+      },
+      ragContext: '',
+      originalPrompt: prompt,
+      messages: [
+        {
+          role: "assistant",
+          content: "",
+          image_url: generatedImage,
+          image_prompt: prompt,
+        },
+      ],
+    };
+
+    persistRefineSession(refineState);
+    navigate("/refine", { state: refineState });
+  };
 
   const selectedFormat = OUTPUT_FORMATS.find((f) => f.value === outputFormat) || OUTPUT_FORMATS[0];
 
@@ -625,6 +667,10 @@ export default function ImageStudio() {
                   </div>
                   <div className="flex gap-2 w-full max-w-[440px]">
                     <Button onClick={handleDownload} className="flex-1 gap-1.5"><Download className="w-4 h-4" /> Download</Button>
+
+                    <Button onClick={openRefinePage} variant="secondary" className="flex-1 gap-1.5">
+                      <Sparkles className="w-4 h-4 text-primary" /> Refine
+                    </Button>
 
                     <div className="relative flex-1">
                       <Button

@@ -1533,29 +1533,48 @@ export default function RefineContent() {
                   alt={currentContent.title || "Generated visual"}
                   className="max-h-[72vh] w-auto max-w-full rounded-2xl object-contain shadow-[0_24px_80px_rgba(15,23,42,0.18)]"
                 />
+              ) : currentContent?.video_url ? (
+                <video
+                  src={currentContent.video_url}
+                  controls
+                  className="max-h-[72vh] w-auto max-w-full rounded-2xl object-contain shadow-[0_24px_80px_rgba(15,23,42,0.18)] bg-black"
+                />
               ) : null}
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-border/70 px-6 py-4">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={handleShareCurrentImage}
-              >
-                <Share2 className="h-4 w-4" />
-                Share image
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={handleDownloadCurrentImage}
-              >
-                <Download className="h-4 w-4" />
-                Download image
-              </Button>
+              {currentContent?.video_url ? (
+                <a
+                  href={currentContent.video_url}
+                  download
+                  className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                >
+                  <Download className="h-4 w-4" />
+                  Download video
+                </a>
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={handleShareCurrentImage}
+                  >
+                    <Share2 className="h-4 w-4" />
+                    Share image
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={handleDownloadCurrentImage}
+                  >
+                    <Download className="h-4 w-4" />
+                    Download image
+                  </Button>
+                </>
+              )}
             </div>
           </DialogContent>
         </Dialog>
@@ -1574,52 +1593,19 @@ export default function RefineContent() {
                   className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   {message.role === "assistant" &&
-                  getMessageImageSource(message) &&
+                  (getMessageImageSource(message) || message.video_url) &&
                   !String(message.content || "").trim() ? (
-                    <div className="max-w-[88%] overflow-hidden rounded-2xl border border-border/70 bg-card text-card-foreground shadow-sm">
-                      <button
-                        type="button"
-                        className="block w-full text-left"
-                        onClick={() => {
-                          setCurrentContent((current) => ({
-                            ...(current || {}),
-                            ...message,
-                          }));
-                          setIsImageViewerOpen(true);
-                        }}
-                      >
-                        <img
-                          src={getMessageImageSource(message)}
-                          alt={message.title || "Generated visual"}
-                          className="max-h-[420px] w-full object-cover"
+                    <div className="max-w-[88%] overflow-hidden rounded-2xl border border-border/70 bg-card text-card-foreground shadow-sm w-full max-w-[420px]">
+                      {message.video_url ? (
+                        <video
+                          src={message.video_url}
+                          controls
+                          className="max-h-[420px] w-full object-contain bg-black"
                         />
-                      </button>
-                      <div className="flex items-center justify-end gap-2 border-t border-border/70 bg-card/80 px-3 py-2">
-                        <Button
+                      ) : (
+                        <button
                           type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
-                          onClick={() => handleShareMessageImage(message)}
-                        >
-                          <Share2 className="h-3.5 w-3.5" />
-                          Share image
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
-                          onClick={() => handleDownloadMessageImage(message)}
-                        >
-                          <Download className="h-3.5 w-3.5" />
-                          Download image
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+                          className="block w-full text-left"
                           onClick={() => {
                             setCurrentContent((current) => ({
                               ...(current || {}),
@@ -1628,9 +1614,63 @@ export default function RefineContent() {
                             setIsImageViewerOpen(true);
                           }}
                         >
-                          <Expand className="h-3.5 w-3.5" />
-                          View full image
-                        </Button>
+                          <img
+                            src={getMessageImageSource(message)}
+                            alt={message.title || "Generated visual"}
+                            className="max-h-[420px] w-full object-cover"
+                          />
+                        </button>
+                      )}
+                      <div className="flex items-center justify-end gap-2 border-t border-border/70 bg-card/80 px-3 py-2">
+                        {message.video_url ? (
+                          <a
+                            href={message.video_url}
+                            download
+                            className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            Download video
+                          </a>
+                        ) : (
+                          <>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+                              onClick={() => handleShareMessageImage(message)}
+                            >
+                              <Share2 className="h-3.5 w-3.5" />
+                              Share image
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+                              onClick={() => handleDownloadMessageImage(message)}
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              Download image
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+                              onClick={() => {
+                                setCurrentContent((current) => ({
+                                  ...(current || {}),
+                                  ...message,
+                                }));
+                                setIsImageViewerOpen(true);
+                              }}
+                            >
+                              <Expand className="h-3.5 w-3.5" />
+                              View full image
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -1641,7 +1681,25 @@ export default function RefineContent() {
                           : "rounded-tl-md border border-border/70 bg-card text-card-foreground"
                       }`}
                     >
-                      {getMessageImageSource(message) ? (
+                      {message.video_url ? (
+                        <div className="mb-3 overflow-hidden rounded-2xl border border-border/70 bg-muted/20">
+                          <video
+                            src={message.video_url}
+                            controls
+                            className="max-h-[420px] w-full object-contain bg-black"
+                          />
+                          <div className="flex items-center justify-end gap-2 border-t border-border/70 bg-card/80 px-3 py-2">
+                            <a
+                              href={message.video_url}
+                              download
+                              className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              Download video
+                            </a>
+                          </div>
+                        </div>
+                      ) : getMessageImageSource(message) ? (
                         <div className="mb-3 overflow-hidden rounded-2xl border border-border/70 bg-muted/20">
                           <button
                             type="button"
