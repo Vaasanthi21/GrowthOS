@@ -31,8 +31,6 @@ const navItems = [
   { icon: Building2, label: "Brand Setup", path: "/brand-setup" },
   { icon: BookOpen, label: "Blog Studio", path: "/blog-studio" },
   { icon: Clock, label: "Content History", path: "/history" },
-  { icon: Camera, label: "Image Studio", path: "/image-studio" },
-  { icon: Video, label: "Video Studio", path: "/video-studio" },
   { icon: Linkedin, label: "LinkedIn Tracker", path: "/linkedinads" },
   { icon: Wallet, label: "Wallet", path: "/wallet" },
   { icon: Settings, label: "Settings", path: "/settings" },
@@ -152,7 +150,9 @@ export default function Sidebar({
           {!collapsed && "Menu"}
         </span>
         {navItems.map((item) => {
-          const isActive = location.pathname === item.path;
+          const isActive = item.path.includes("?")
+            ? location.pathname === item.path.split("?")[0] && location.search === item.path.substring(item.path.indexOf("?"))
+            : location.pathname === item.path && !location.search;
           return (
             <TooltipProvider key={item.path} delayDuration={0}>
               <Tooltip>

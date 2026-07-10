@@ -191,8 +191,10 @@ export default function SuperAdminBilling() {
                         {entry.amount >= 0 ? '+' : ''}{entry.amount}
                       </td>
                       <td className="py-3 pr-4">{entry.balance_after}</td>
-                      <td className="py-3 pr-4 text-muted-foreground">{entry.user_id}</td>
-                      <td className="py-3 pr-4 text-muted-foreground">{entry.note || '—'}</td>
+                      <td className="py-3 pr-4 text-muted-foreground">{entry.user_email || entry.user_id}</td>
+                      <td className="py-3 pr-4 text-muted-foreground">
+                        {entry.note || (entry.type === 'purchase_request' ? `Credit purchase request (${entry.amount} credits)` : '—')}
+                      </td>
                       <td className="py-3 text-muted-foreground">{entry.created_at ? new Date(entry.created_at).toLocaleString() : '—'}</td>
                     </tr>
                   ))

@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useOutletContext } from "react-router-dom";
+import { useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
+import ImageStudio from "./ImageStudio";
+import VideoStudio from "./VideoStudio";
 import {
   fetchCreditBalance,
   fetchImageGenerationStatus,
@@ -19,7 +21,7 @@ import GenerationForm from "@/components/generate/GenerationForm";
 import VariantCard from "@/components/generate/VariantCard";
 import VariantExpandedModal from "@/components/generate/VariantExpandedModal";
 import ExportDialog from "@/components/dialogs/ExportDialog";
-import { Loader2, Sparkles, Shuffle } from "lucide-react";
+import { Loader2, Sparkles, Shuffle, Camera, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { platforms } from "@/lib/personas";
@@ -173,6 +175,12 @@ Respond in JSON format:
 
 export default function Generate() {
   const { activePersona, setActivePersona } = useOutletContext();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get("tab") || "posts";
+
+  const handleTabChange = (tab) => {
+    setSearchParams({ tab });
+  };
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -1027,7 +1035,39 @@ export default function Generate() {
 
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-5xl mx-auto">
-      {showPlatformSelect ? (
+      {/* Studio Selector Header Tabs */}
+      <div className="flex border-b border-border/80 pb-px mb-6 gap-6">
+        {[
+          { id: "posts", label: "Post Studio", icon: Sparkles },
+          { id: "images", label: "Image Studio", icon: Camera },
+          { id: "videos", label: "Video Studio", icon: Video },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => handleTabChange(tab.id)}
+              className={`flex items-center gap-2 pb-3 text-sm font-semibold border-b-2 transition-all relative ${
+                isActive
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {activeTab === "images" ? (
+        <ImageStudio />
+      ) : activeTab === "videos" ? (
+        <VideoStudio />
+      ) : (
+        <>
+          {showPlatformSelect ? (
         <PersonaSelector
           activePlatform={activePersona}
           onSelect={(platformId) => {
@@ -1260,10 +1300,13 @@ export default function Generate() {
         onExport={setExportVariant}
       />
 
-      <ExportDialog
-        variant={exportVariant}
-        open={!!exportVariant}
-        onClose={() => setExportVariant(null)}
-      />    </div>
+          <ExportDialog
+            variant={exportVariant}
+            open={!!exportVariant}
+            onClose={() => setExportVariant(null)}
+          />
+        </>
+      )}
+    </div>
   );
 }

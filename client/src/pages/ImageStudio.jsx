@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { startAsyncImageGeneration, createGenerationPoller } from '@/services/generationPollingService';
 import { useGenerationJobs } from '@/contexts/GenerationJobsContext';
@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { apiClient, tokenStorage } from '@/api/apiClient';
 import { addHistoryEntry } from '@/services/aiService';
 import ConfirmDialog from "@/components/dialogs/ConfirmDialog";
+import { persistRefineSession } from '@/utils';
 
 // Each preset carries the exact pixel output the user expects, plus the
 // platform label used for AI prompt tailoring and the aspect-ratio bucket
@@ -115,6 +116,47 @@ export default function ImageStudio() {
   const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
   const { getJob, setJob, clearJob } = useGenerationJobs();
   const imageJob = getJob('image');
+  const navigate = useNavigate();
+
+  const openRefinePage = () => {
+    if (!generatedImage) return;
+
+    const selectedPersonaObj = personasList?.find(p => p.id === selectedPersona) || null;
+    const activePersonaKey = selectedPersona || 'linkedin';
+
+    const refineState = {
+      activePersona: activePersonaKey,
+      params: {
+        contentType: 'image-only',
+        tone: 50,
+        length: 50,
+        keywords: '',
+        topic: prompt,
+        companyPersona: selectedPersonaObj ? {
+          id: selectedPersonaObj.id,
+          name: selectedPersonaObj.name,
+          company: selectedPersonaObj.company || selectedPersonaObj.name,
+        } : null,
+      },
+      generatedContent: {
+        image_url: generatedImage,
+        content: '',
+      },
+      ragContext: '',
+      originalPrompt: prompt,
+      messages: [
+        {
+          role: "assistant",
+          content: "",
+          image_url: generatedImage,
+          image_prompt: prompt,
+        },
+      ],
+    };
+
+    persistRefineSession(refineState);
+    navigate("/refine", { state: refineState });
+  };
 
   const selectedFormat = OUTPUT_FORMATS.find((f) => f.value === outputFormat) || OUTPUT_FORMATS[0];
 
@@ -123,6 +165,11 @@ export default function ImageStudio() {
   const pollingStatus = imageJob?.pollingStatus || null;
   const stageStartedAt = imageJob?.stageStartedAt || null;
   const [stageElapsedMs, setStageElapsedMs] = useState(0);
+  const [includeCaption, setIncludeCaption] = useState(true);
+
+  useEffect(() => {
+    setShareUrl(null);
+  }, [includeCaption]);
 
   const hasResumedRef = useRef(false);
 
@@ -374,7 +421,7 @@ export default function ImageStudio() {
     if (!shareUrl) {
       setIsCreatingShareLink(true);
       try {
-        const caption = `Check out this asset I made: ${prompt}`;
+        const caption = includeCaption ? `Check out this asset I made: ${prompt}` : "";
         const title = `${style.toUpperCase()} Studio Design (${selectedFormat.label})`;
         const url = await createShareLink(generatedImage, caption, title);
         setShareUrl(url);
@@ -629,8 +676,32 @@ export default function ImageStudio() {
                   >
                     <img src={generatedImage} alt="Studio output viewport preview" className="w-full h-auto max-h-[500px] object-contain rounded-lg" />
                   </div>
+                  <div className="flex items-center justify-between w-full max-w-[440px] px-4 py-2.5 rounded-xl border border-white/5 bg-white/[0.02] backdrop-blur-md shadow-inner transition-all hover:border-white/10">
+                    <div className="flex flex-col text-left">
+                      <span className="text-xs font-semibold text-neutral-200 font-sans">Include prompt as caption</span>
+                      <span className="text-[10px] text-neutral-500 mt-0.5 font-sans">Attach prompt query when sharing this asset</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIncludeCaption(!includeCaption)}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        includeCaption ? "bg-primary" : "bg-neutral-800"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          includeCaption ? "translate-x-4" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+
                   <div className="flex gap-2 w-full max-w-[440px]">
                     <Button onClick={handleDownload} className="flex-1 gap-1.5"><Download className="w-4 h-4" /> Download</Button>
+
+                    <Button onClick={openRefinePage} variant="secondary" className="flex-1 gap-1.5">
+                      <Sparkles className="w-4 h-4 text-primary" /> Refine
+                    </Button>
 
                     <div className="relative flex-1">
                       <Button
@@ -647,7 +718,7 @@ export default function ImageStudio() {
                       </Button>
                       {showSharePopover && shareUrl && (
                         <div className="absolute bottom-full mb-2 left-0 right-0 bg-background border border-border rounded-lg shadow-lg p-2 space-y-1 z-10">
-                          {Object.entries(getShareLinks(shareUrl, `Check out this asset I made: ${prompt}`)).map(([platformName, url]) => (
+                          {Object.entries(getShareLinks(shareUrl, includeCaption ? `Check out this asset I made: ${prompt}` : "")).map(([platformName, url]) => (
                             <a
                               key={platformName}
                               href={url}

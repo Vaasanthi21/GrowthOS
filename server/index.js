@@ -178,6 +178,7 @@ const normalizeGenerationCost = (value, fallback = 0) => normalizeCreditValue(va
 const sanitizeCreditTransaction = (entry) => ({
   id: entry.id || entry._id?.toString?.() || entry._id,
   user_id: entry.user_id,
+  user_email: entry.user_email || null,
   amount: Number(entry.amount || 0),
   balance_after: Number(entry.balance_after || 0),
   type: entry.type || 'manual_adjustment',
@@ -5991,7 +5992,7 @@ app.post('/api/wallet/recharge', authRequired, async (req, res) => {
     amount: requestedAmount,
     balance_after: normalizeCreditValue(req.user.credits_balance),
     type: 'purchase_request',
-    note: String(note || '').trim(),
+    note: String(note || '').trim() || `Credit purchase request (${requestedAmount} credits)`,
     created_at: nowIso(),
     created_by: req.user.id || req.user._id.toString(),
   });
@@ -7900,7 +7901,31 @@ app.get('/api/superadmin/credits/users', superAdminRequired, async (_req, res) =
 app.get('/api/superadmin/credits/transactions', superAdminRequired, async (req, res) => {
   const userId = String(req.query.userId || '').trim();
   const transactions = await store.listCreditTransactions({ userId: userId || undefined, limit: 200 });
-  res.json({ transactions: transactions.map(sanitizeCreditTransaction) });
+
+  const userIds = [...new Set(transactions.map(t => t.user_id).filter(Boolean))];
+  const users = await rawDb.collection('users').find({
+    $or: [
+      { _id: { $in: userIds.map(id => {
+        try { return new ObjectId(id); } catch(e) { return null; }
+      }).filter(Boolean) } },
+      { id: { $in: userIds } }
+    ]
+  }).toArray();
+
+  const userEmailMap = new Map();
+  users.forEach(u => {
+    const idStr = u._id?.toString?.() || u.id;
+    if (idStr) {
+      userEmailMap.set(idStr, u.email);
+    }
+  });
+
+  const enrichedTransactions = transactions.map(t => ({
+    ...t,
+    user_email: userEmailMap.get(t.user_id) || t.user_id
+  }));
+
+  res.json({ transactions: enrichedTransactions.map(sanitizeCreditTransaction) });
 });
 
 app.post('/api/superadmin/credits/allocate', superAdminRequired, async (req, res) => {
