@@ -423,8 +423,8 @@ function StudioCoverflow() {
   const { toast } = useToast()
   const cards = [
     { title: "Content Studio", desc: "One universal prompt bar to generate posts, images and videos in one flow.", path: "/generate", icon: Layers },
-    { title: "Image Studio", desc: "Turn a sentence into a full visual world — four HD styles in seconds.", path: "/image-studio", icon: ImageIcon },
-    { title: "Video Studio", desc: "Describe a scene, get cinematic footage with timeline and export ready.", path: "/video-studio", icon: Video },
+    { title: "Image Studio", desc: "Turn a sentence into a full visual world — four HD styles in seconds.", path: "/generate?tab=images", icon: ImageIcon },
+    { title: "Video Studio", desc: "Describe a scene, get cinematic footage with timeline and export ready.", path: "/generate?tab=videos", icon: Video },
     { title: "Blog Studio", desc: "SEO-tuned, source-cited long-form articles in a Notion-style editor.", path: "/blog-studio", icon: FileText },
     { title: "LinkedIn Tracker", desc: "A living dashboard for impressions, engagement, CTR and follower growth.", path: "/linkedinads", icon: BarChart3 },
     { title: "Platform Core", desc: "One workspace, four studios, zero context-switching.", path: "/generate", icon: Sparkles },
@@ -709,10 +709,10 @@ function ImageStudio() {
         <Reveal delay={180} className="pointer-events-auto rounded-2xl border border-white/10 bg-white/[0.03] p-4 md:p-6">
           <form onSubmit={(e) => {
               e.preventDefault()
-              if (isAuthenticated) navigate("/image-studio", { state: { prompt } })
+              if (isAuthenticated) navigate("/generate?tab=images", { state: { prompt } })
               else {
                 toast({ title: "Authentication Required", description: "Please login or create an account to access the studios." })
-                navigate(`/login?redirect=/image-studio`, { state: { prompt } })
+                navigate(`/login?redirect=/generate?tab=images`, { state: { prompt } })
               }
             }}
             className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 p-2 pl-4 transition-colors duration-300 focus-within:border-orange-500/40">
@@ -857,10 +857,10 @@ function VideoStudio() {
           </div>
           <button data-testid="open-video-studio"
             onClick={() => {
-              if (isAuthenticated) navigate("/video-studio")
+              if (isAuthenticated) navigate("/generate?tab=videos")
               else {
                 toast({ title: "Authentication Required", description: "Please login or create an account to access the studios." })
-                navigate("/login?redirect=/video-studio")
+                navigate("/login?redirect=/generate?tab=videos")
               }
             }}
             className="mt-6 inline-flex items-center gap-2 rounded-lg bg-orange-500/10 border border-orange-500/30 px-4 py-2.5 text-sm font-semibold text-orange-500 transition-all hover:bg-orange-500/20 hover:scale-[1.02] active:scale-95">

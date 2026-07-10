@@ -106,8 +106,8 @@ const AuthenticatedApp = () => {
         <Route path="/settings" element={<Settings />} />
         <Route path="/support" element={<Support />} />
         <Route path="/linkedinads" element={<LinkedInAds />} />
-        <Route path="/image-studio" element={<ImageStudio />} />
-        <Route path="/video-studio" element={<VideoStudio />} />
+        <Route path="/image-studio" element={<Navigate to="/generate?tab=images" replace />} />
+        <Route path="/video-studio" element={<Navigate to="/generate?tab=videos" replace />} />
         <Route path="/personas" element={<BrandSetup />} />
         <Route path="/publishing" element={<PublishingAccounts />} />
         <Route path="/ambassador" element={<AmbassadorPortal />} />
