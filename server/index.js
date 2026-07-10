@@ -7048,7 +7048,9 @@ app.get('/api/share/:id', async (req, res) => {
   <meta property="og:url" content="${shareUrl}" />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta http-equiv="refresh" content="0; url=${imageProxyUrl}" />
+  <script>
+    window.location.href = "${imageProxyUrl}";
+  </script>
 </head>
 <body>
   <p>Redirecting... <a href="${imageProxyUrl}">View image</a></p>
