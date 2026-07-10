@@ -21,7 +21,9 @@ const resolveAssetUrl = (value) => {
     return "";
   }
 
-  if (source.includes('amazonaws.com') || source.includes('/images/')) {
+  const isVideo = source.toLowerCase().match(/\.(mp4|webm|ogg|mov|m4v)$/) || source.includes('/videos/');
+
+  if (!isVideo && (source.includes('amazonaws.com') || source.includes('/images/'))) {
     const filename = source.split('/').pop();
     const baseUrl = window.location.origin;
     return `${baseUrl}/api/images/view/${filename}`;
