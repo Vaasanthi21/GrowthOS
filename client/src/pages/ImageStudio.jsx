@@ -205,6 +205,8 @@ export default function ImageStudio() {
 
   const handleRegenerateCaption = async () => {
     setIsGeneratingCaption(true);
+    setGeneratedCaption("");
+    setShareUrl(null);
     try {
       const token = tokenStorage.getUserToken();
       const captionRes = await apiClient.post('/generate-caption', { prompt }, token);
