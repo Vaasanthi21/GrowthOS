@@ -77,7 +77,32 @@ export const AuthProvider = ({ children }) => {
         phone,
       });
 
+      if (data.token) {
+        applyAuthenticatedUser(data.user, data.token);
+      }
+      return data;
+    } catch (error) {
+      setAuthError(error.message);
+      throw error;
+    }
+  };
+
+  const verifyEmail = async (email, otp) => {
+    try {
+      setAuthError(null);
+      const data = await apiClient.post('/auth/verify-email', { email, otp });
       applyAuthenticatedUser(data.user, data.token);
+      return data;
+    } catch (error) {
+      setAuthError(error.message);
+      throw error;
+    }
+  };
+
+  const resendVerificationOtp = async (email) => {
+    try {
+      setAuthError(null);
+      const data = await apiClient.post('/auth/resend-verification-otp', { email });
       return data;
     } catch (error) {
       setAuthError(error.message);
@@ -121,6 +146,8 @@ export const AuthProvider = ({ children }) => {
       authError,
       signIn,
       signUp,
+      verifyEmail,
+      resendVerificationOtp,
       signOut,
       checkUserAuth,
       navigateToLogin,
