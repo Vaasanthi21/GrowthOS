@@ -176,6 +176,8 @@ export default function VideoStudio() {
 
   const handleRegenerateCaption = async () => {
     setIsGeneratingCaption(true);
+    setGeneratedCaption("");
+    setShareUrl(null);
     try {
       const token = tokenStorage.getUserToken();
       const captionRes = await apiClient.post('/generate-caption', { prompt }, token);
