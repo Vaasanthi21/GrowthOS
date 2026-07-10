@@ -89,16 +89,17 @@ const uploadArthGangaLogo = async () => {
     const logoPath = '/home/ec2-user/Arth Ganga eng logo.png';
     const stats = await fs.stat(logoPath);
     if (stats.isFile()) {
-      const result = await cloudinary.uploader.upload(logoPath, {
-        folder: `${process.env.CLOUDINARY_FOLDER || 'creative-studio-os'}/logos`,
-        public_id: 'arth-ganga-eng-logo',
-        overwrite: true,
+      const buffer = await fs.readFile(logoPath);
+      const s3Url = await uploadImageBufferToS3({
+        buffer,
+        mimeType: 'image/png',
+        folder: 'logos',
       });
-      arthGangaLogoUrl = result.secure_url;
-      console.log(`\n✓ Arth Ganga logo uploaded to Cloudinary: ${arthGangaLogoUrl}`);
+      arthGangaLogoUrl = s3Url;
+      console.log(`\n✓ UDEN watermark logo uploaded to S3: ${arthGangaLogoUrl}`);
     }
   } catch (error) {
-    console.warn('Startup: Arth Ganga logo not found or upload failed, using provided URLs only.', error.message);
+    console.warn('Startup: UDEN watermark logo not found or upload failed, using provided URLs only.', error.message);
   }
 };
 
@@ -676,6 +677,19 @@ const saveAzureVideoAsset = async ({
       });
     } catch (err) {
       console.warn('[VIDEO OVERLAY] FFmpeg overlay failed:', err?.message || err);
+    }
+  }
+
+  if (arthGangaLogoUrl) {
+    try {
+      outputBuffer = await overlayLogoOnVideo({
+        videoBuffer: outputBuffer,
+        logoUrl: arthGangaLogoUrl,
+        logoPlacement: 'bottom-right',
+        fileNamePrefix: `${videoId}-${variant}-watermark`,
+      });
+    } catch (watermarkErr) {
+      console.warn('[VIDEO WATERMARK] Failed to overlay system watermark:', watermarkErr?.message || watermarkErr);
     }
   }
 
@@ -2052,6 +2066,19 @@ if (finalImageUrl && targetWidth && targetHeight) {
     });
   } catch (resizeErr) {
     console.warn('[IMAGE RESIZE] Failed to resize to exact output dimensions:', resizeErr.message);
+  }
+}
+
+if (finalImageUrl && arthGangaLogoUrl) {
+  try {
+    finalImageUrl = await overlayLogoOnImage({
+      imageUrl: finalImageUrl,
+      logoUrl: arthGangaLogoUrl,
+      logoPlacement: 'bottom-right',
+      logoScale: 0.12,
+    });
+  } catch (watermarkErr) {
+    console.warn('[IMAGE WATERMARK] Failed to overlay system watermark:', watermarkErr?.message || watermarkErr);
   }
 }
 
