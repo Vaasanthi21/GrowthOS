@@ -525,6 +525,25 @@ export default function ImageStudio() {
                   className="min-h-[140px] resize-none"
                   disabled={isPolling}
                 />
+                <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-background/50 transition-all hover:bg-background">
+                  <div className="flex flex-col text-left">
+                    <span className="text-xs font-semibold text-foreground">Include generated caption</span>
+                    <span className="text-[9px] text-muted-foreground mt-0.5">Generate social media text when sharing</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIncludeCaption(!includeCaption)}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      includeCaption ? "bg-primary" : "bg-muted"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        includeCaption ? "translate-x-4" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -612,6 +631,8 @@ export default function ImageStudio() {
                 </Select>
               </div>
 
+
+
               <Button
                 onClick={handleGenerateClick}
                 disabled={isPolling || !prompt.trim()}
@@ -688,25 +709,6 @@ export default function ImageStudio() {
                     style={getPreviewContainerStyle()}
                   >
                     <img src={generatedImage} alt="Studio output viewport preview" className="w-full h-auto max-h-[500px] object-contain rounded-lg" />
-                  </div>
-                  <div className="flex items-center justify-between w-full max-w-[440px] px-4 py-2.5 rounded-xl border border-white/5 bg-white/[0.02] backdrop-blur-md shadow-inner transition-all hover:border-white/10">
-                    <div className="flex flex-col text-left">
-                      <span className="text-xs font-semibold text-neutral-200 font-sans">Include generated caption</span>
-                      <span className="text-[10px] text-neutral-500 mt-0.5 font-sans">Generate clean social media text when sharing</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setIncludeCaption(!includeCaption)}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        includeCaption ? "bg-primary" : "bg-neutral-800"
-                      }`}
-                    >
-                      <span
-                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                          includeCaption ? "translate-x-4" : "translate-x-0"
-                        }`}
-                      />
-                    </button>
                   </div>
 
                   <div className="flex gap-2 w-full max-w-[440px]">
