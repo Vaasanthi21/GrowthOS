@@ -166,9 +166,11 @@ export default function ImageStudio() {
   const stageStartedAt = imageJob?.stageStartedAt || null;
   const [stageElapsedMs, setStageElapsedMs] = useState(0);
   const [includeCaption, setIncludeCaption] = useState(true);
+  const [generatedCaption, setGeneratedCaption] = useState("");
 
   useEffect(() => {
     setShareUrl(null);
+    setGeneratedCaption("");
   }, [includeCaption]);
 
   const hasResumedRef = useRef(false);
@@ -421,9 +423,20 @@ export default function ImageStudio() {
     if (!shareUrl) {
       setIsCreatingShareLink(true);
       try {
-        const caption = includeCaption ? `Check out this asset I made: ${prompt}` : "";
+        let captionText = "";
+        if (includeCaption) {
+          try {
+            const token = tokenStorage.getUserToken();
+            const captionRes = await apiClient.post('/generate-caption', { prompt }, token);
+            captionText = captionRes?.caption || prompt;
+          } catch (e) {
+            console.error("Failed to generate caption, using fallback prompt:", e);
+            captionText = prompt;
+          }
+        }
+        setGeneratedCaption(captionText);
         const title = `${style.toUpperCase()} Studio Design (${selectedFormat.label})`;
-        const url = await createShareLink(generatedImage, caption, title);
+        const url = await createShareLink(generatedImage, captionText, title);
         setShareUrl(url);
       } catch (err) {
         console.error('Failed to create share link:', err);
@@ -678,8 +691,8 @@ export default function ImageStudio() {
                   </div>
                   <div className="flex items-center justify-between w-full max-w-[440px] px-4 py-2.5 rounded-xl border border-white/5 bg-white/[0.02] backdrop-blur-md shadow-inner transition-all hover:border-white/10">
                     <div className="flex flex-col text-left">
-                      <span className="text-xs font-semibold text-neutral-200 font-sans">Include prompt as caption</span>
-                      <span className="text-[10px] text-neutral-500 mt-0.5 font-sans">Attach prompt query when sharing this asset</span>
+                      <span className="text-xs font-semibold text-neutral-200 font-sans">Include generated caption</span>
+                      <span className="text-[10px] text-neutral-500 mt-0.5 font-sans">Generate clean social media text when sharing</span>
                     </div>
                     <button
                       type="button"
@@ -718,7 +731,7 @@ export default function ImageStudio() {
                       </Button>
                       {showSharePopover && shareUrl && (
                         <div className="absolute bottom-full mb-2 left-0 right-0 bg-background border border-border rounded-lg shadow-lg p-2 space-y-1 z-10">
-                          {Object.entries(getShareLinks(shareUrl, includeCaption ? `Check out this asset I made: ${prompt}` : "")).map(([platformName, url]) => (
+                          {Object.entries(getShareLinks(shareUrl, generatedCaption)).map(([platformName, url]) => (
                             <a
                               key={platformName}
                               href={url}
