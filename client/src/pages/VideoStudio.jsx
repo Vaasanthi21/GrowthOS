@@ -723,15 +723,15 @@ export default function VideoStudio() {
 
 
 
-              <div className="pt-2 flex flex-col sm:flex-row gap-3">
-                <Button onClick={handleAnimate} disabled={!prompt.trim() || generateMutation.isPending || isPolling} className="flex-1 gap-2" variant="outline">
+              <div className="pt-2 flex flex-col gap-2.5 w-full">
+                <Button onClick={handleAnimate} disabled={!prompt.trim() || generateMutation.isPending || isPolling} className="w-full gap-2" variant="outline">
                   <Sliders className="w-4 h-4" /> Camera Controls ({pan !== 0 || zoom !== 1 || motionStrength !== 5 ? "Modified" : "Default"})
                 </Button>
                 
                 <Button 
                   onClick={handleGenerateClick} 
                   disabled={isButtonDisabled} 
-                  className="flex-1 gap-2" 
+                  className="w-full gap-2" 
                   size="lg"
                 >
                   {generateMutation.isPending || isPolling ? (
