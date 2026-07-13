@@ -237,11 +237,8 @@ export const buildImagePrompt = ({
     contentType ? `Format: ${contentType}.` : null,
 
     // ── Brand core ────────────────────────────────────────────────────────
-    // Merged company + tagline into one line to save a label.
-    // Omitted persona.goals (strategy, not visual) and persona.analysis
-    // (derivative of fields already present).
     persona.company
-      ? `Brand context only: ${persona.company}${persona.tagline ? ` — ${persona.tagline}` : ''}. Do not render the brand name, logo, initials, tagline, watermark, app name, or any fictional substitute brand in the image.`
+      ? `Brand context only: ${persona.company}${persona.industry ? ` (${persona.industry})` : ''}.${persona.productDescription ? ` About: ${persona.productDescription}.` : ''}${persona.tagline ? ` Tagline: ${persona.tagline}.` : ''} Do not render the brand name, logo, initials, tagline, watermark, app name, or any fictional substitute brand in the image.`
       : null,
     persona.voice ? `Tone: ${persona.voice}.` : null,
     persona.audience ? `Audience: ${persona.audience}.` : null,
@@ -384,7 +381,7 @@ export const buildVideoPrompt = ({
 
     // ── Brand core ────────────────────────────────────────────────────────
     persona.company
-      ? `Brand: ${persona.company}${persona.tagline ? ` — ${persona.tagline}` : ''}.`
+      ? `Brand: ${persona.company}${persona.industry ? ` (${persona.industry})` : ''}.${persona.productDescription ? ` About: ${persona.productDescription}.` : ''}${persona.tagline ? ` Tagline: ${persona.tagline}.` : ''}`
       : null,
     persona.voice ? `Tone: ${persona.voice}.` : null,
     persona.audience ? `Audience: ${persona.audience}.` : null,

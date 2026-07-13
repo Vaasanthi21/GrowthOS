@@ -7241,7 +7241,15 @@ app.post('/api/generate-image', authRequired, async (req, res) => {
           ? (companyPersona.logo_placement || companyPersona.logoPlacement || 'none')
           : (logoPlacement || companyPersona.logo_placement || companyPersona.logoPlacement || 'none'),
         useOriginalLogo,
-      } : null,
+        productDescription: companyPersona.productDescription || company.productDescription || '',
+        industry: companyPersona.industry || company.industry || '',
+      } : {
+        company: company.companyName || '',
+        productDescription: company.productDescription || '',
+        industry: company.industry || '',
+        logoPlacementOverride: logoPlacement === 'persona-default' ? 'none' : (logoPlacement || 'none'),
+        useOriginalLogo,
+      },
       contentType,
       ragContext,
       keywords,
@@ -7554,7 +7562,15 @@ app.post('/api/generate-video', authRequired, async (req, res) => {
           ? (companyPersona.logo_placement || companyPersona.logoPlacement || 'none')
           : (logoPlacement || companyPersona.logo_placement || companyPersona.logoPlacement || 'none'),
         useOriginalLogo,
-      } : null,
+        productDescription: companyPersona.productDescription || company.productDescription || '',
+        industry: companyPersona.industry || company.industry || '',
+      } : {
+        company: company.companyName || '',
+        productDescription: company.productDescription || '',
+        industry: company.industry || '',
+        logoPlacementOverride: logoPlacement === 'persona-default' ? 'none' : (logoPlacement || 'none'),
+        useOriginalLogo,
+      },
       contentType,
       ragContext,
       keywords,
