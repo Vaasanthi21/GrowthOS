@@ -292,11 +292,21 @@ export default function Generate() {
   const [lastOriginalPrompt, setLastOriginalPrompt] = useState("");
   const [batchItems, setBatchItems] = useState([]);
   const cancelRef = useRef(false);
+  const resultsRef = useRef(null);
   const [expandedVariant, setExpandedVariant] = useState(null);
   const [exportVariant, setExportVariant] = useState(null);
   const [generationStage, setGenerationStage] = useState("idle");
   const videoPollingRef = useRef(new Set());
   const videoHistorySyncRef = useRef(new Set());
+
+  useEffect(() => {
+    if (generatedContent && !isGeneratingOrPolling) {
+      const timer = setTimeout(() => {
+        resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [generatedContent, isGeneratingOrPolling]);
   const [showPlatformSelect, setShowPlatformSelect] = useState(() => {
     return !localStorage.getItem("activePersona");
   });
@@ -1269,7 +1279,7 @@ export default function Generate() {
 
       {/* Results */}
       {generatedContent && !isGeneratingOrPolling && (
-        <div className="space-y-3">
+        <div ref={resultsRef} className="space-y-3 scroll-mt-6">
           <p className="text-[10px] font-semibold uppercase text-muted-foreground">
             Generated Content
           </p>
