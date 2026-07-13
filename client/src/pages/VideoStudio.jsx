@@ -767,7 +767,7 @@ export default function VideoStudio() {
                   </div>
                   <Progress value={displayProgressValue} className="h-2 bg-muted" />
                   <p className="text-[10px] text-muted-foreground font-mono">
-                    Estimated remaining: {formatRemainingTime(Math.max(0, VIDEO_STAGE_ESTIMATES_MS - stageElapsedMs))}
+                    Estimated remaining: {formatRemainingTime(Math.max(0, ESTIMATED_TOTAL_MS - stageElapsedMs))}
                   </p>
                   <div className="grid grid-cols-3 gap-2 mt-4 text-center">
                     <div className="rounded-xl border border-primary/50 bg-primary/5 px-3 py-3">
