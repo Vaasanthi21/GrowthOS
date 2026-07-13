@@ -8,9 +8,18 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchCreditBalance } from "@/services/aiService";
 import { apiClient, tokenStorage } from "@/api/apiClient";
 import UserGuideModal from "./UserGuideModal";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 export default function TopNav({ onToggleSidebar }) {
   const [guideOpen, setGuideOpen] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const { data: creditBalance } = useQuery({
     queryKey: ["user-credit-balance"],
     queryFn: fetchCreditBalance,
@@ -95,7 +104,7 @@ export default function TopNav({ onToggleSidebar }) {
           variant="ghost"
           size="icon"
           className="h-8 w-8 text-muted-foreground hover:text-foreground"
-          onClick={handleLogout}
+          onClick={() => setLogoutConfirmOpen(true)}
           title="Sign Out"
         >
           <LogOut className="w-4 h-4" />
@@ -103,6 +112,39 @@ export default function TopNav({ onToggleSidebar }) {
       </div>
 
       <UserGuideModal open={guideOpen} onOpenChange={setGuideOpen} />
+
+      {/* Logout Confirmation Modal */}
+      <Dialog open={logoutConfirmOpen} onOpenChange={setLogoutConfirmOpen}>
+        <DialogContent className="max-w-md p-6 bg-background border border-border sm:rounded-2xl shadow-xl space-y-4">
+          <DialogHeader className="space-y-1.5 text-left">
+            <DialogTitle className="text-base font-display font-bold">Confirm Sign Out</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Are you sure you want to sign out of your account? Any unsaved edits in active generation studios may be lost.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2.5 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setLogoutConfirmOpen(false)}
+              className="text-xs font-semibold px-4 py-2 border border-border hover:bg-secondary text-foreground hover:text-foreground rounded-xl transition-all"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                setLogoutConfirmOpen(false);
+                handleLogout();
+              }}
+              className="text-xs font-semibold px-4 py-2 bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-xl transition-all"
+            >
+              Sign Out
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </header>
   );
 }
