@@ -5845,6 +5845,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 
   const password_hash = await bcrypt.hash(password, 10);
+  const created_at = nowIso();
   const creditSettings = await store.getCreditSettings();
   const defaultSignupCredits = normalizeCreditValue(creditSettings.default_signup_credits, normalizeCreditValue(defaultSignupCreditsEnv, 25));
   const { otp, otpHash, expiresAt } = createSignupVerificationOtp();
