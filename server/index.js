@@ -6997,6 +6997,7 @@ const cloudinaryGravityMap = {
 };
 
 app.post('/api/generate-caption', authRequired, async (req, res) => {
+  const userId = req.user.id || req.user._id.toString();
   const prompt = String(req.body?.prompt || '').trim();
   console.log('[GENERATE CAPTION REQUEST] prompt:', prompt);
   if (!prompt) {
@@ -7004,6 +7005,13 @@ app.post('/api/generate-caption', authRequired, async (req, res) => {
   }
 
   try {
+    const company = await rawDb.collection('companies').findOne({ user_id: userQuery(userId) }) || {};
+    let enrichedPrompt = prompt;
+    if (company && company.companyName) {
+      const brandContext = `[Brand Profile - Company: ${company.companyName}${company.industry ? ` (${company.industry})` : ''}.${company.productDescription ? ` About: ${company.productDescription}.` : ''}]`;
+      enrichedPrompt = `${brandContext}\n\n${prompt}`;
+    }
+
     const config = getTextGenerationConfig();
     console.log('[GENERATE CAPTION CONFIG] config apiKey exists:', !!config.apiKey, 'apiUrl:', config.apiUrl);
     if (!config.apiKey || !config.apiUrl) {
@@ -7038,7 +7046,7 @@ app.post('/api/generate-caption', authRequired, async (req, res) => {
           },
           {
             role: 'user',
-            content: prompt,
+            content: enrichedPrompt,
           },
         ],
         temperature: 0.7,
@@ -7078,7 +7086,14 @@ app.post('/api/generate-text', authRequired, async (req, res) => {
       note: `Text generation charge (${textCost} credit${textCost === 1 ? '' : 's'})`,
     });
 
-    const variants = await generateTextVariants({ prompt });
+    const company = await rawDb.collection('companies').findOne({ user_id: userQuery(userId) }) || {};
+    let enrichedPrompt = prompt;
+    if (company && company.companyName) {
+      const brandContext = `[Brand Profile - Company: ${company.companyName}${company.industry ? ` (${company.industry})` : ''}.${company.productDescription ? ` About: ${company.productDescription}.` : ''}${company.brandVoice ? ` Tone/Voice: ${company.brandVoice}.` : ''}]`;
+      enrichedPrompt = `${brandContext}\n\n${prompt}`;
+    }
+
+    const variants = await generateTextVariants({ prompt: enrichedPrompt });
     res.json({
       variants,
       credits: {
