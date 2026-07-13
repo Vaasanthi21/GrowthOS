@@ -306,14 +306,6 @@ export default function Generate() {
   const videoPollingRef = useRef(new Set());
   const videoHistorySyncRef = useRef(new Set());
 
-  useEffect(() => {
-    if (generatedContent && !isGeneratingOrPolling) {
-      const timer = setTimeout(() => {
-        resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 150);
-      return () => clearTimeout(timer);
-    }
-  }, [generatedContent, isGeneratingOrPolling]);
   const [showPlatformSelect, setShowPlatformSelect] = useState(true);
 
   const openRefinePage = (content) => {
@@ -1097,6 +1089,15 @@ export default function Generate() {
           : "Preparing your request.";
 
   const isGeneratingOrPolling = generateMutation.isPending || isVideoPolling;
+
+  useEffect(() => {
+    if (generatedContent && !isGeneratingOrPolling) {
+      const timer = setTimeout(() => {
+        resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [generatedContent, isGeneratingOrPolling]);
 
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-5xl mx-auto">
