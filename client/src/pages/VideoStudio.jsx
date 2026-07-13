@@ -135,30 +135,38 @@ export default function VideoStudio() {
   const [includeCaption, setIncludeCaption] = useState(true);
   const [generatedCaption, setGeneratedCaption] = useState("");
   const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
+  const lastFetchedPromptRef = useRef("");
 
   useEffect(() => {
     setShareUrl(null);
     setGeneratedCaption("");
   }, [includeCaption]);
 
+  const triggerCaptionGeneration = useCallback(async (textPrompt) => {
+    const trimmed = String(textPrompt || '').trim();
+    if (!trimmed) return;
+    if (isGeneratingCaption) return;
+    if (lastFetchedPromptRef.current === trimmed && generatedCaption) return;
+
+    lastFetchedPromptRef.current = trimmed;
+    setIsGeneratingCaption(true);
+    try {
+      const token = tokenStorage.getUserToken();
+      const captionRes = await apiClient.post('/generate-caption', { prompt: trimmed }, token);
+      setGeneratedCaption(captionRes?.caption || trimmed);
+    } catch (e) {
+      console.error("Failed to generate caption:", e);
+      setGeneratedCaption(trimmed);
+    } finally {
+      setIsGeneratingCaption(false);
+    }
+  }, [isGeneratingCaption, generatedCaption]);
+
   useEffect(() => {
     if (generatedVideo && includeCaption && !generatedCaption && !isGeneratingCaption) {
-      const fetchCaption = async () => {
-        setIsGeneratingCaption(true);
-        try {
-          const token = tokenStorage.getUserToken();
-          const captionRes = await apiClient.post('/generate-caption', { prompt }, token);
-          setGeneratedCaption(captionRes?.caption || prompt);
-        } catch (e) {
-          console.error("Failed to auto-generate caption:", e);
-          setGeneratedCaption(prompt);
-        } finally {
-          setIsGeneratingCaption(false);
-        }
-      };
-      fetchCaption();
+      triggerCaptionGeneration(prompt);
     }
-  }, [generatedVideo, includeCaption, generatedCaption, isGeneratingCaption, prompt]);
+  }, [generatedVideo, includeCaption, generatedCaption, isGeneratingCaption, prompt, triggerCaptionGeneration]);
 
   const handleCopyCaption = async () => {
     if (!generatedCaption) return;
@@ -170,19 +178,10 @@ export default function VideoStudio() {
     }
   };
 
-  const handleRegenerateCaption = async () => {
-    setIsGeneratingCaption(true);
-    setGeneratedCaption("");
+  const handleRegenerateCaption = () => {
     setShareUrl(null);
-    try {
-      const token = tokenStorage.getUserToken();
-      const captionRes = await apiClient.post('/generate-caption', { prompt }, token);
-      setGeneratedCaption(captionRes?.caption || prompt);
-    } catch (e) {
-      console.error("Failed to regenerate caption:", e);
-    } finally {
-      setIsGeneratingCaption(false);
-    }
+    lastFetchedPromptRef.current = "";
+    triggerCaptionGeneration(prompt);
   };
 
   const openRefinePage = () => {
@@ -850,13 +849,15 @@ export default function VideoStudio() {
                         </div>
                       </div>
                       {isGeneratingCaption ? (
-                        <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          Generating caption...
+                        <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground animate-pulse">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                          <span>Generating caption...</span>
                         </div>
                       ) : (
                         <p className="text-xs text-foreground/95 leading-relaxed font-sans select-all whitespace-pre-wrap">
-                          {generatedCaption || "Generating caption..."}
+                          {generatedCaption || (
+                            <span className="text-muted-foreground opacity-60">No caption generated</span>
+                          )}
                         </p>
                       )}
                     </div>
