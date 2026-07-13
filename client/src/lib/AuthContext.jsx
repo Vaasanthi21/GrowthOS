@@ -99,6 +99,18 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const verifySignUpOtp = async (email, otp) => {
+    try {
+      setAuthError(null);
+      const data = await apiClient.post('/auth/verify-signup-otp', { email, otp });
+      applyAuthenticatedUser(data.user, data.token);
+      return data;
+    } catch (error) {
+      setAuthError(error.message);
+      throw error;
+    }
+  };
+
   const resendVerificationOtp = async (email) => {
     try {
       setAuthError(null);
@@ -147,6 +159,7 @@ export const AuthProvider = ({ children }) => {
       signIn,
       signUp,
       verifyEmail,
+      verifySignUpOtp,
       resendVerificationOtp,
       signOut,
       checkUserAuth,

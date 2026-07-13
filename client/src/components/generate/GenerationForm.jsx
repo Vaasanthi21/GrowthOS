@@ -90,7 +90,6 @@ const buildCompactPersonaSummary = (persona) => {
 
 const MAX_BATCH_TOPICS = 10;
 const LOGO_PLACEMENT_OPTIONS = [
-  { value: "persona-default", label: "Use persona default" },
   { value: "none", label: "Do not place logo" },
   { value: "top-left", label: "Top left" },
   { value: "top-right", label: "Top right" },
@@ -138,7 +137,7 @@ export default function GenerationForm({
   const [tone, setTone] = useState([50]);
   const [length, setLength] = useState([50]);
   const [keywords, setKeywords] = useState("");
-  const [logoPlacement, setLogoPlacement] = useState("persona-default");
+  const [logoPlacement, setLogoPlacement] = useState("top-right");
   const [useOriginalLogo, setUseOriginalLogo] = useState(true);
   const [selectedCompanyPersonaId, setSelectedCompanyPersonaId] = useState("");
   const [showGenerationConfirm, setShowGenerationConfirm] = useState(false);

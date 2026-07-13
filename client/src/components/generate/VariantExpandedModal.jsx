@@ -6,7 +6,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, Share2, Zap } from "lucide-react";
+import { Download, Share2, Zap, Loader2 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import { tokenStorage } from "@/api/apiClient";
 
@@ -21,7 +21,9 @@ const resolveAssetUrl = (value) => {
     return "";
   }
 
-  if (source.includes('amazonaws.com') || source.includes('/images/')) {
+  const isVideo = source.toLowerCase().match(/\.(mp4|webm|ogg|mov|m4v)$/) || source.includes('/videos/');
+
+  if (!isVideo && (source.includes('amazonaws.com') || source.includes('/images/'))) {
     const filename = source.split('/').pop();
     const baseUrl = window.location.origin;
     return `${baseUrl}/api/images/view/${filename}`;
@@ -92,6 +94,10 @@ export default function VariantExpandedModal({
   hideExport = false, // History passes hideExport so Export doesn't show there,
                        // while Generate.jsx (which doesn't pass this prop) keeps it.
 }) {
+  const [showSharePopover, setShowSharePopover] = useState(false);
+  const [shareUrl, setShareUrl] = useState(null);
+  const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
+
   if (!variant) return null;
 
   const hasText = Boolean(String(variant.content || "").trim());
@@ -126,89 +132,90 @@ export default function VariantExpandedModal({
     await downloadFile(resolveAssetUrl(imageSource), filename);
   };
 
-  const handleImageShare = async () => {
-    const imageSource =
-      variant.image_url ||
-      (variant.image_base64
-        ? `data:image/png;base64,${variant.image_base64}`
-        : null);
-    if (!imageSource) {
+  const handleCopyLink = async () => {
+    if (!shareUrl) return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        toast({
+          title: "Link copied",
+          description: "Share link copied to clipboard successfully.",
+          duration: 2000,
+        });
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = shareUrl;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+        toast({
+          title: "Link copied",
+          description: "Share link copied to clipboard successfully.",
+          duration: 2000,
+        });
+      }
+    } catch (err) {
+      console.error("Failed to copy link:", err);
+    }
+    setShowSharePopover(false);
+  };
+
+  const handleOpenSharePopover = async () => {
+    if (showSharePopover) {
+      setShowSharePopover(false);
       return;
     }
 
-    const resolvedImageUrl = resolveAssetUrl(imageSource);
-    const canShareUrl = /^https?:\/\//i.test(resolvedImageUrl);
+    const mediaUrl = variant.video_url || variant.image_url || (variant.image_base64 ? `data:image/png;base64,${variant.image_base64}` : null);
+    if (!mediaUrl) return;
 
-    try {
-      let finalShareUrl = resolvedImageUrl;
-
-      if (canShareUrl && (resolvedImageUrl.includes('.amazonaws.com') || resolvedImageUrl.includes('s3.'))) {
-        try {
-          const token = tokenStorage.getUserToken();
-          const shareResponse = await fetch(`${API_ORIGIN}/api/create-share-link`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              assetUrl: resolvedImageUrl,
-              title: variant.title || "Generated image",
-              caption: variant.image_revised_prompt || variant.title || "Check out this visual",
-            }),
-          });
-
-          if (shareResponse.ok) {
-            const shareData = await shareResponse.json();
-            if (shareData.shareUrl) {
-              finalShareUrl = shareData.shareUrl;
-            }
-          }
-        } catch (err) {
-          console.error("Failed to create brand share link, falling back to direct URL:", err);
-        }
-      }
-
-      if (navigator.share && canShareUrl) {
-        await navigator.share({
-          title: variant.title || "Generated image",
-          text:
-            variant.image_revised_prompt ||
-            variant.image_prompt ||
-            variant.title ||
-            "Generated image",
-          url: finalShareUrl,
+    if (!shareUrl) {
+      setIsCreatingShareLink(true);
+      try {
+        const token = tokenStorage.getUserToken();
+        const response = await fetch(`${API_ORIGIN}/api/create-share-link`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            assetUrl: resolveAssetUrl(mediaUrl),
+            caption: variant.caption || variant.text || "",
+            title: variant.title || "Check out this post"
+          }),
         });
-        return;
-      }
-
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(finalShareUrl);
+        if (!response.ok) throw new Error('Failed to create share link');
+        const data = await response.json();
+        setShareUrl(data.shareUrl);
+      } catch (err) {
+        console.error('Failed to create share link:', err);
         toast({
-          title: "Image link copied",
-          description:
-            "Native share is unavailable here, so the image link was copied instead.",
-          duration: 2000,
+          title: "Share failed",
+          description: "Could not create a shareable link. Please try again.",
+          variant: "destructive",
         });
+        setIsCreatingShareLink(false);
         return;
       }
-
-      window.open(finalShareUrl, "_blank", "noopener,noreferrer");
-      toast({
-        title: "Image opened",
-        description:
-          "Sharing is unavailable here, so the image opened in a new tab.",
-        duration: 2000,
-      });
-    } catch (error) {
-      window.open(resolvedImageUrl, "_blank", "noopener,noreferrer");
-      toast({
-        title: "Image opened",
-        description:
-          "Sharing was unavailable, so the image opened in a new tab instead.",
-        duration: 2000,
-      });
+      setIsCreatingShareLink(false);
     }
+    setShowSharePopover(true);
+  };
+
+  const getShareLinks = (url, caption) => {
+    const encodedUrl = encodeURIComponent(url);
+    const encodedText = encodeURIComponent(caption || '');
+    return {
+      whatsapp: `https://wa.me/?text=${encodedText}%20${encodedUrl}`,
+      twitter: `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedText}`,
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
+      linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`,
+    };
   };
 
   const handleVideoDownload = async () => {
@@ -394,11 +401,45 @@ export default function VariantExpandedModal({
                 Image
               </Button>
             )}
-            {hasImage && (
-              <Button variant="outline" size="sm" onClick={handleImageShare}>
-                <Share2 className="w-3.5 h-3.5 mr-1" />
-                Share image
-              </Button>
+            {(hasImage || hasVideo) && (
+              <div className="relative inline-block text-left">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleOpenSharePopover}
+                  disabled={isCreatingShareLink}
+                  className="gap-1"
+                >
+                  {isCreatingShareLink ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Share2 className="w-3.5 h-3.5" />
+                  )}
+                  Share
+                </Button>
+                {showSharePopover && shareUrl && (
+                  <div className="absolute bottom-full mb-2 right-0 w-36 bg-card border border-border rounded-lg shadow-lg p-1.5 space-y-0.5 z-20">
+                    {Object.entries(getShareLinks(shareUrl, variant.caption || variant.text)).map(([platformName, url]) => (
+                      <a
+                        key={platformName}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setShowSharePopover(false)}
+                        className="block w-full text-left text-xs px-2 py-1.5 rounded capitalize text-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
+                      >
+                        {platformName}
+                      </a>
+                    ))}
+                    <button
+                      onClick={handleCopyLink}
+                      className="block w-full text-left text-xs px-2 py-1.5 rounded text-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
+                    >
+                      Copy link
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
             {hasText && !hideExport && (
               <Button

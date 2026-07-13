@@ -27,7 +27,7 @@ import { spawn } from 'child_process';
 import { v2 as cloudinary } from 'cloudinary';
 import { Worker } from 'bullmq';
 import jobRoutes from './routes/jobRoutes.js';
-import { sendPasswordResetOtpEmail, sendSignupVerificationEmail } from './services/emailService.js';
+import { sendPasswordResetOtpEmail, sendSignupOtpEmail, sendSignupVerificationEmail } from './services/emailService.js';
 import './queues/mockWorker.js';
 import { imageQueue } from './queues/imageQueue.js';
 import { connection } from './queues/redisConnection.js';
@@ -89,16 +89,17 @@ const uploadArthGangaLogo = async () => {
     const logoPath = '/home/ec2-user/Arth Ganga eng logo.png';
     const stats = await fs.stat(logoPath);
     if (stats.isFile()) {
-      const result = await cloudinary.uploader.upload(logoPath, {
-        folder: `${process.env.CLOUDINARY_FOLDER || 'creative-studio-os'}/logos`,
-        public_id: 'arth-ganga-eng-logo',
-        overwrite: true,
+      const buffer = await fs.readFile(logoPath);
+      const s3Url = await uploadImageBufferToS3({
+        buffer,
+        mimeType: 'image/png',
+        folder: 'logos',
       });
-      arthGangaLogoUrl = result.secure_url;
-      console.log(`\n✓ Arth Ganga logo uploaded to Cloudinary: ${arthGangaLogoUrl}`);
+      arthGangaLogoUrl = s3Url;
+      console.log(`\n✓ UDEN watermark logo uploaded to S3: ${arthGangaLogoUrl}`);
     }
   } catch (error) {
-    console.warn('Startup: Arth Ganga logo not found or upload failed, using provided URLs only.', error.message);
+    console.warn('Startup: UDEN watermark logo not found or upload failed, using provided URLs only.', error.message);
   }
 };
 
@@ -628,7 +629,7 @@ const overlayLogoOnVideo = async ({
       '-y',
       '-i', inputVideoPath,
       '-i', inputLogoPath,
-      '-filter_complex', `[1:v]scale=180:-1[logo];[0:v][logo]overlay=${overlayPosition}:format=auto`,
+      '-filter_complex', `[1:v]scale=300:-1[logo];[0:v][logo]overlay=${overlayPosition}:format=auto`,
       '-c:v', 'libx264',
       '-preset', 'veryfast',
       '-crf', '23',
@@ -687,6 +688,19 @@ const saveAzureVideoAsset = async ({
       });
     } catch (err) {
       console.warn('[VIDEO OVERLAY] FFmpeg overlay failed:', err?.message || err);
+    }
+  }
+
+  if (arthGangaLogoUrl) {
+    try {
+      outputBuffer = await overlayLogoOnVideo({
+        videoBuffer: outputBuffer,
+        logoUrl: arthGangaLogoUrl,
+        logoPlacement: 'bottom-right',
+        fileNamePrefix: `${videoId}-${variant}-watermark`,
+      });
+    } catch (watermarkErr) {
+      console.warn('[VIDEO WATERMARK] Failed to overlay system watermark:', watermarkErr?.message || watermarkErr);
     }
   }
 
@@ -2047,7 +2061,7 @@ if (finalImageUrl && activeLogoUrl && logoPlacement && logoPlacement !== 'none')
       imageUrl: finalImageUrl,
       logoUrl: activeLogoUrl,
       logoPlacement,
-      logoScale: 0.15,
+      logoScale: 0.25,
     });
   } catch (err) {
     console.warn('[IMAGE OVERLAY] Sharp overlay failed:', err);
@@ -2063,6 +2077,19 @@ if (finalImageUrl && targetWidth && targetHeight) {
     });
   } catch (resizeErr) {
     console.warn('[IMAGE RESIZE] Failed to resize to exact output dimensions:', resizeErr.message);
+  }
+}
+
+if (finalImageUrl && arthGangaLogoUrl) {
+  try {
+    finalImageUrl = await overlayLogoOnImage({
+      imageUrl: finalImageUrl,
+      logoUrl: arthGangaLogoUrl,
+      logoPlacement: 'bottom-right',
+      logoScale: 0.25,
+    });
+  } catch (watermarkErr) {
+    console.warn('[IMAGE WATERMARK] Failed to overlay system watermark:', watermarkErr?.message || watermarkErr);
   }
 }
 
@@ -2746,6 +2773,10 @@ const authRequired = async (req, res, next) => {
       return res.status(401).json({ message: 'User not found' });
     }
 
+    if (user.status === 'pending') {
+      return res.status(401).json({ message: 'Account verification pending' });
+    }
+
     req.user = user;
     next();
   } catch (error) {
@@ -2773,7 +2804,17 @@ app.get('/api/download-asset', authRequired, async (req, res) => {
     const allowedHosts = new Set([
       `${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`,
       'res.cloudinary.com',
+      req.hostname,
     ]);
+
+    if (process.env.PUBLIC_BASE_URL) {
+      try {
+        const publicUrl = new URL(process.env.PUBLIC_BASE_URL);
+        allowedHosts.add(publicUrl.hostname);
+      } catch {
+        // ignore
+      }
+    }
 
     if (!allowedHosts.has(parsedUrl.hostname)) {
       return res.status(400).json({ message: 'Unsupported asset host' });
@@ -5532,12 +5573,7 @@ app.get('/api/images/view/:filename', async (req, res) => {
       return res.status(400).send('Invalid filename');
     }
     const s3Url = `https://creative-os-assets.s3.ap-south-1.amazonaws.com/images/${filename}`;
-    const response = await axios.get(s3Url, {
-      responseType: 'stream',
-      timeout: 10000
-    });
-    res.setHeader('Content-Type', response.headers['content-type'] || 'image/png');
-    response.data.pipe(res);
+    return res.redirect(s3Url);
   } catch (error) {
     res.status(404).send('Image not found');
   }
@@ -5791,6 +5827,15 @@ app.post('/api/auth/register', async (req, res) => {
 
   const existing = await store.findUserByEmail(normalizedEmail);
   if (existing) {
+    if (existing.status === 'pending') {
+      const { otp, otpHash, expiresAt } = createPasswordResetOtp();
+      await store.updateUserById(existing.id || existing._id.toString(), {
+        signup_otp_hash: otpHash,
+        signup_otp_expires_at: expiresAt,
+      });
+      await sendSignupOtpEmail({ to: normalizedEmail, otp, expiresInMinutes: passwordResetOtpExpiryMinutes });
+      return res.status(200).json({ status: 'pending', email: normalizedEmail, message: 'Verification pending. OTP resent to your email.' });
+    }
     return res.status(409).json({ message: 'User already registered' });
   }
 
@@ -5800,7 +5845,6 @@ app.post('/api/auth/register', async (req, res) => {
   }
 
   const password_hash = await bcrypt.hash(password, 10);
-  const created_at = nowIso();
   const creditSettings = await store.getCreditSettings();
   const defaultSignupCredits = normalizeCreditValue(creditSettings.default_signup_credits, normalizeCreditValue(defaultSignupCreditsEnv, 25));
   const { otp, otpHash, expiresAt } = createSignupVerificationOtp();
@@ -5818,30 +5862,97 @@ app.post('/api/auth/register', async (req, res) => {
     created_at,
     plan_id: freePlan.id || freePlan._id?.toString?.() || null,
     plan_name: freePlan.name,
-    credits_balance: defaultSignupCredits,
-    credits_total_allocated: defaultSignupCredits,
+    credits_balance: 0,
+    credits_total_allocated: 0,
     credits_total_purchased: 0,
     credits_total_used: 0,
+    signup_otp_hash: otpHash,
+    signup_otp_expires_at: expiresAt,
+  });
+
+  await sendSignupVerificationEmail({ to: normalizedEmail, otp });
+
+  res.status(201).json({ status: 'pending', email: normalizedEmail, message: 'Verification pending. OTP sent to your email.' });
+});
+
+app.post('/api/auth/verify-signup-otp', async (req, res) => {
+  const { email, otp } = req.body || {};
+  const normalizedEmail = normalizeEmail(email);
+
+  if (!normalizedEmail || !otp) {
+    return res.status(400).json({ message: 'Email and OTP are required' });
+  }
+
+  const user = await store.findUserByEmail(normalizedEmail);
+
+  if (!user || (user.status !== 'pending' && user.status !== 'pending_verification') || !user.signup_otp_hash || !user.signup_otp_expires_at) {
+    return res.status(400).json({ message: 'No pending registration found for this email' });
+  }
+
+  if (new Date(user.signup_otp_expires_at).getTime() < Date.now()) {
+    return res.status(400).json({ message: 'OTP has expired. Please request a new one.' });
+  }
+
+  const incomingOtpHash = hashPasswordResetOtp(otp);
+
+  if (incomingOtpHash !== user.signup_otp_hash) {
+    return res.status(400).json({ message: 'Invalid OTP code' });
+  }
+
+  const creditSettings = await store.getCreditSettings();
+  const defaultSignupCredits = normalizeCreditValue(creditSettings.default_signup_credits, normalizeCreditValue(defaultSignupCreditsEnv, 25));
+  const created_at = nowIso();
+
+  await store.updateUserById(user.id || user._id.toString(), {
+    status: 'active',
+    credits_balance: defaultSignupCredits,
+    credits_total_allocated: defaultSignupCredits,
+    signup_otp_hash: null,
+    signup_otp_expires_at: null,
   });
 
   if (defaultSignupCredits > 0) {
     await store.insertCreditTransaction({
-      user_id: insertedUser?._id?.toString?.() || insertedUser?.id,
+      user_id: user.id || user._id.toString(),
       amount: defaultSignupCredits,
       balance_after: defaultSignupCredits,
       type: 'signup_bonus',
-      note: 'Default free credits on signup',
+      note: 'Default free credits on signup verification',
       created_at,
       created_by: 'system',
     });
   }
 
-  await sendSignupVerificationEmail({
-    to: normalizedEmail,
-    otp,
+  const updatedUser = await store.findUserByEmail(normalizedEmail);
+  const token = createToken({ sub: updatedUser.id || updatedUser._id.toString(), role: updatedUser.role, email: updatedUser.email });
+
+  res.status(200).json({ token, user: sanitizeUser(updatedUser) });
+});
+
+app.post('/api/auth/resend-signup-otp', async (req, res) => {
+  const { email } = req.body || {};
+  const normalizedEmail = normalizeEmail(email);
+
+  if (!normalizedEmail) {
+    return res.status(400).json({ message: 'Email is required' });
+  }
+
+  const user = await store.findUserByEmail(normalizedEmail);
+
+  if (!user || (user.status !== 'pending' && user.status !== 'pending_verification')) {
+    return res.status(400).json({ message: 'No pending registration found for this email' });
+  }
+
+  const { otp, otpHash, expiresAt } = createPasswordResetOtp();
+
+  await store.updateUserById(user.id || user._id.toString(), {
+    signup_otp_hash: otpHash,
+    signup_otp_expires_at: expiresAt,
   });
 
-  res.status(201).json({ message: 'Verification email sent successfully.', email: normalizedEmail });
+  await sendSignupOtpEmail({ to: normalizedEmail, otp, expiresInMinutes: passwordResetOtpExpiryMinutes });
+
+  res.status(200).json({ message: 'Verification OTP has been resent to your email.' });
 });
 
 app.post('/api/auth/login', async (req, res) => {
@@ -5851,6 +5962,10 @@ app.post('/api/auth/login', async (req, res) => {
 
   if (!user) {
     return res.status(401).json({ message: 'Invalid email or password' });
+  }
+
+  if (user.status === 'pending') {
+    return res.status(401).json({ message: 'Account verification pending. Please verify your email.' });
   }
 
   const isValid = await bcrypt.compare(password || '', user.password_hash || '');
@@ -7093,7 +7208,15 @@ app.post('/api/create-share-link', authRequired, async (req, res) => {
     const allowedHosts = new Set([
       `${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`,
       'res.cloudinary.com',
+      req.hostname,
     ]);
+
+    if (process.env.PUBLIC_BASE_URL) {
+      try {
+        const publicUrl = new URL(process.env.PUBLIC_BASE_URL);
+        allowedHosts.add(publicUrl.hostname);
+      } catch {}
+    }
 
     if (!allowedHosts.has(parsedUrl.hostname)) {
       return res.status(400).json({ message: 'Unsupported asset host' });
@@ -7130,6 +7253,19 @@ app.get('/api/share/:id', async (req, res) => {
     const imageProxyUrl = `${baseUrl}/api/public-asset/${req.params.id}`;
     const shareUrl = `${baseUrl}/api/share/${req.params.id}`;
 
+    const isVideo = record.asset_url.toLowerCase().match(/\.(mp4|webm|ogg|mov|m4v)$/) || 
+                    record.asset_url.includes('/videos/') || 
+                    (record.asset_url.includes('cloudinary.com') && record.asset_url.includes('/video/'));
+
+    const ogImage = isVideo 
+      ? `${baseUrl}/snowy-mountains.png` 
+      : imageProxyUrl;
+
+    const videoTags = isVideo ? `
+  <meta property="og:video" content="${imageProxyUrl}" />
+  <meta property="og:video:secure_url" content="${imageProxyUrl}" />
+  <meta property="og:video:type" content="video/mp4" />` : '';
+
     const escapeHtml = (str) => String(str || '')
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -7141,14 +7277,16 @@ app.get('/api/share/:id', async (req, res) => {
   <title>${escapeHtml(record.title)}</title>
   <meta property="og:title" content="${escapeHtml(record.title)}" />
   <meta property="og:description" content="${escapeHtml(record.caption)}" />
-  <meta property="og:image" content="${imageProxyUrl}" />
+  <meta property="og:image" content="${ogImage}" />
   <meta property="og:url" content="${shareUrl}" />
-  <meta property="og:type" content="website" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta http-equiv="refresh" content="0; url=${imageProxyUrl}" />
+  <meta property="og:type" content="${isVideo ? 'video.other' : 'website'}" />
+  <meta name="twitter:card" content="summary_large_image" />${videoTags}
+  <script>
+    window.location.href = "${imageProxyUrl}";
+  </script>
 </head>
 <body>
-  <p>Redirecting... <a href="${imageProxyUrl}">View image</a></p>
+  <p>Redirecting... <a href="${imageProxyUrl}">View asset</a></p>
 </body>
 </html>`);
   } catch (error) {
@@ -7164,17 +7302,9 @@ app.get('/api/public-asset/:id', async (req, res) => {
     if (!record) {
       return res.status(404).send('Not found');
     }
-
-    // Use axios to bypass local SSL cert validation blocks
-    const assetResponse = await axios.get(record.asset_url, { responseType: 'arraybuffer' });
-    const contentType = assetResponse.headers['content-type'] || 'image/png';
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-
-    const buffer = Buffer.from(assetResponse.data);
-    return res.send(buffer);
+    return res.redirect(record.asset_url);
   } catch (error) {
-    console.error('[PUBLIC ASSET PROXY FAILED]', error?.message || error);
+    console.error('[PUBLIC ASSET REDIRECT FAILED]', error?.message || error);
     res.status(500).send('Failed to load asset');
   }
 });

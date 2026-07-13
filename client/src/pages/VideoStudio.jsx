@@ -43,11 +43,6 @@ const ASPECT_RATIOS = [
 ];
 
 const LOGO_PLACEMENTS = [
-  // NOTE: value must be 'persona-default' (hyphen) to match the backend's
-  // exact string check (logoPlacement === 'persona-default') in index.js.
-  // Using underscore here previously caused the persona's actual saved
-  // placement to be silently ignored.
-  { value: 'persona-default', label: 'Persona Default' },
   { value: 'none', label: 'No logo' },
   { value: 'top_left', label: 'Top Left' },
   { value: 'top_right', label: 'Top Right' },
@@ -106,7 +101,7 @@ export default function VideoStudio() {
   const [platform, setPlatform] = useState('instagram');
   const [style, setStyle] = useState('cinematic');
   const [aspectRatio, setAspectRatio] = useState('9:16'); 
-  const [logoPlacement, setLogoPlacement] = useState('persona-default');
+  const [logoPlacement, setLogoPlacement] = useState('top_right');
   const [selectedPersona, setSelectedPersona] = useState(''); 
   const [showSharePopover, setShowSharePopover] = useState(false);
   const [shareUrl, setShareUrl] = useState(null);
@@ -772,7 +767,7 @@ export default function VideoStudio() {
                   </div>
                   <Progress value={displayProgressValue} className="h-2 bg-muted" />
                   <p className="text-[10px] text-muted-foreground font-mono">
-                    Estimated remaining: {formatRemainingTime(Math.max(0, VIDEO_STAGE_ESTIMATES_MS - stageElapsedMs))}
+                    Estimated remaining: {formatRemainingTime(Math.max(0, ESTIMATED_TOTAL_MS - stageElapsedMs))}
                   </p>
                   <div className="grid grid-cols-3 gap-2 mt-4 text-center">
                     <div className="rounded-xl border border-primary/50 bg-primary/5 px-3 py-3">

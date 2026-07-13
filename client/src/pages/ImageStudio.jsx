@@ -50,11 +50,6 @@ const LIGHTING_MODES = [
 ];
 
 const LOGO_PLACEMENTS = [
-  // NOTE: value must be 'persona-default' (hyphen) to match the backend's
-  // exact string check (logoPlacement === 'persona-default') in index.js.
-  // Using underscore here previously caused the persona's actual saved
-  // placement to be silently ignored.
-  { value: 'persona-default', label: 'Persona Default' },
   { value: 'none', label: 'No logo' },
   { value: 'top_left', label: 'Top Left' },
   { value: 'top_right', label: 'Top Right' },
@@ -108,7 +103,7 @@ export default function ImageStudio() {
   const [style, setStyle] = useState('realistic');
   const [outputFormat, setOutputFormat] = useState('instagram_feed');
   const [lighting, setLighting] = useState('cinematic');
-  const [logoPlacement, setLogoPlacement] = useState('persona-default'); 
+  const [logoPlacement, setLogoPlacement] = useState('top_right'); 
   const [selectedPersona, setSelectedPersona] = useState(''); 
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showSharePopover, setShowSharePopover] = useState(false);

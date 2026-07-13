@@ -1,5 +1,7 @@
 User-agent: *
 Allow: /
+Allow: /api/share/
+Allow: /api/public-asset/
 Disallow: /login
 Disallow: /generate
 Disallow: /image-studio

@@ -114,6 +114,49 @@ export const sendPasswordResetOtpEmail = async ({ to, otp, expiresInMinutes = 10
   });
 };
 
+export const sendSignupOtpEmail = async ({ to, otp, expiresInMinutes = 10 }) => {
+  const subject = 'Creative Studio OS Sign Up Verification OTP';
+  const htmlContent = `
+    <div style="font-family: sans-serif; padding: 20px; line-height: 1.6; color: #333;">
+      <h2>Verify your account</h2>
+      <p>Thank you for signing up for Creative Studio OS.</p>
+      <p>Use the following 6-digit One-Time Password (OTP) to verify and activate your account:</p>
+      <div style="font-size: 24px; font-weight: bold; background: #f0f0f0; padding: 15px; border-radius: 5px; display: inline-block; letter-spacing: 2px; margin: 10px 0;">
+        ${otp}
+      </div>
+      <p>This code will expire in <strong>${expiresInMinutes} minutes</strong>.</p>
+      <p>If you did not request this, please ignore this email.</p>
+    </div>
+  `;
+
+  if (process.env.RESEND_API_KEY) {
+    console.log(`[EMAIL] Sending signup verification email to ${to} using Resend SDK...`);
+    const result = await sendNoReplyEmail(to, subject, htmlContent);
+    if (result.success) {
+      return;
+    }
+    console.warn('[EMAIL] Resend SDK failed, trying fallback transporter...');
+  }
+
+  const transporter = createTransporter();
+  const from = getEmailFrom();
+  const text = `Your Creative Studio OS verification OTP is ${otp}. It will expire in ${expiresInMinutes} minutes.`;
+
+  if (!transporter) {
+    console.warn('Email service is not configured. OTP email was not sent.');
+    console.log(`Sign Up OTP for ${to}: ${otp}`);
+    return;
+  }
+
+  await transporter.sendMail({
+    from,
+    to,
+    subject,
+    text,
+    html: htmlContent
+  });
+};
+
 export const sendSignupVerificationEmail = async ({ to, otp }) => {
   const subject = 'Verify your Creative Studio OS account';
   const htmlContent = `
@@ -128,7 +171,6 @@ export const sendSignupVerificationEmail = async ({ to, otp }) => {
     </div>
   `;
 
-  // Try the new Resend SDK helper first
   if (process.env.RESEND_API_KEY) {
     console.log(`[EMAIL] Sending signup verification email to ${to} using Resend SDK...`);
     const result = await sendNoReplyEmail(to, subject, htmlContent);
@@ -137,7 +179,6 @@ export const sendSignupVerificationEmail = async ({ to, otp }) => {
     }
   }
 
-  // Fallback to custom SMTP / SendGrid / local logging
   const transporter = createTransporter();
   const from = getEmailFrom();
   const text = `Your verification code is ${otp}.`;
