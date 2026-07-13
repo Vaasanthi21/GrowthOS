@@ -112,7 +112,7 @@ export default function TopNav({ onToggleSidebar }) {
               type="button"
               variant="outline"
               onClick={() => setLogoutConfirmOpen(false)}
-              className="text-xs font-semibold px-4 py-2 border border-border hover:bg-secondary rounded-xl transition-all"
+              className="text-xs font-semibold px-4 py-2 border border-border hover:bg-secondary text-foreground hover:text-foreground rounded-xl transition-all"
             >
               Cancel
             </Button>
