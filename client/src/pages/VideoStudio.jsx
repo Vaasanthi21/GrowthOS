@@ -763,19 +763,40 @@ export default function VideoStudio() {
             </CardHeader>
             <CardContent className="flex-1 flex flex-col items-center justify-center p-6 min-h-[400px]">
               {pollingStatus === 'preparing' || pollingStatus === 'queued' || pollingStatus === 'processing' || isPolling ? (
-                <div className="w-full max-w-sm space-y-4 text-center">
-                  <div className="flex justify-between text-xs font-semibold text-foreground">
-                    <span>Rendering Cinematic Asset...</span>
-                    <span>{displayProgressValue}%</span>
+                <div className="w-full space-y-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-full bg-primary/10 p-2 text-primary mt-0.5 relative">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        <span className="absolute inset-0 flex items-center justify-center animate-pulse text-[9px] font-bold">✨</span>
+                      </div>
+                      <div className="text-left">
+                        <p className="text-sm font-semibold text-foreground">Generating video</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {pollingStatus === 'queued' 
+                            ? 'Allocating compute nodes. Initializing layout engine models...' 
+                            : 'This is an estimate based on recent video generation time. The video will appear automatically when the provider finishes.'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-2xl font-bold text-primary tracking-tight">{displayProgressValue}%</p>
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Estimated progress</p>
+                    </div>
                   </div>
-                  <Progress value={displayProgressValue} className="h-2 bg-muted" />
-                  <p className="text-[10px] text-muted-foreground font-mono">
-                    Estimated remaining: {formatRemainingTime(Math.max(0, ESTIMATED_TOTAL_MS - stageElapsedMs))}
-                  </p>
-                  <div className="grid grid-cols-3 gap-2 mt-4 text-center">
-                    <div className="rounded-xl border border-primary/50 bg-primary/5 px-3 py-3">
+
+                  <div className="space-y-2">
+                    <Progress value={displayProgressValue} className="h-2.5" />
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Elapsed: {formatRemainingTime(stageElapsedMs)}</span>
+                      <span>{displayRemainingMs > 0 ? `About ${formatRemainingTime(displayRemainingMs)} remaining` : 'Finalizing result...'}</span>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 rounded-2xl border border-border/70 bg-muted/20 p-4 grid-cols-3 mt-2 text-center">
+                    <div className={`rounded-xl border px-3 py-3 ${pollingStatus === 'preparing' ? 'border-primary/50 bg-primary/5' : 'border-border/70 bg-background/60'}`}>
                       <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Step 1</p>
-                      <p className="mt-1 text-xs font-medium text-foreground">Prepare Job</p>
+                      <p className="mt-1 text-xs font-medium text-foreground">Prepare Prompt</p>
                     </div>
                     <div className={`rounded-xl border px-3 py-3 ${pollingStatus === 'queued' || pollingStatus === 'processing' || isPolling ? 'border-primary/50 bg-primary/5' : 'border-border/70 bg-background/60'}`}>
                       <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Step 2</p>
