@@ -51,11 +51,11 @@ export default function UserGuideModal({ open, onOpenChange }) {
               <ul className="space-y-2.5 text-xs text-foreground">
                 <li className="flex items-start gap-2">
                   <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
-                  <span><strong>Sidebar Menu:</strong> Access all studios (Image, Video, Blog), view generation history, refine drafts, check integrations, or top-up your wallet.</span>
+                  <span><strong>Content Studio (Generate):</strong> Note that both the **Image Studio** and **Video Studio** features are fully integrated under the single **Content Studio** tab in the sidebar menu.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
-                  <span><strong>Top Navbar:</strong> Displays your current credit balance, page headers, mobile sidebar trigger, and logout options.</span>
+                  <span><strong>Sidebar Menu:</strong> Access all studios (Content, Brand, Blog), view generation history, refine drafts, check integrations, or top-up your wallet.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
@@ -112,7 +112,7 @@ export default function UserGuideModal({ open, onOpenChange }) {
             </p>
             <div className="border border-border/60 rounded-xl p-4 bg-secondary/30 mb-3 space-y-2 text-xs">
               <div className="font-bold text-foreground">Credit Costs:</div>
-              <div>• Video Generation: <strong className="text-primary">10 Credits</strong> per generation</div>
+              <div>• Video Generation: <strong className="text-primary">69 Credits</strong> per video render</div>
             </div>
             <div className="border border-border/60 rounded-xl p-4 bg-secondary/30 space-y-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Creating Premium Videos</h4>
@@ -188,14 +188,19 @@ export default function UserGuideModal({ open, onOpenChange }) {
             </p>
             <div className="border border-border/60 rounded-xl p-4 bg-secondary/30 mb-3 space-y-2 text-xs">
               <div className="font-bold text-foreground">Credit Costs:</div>
-              <div>• Brand profile setups, logo uploads, and buyer personas do <strong className="text-primary">not</strong> cost any credits.</div>
+              <div>• AI Brand Persona Generator Setup: <strong className="text-primary">10 Credits</strong></div>
+              <div>• Manual Brand Setup & edits: <strong className="text-emerald-500 font-semibold">FREE</strong></div>
             </div>
             <div className="border border-border/60 rounded-xl p-4 bg-secondary/30 space-y-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Setting up your brand identity</h4>
               <ul className="space-y-2.5 text-xs text-foreground">
                 <li className="flex items-start gap-2">
                   <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
-                  <span><strong>Define Profile:</strong> Set up your company description, website domain link, and primary brand colors.</span>
+                  <span><strong>AI Persona Builder:</strong> Input raw background context and let the AI generate targeted target personas automatically (**10 Credits**).</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
+                  <span><strong>Define Profile:</strong> Set up your company description, website domain link, and primary brand colors manually (**FREE**).</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
@@ -266,7 +271,15 @@ export default function UserGuideModal({ open, onOpenChange }) {
                   </tr>
                   <tr className="border-b border-border/50">
                     <td className="p-2">Video Studio Generation (Sora model)</td>
+                    <td className="p-2 text-right font-semibold text-primary">69 Credits</td>
+                  </tr>
+                  <tr className="border-b border-border/50">
+                    <td className="p-2">AI Brand Persona Setup (AI generated)</td>
                     <td className="p-2 text-right font-semibold text-primary">10 Credits</td>
+                  </tr>
+                  <tr className="border-b border-border/50">
+                    <td className="p-2">Manual Brand Setup & Profiles</td>
+                    <td className="p-2 text-right font-semibold text-emerald-500 font-bold">FREE</td>
                   </tr>
                   <tr className="border-b border-border/50">
                     <td className="p-2">Blog Studio Website Crawl</td>
