@@ -7214,17 +7214,9 @@ app.get('/api/public-asset/:id', async (req, res) => {
     if (!record) {
       return res.status(404).send('Not found');
     }
-
-    // Use axios to bypass local SSL cert validation blocks
-    const assetResponse = await axios.get(record.asset_url, { responseType: 'arraybuffer' });
-    const contentType = assetResponse.headers['content-type'] || 'image/png';
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-
-    const buffer = Buffer.from(assetResponse.data);
-    return res.send(buffer);
+    return res.redirect(record.asset_url);
   } catch (error) {
-    console.error('[PUBLIC ASSET PROXY FAILED]', error?.message || error);
+    console.error('[PUBLIC ASSET REDIRECT FAILED]', error?.message || error);
     res.status(500).send('Failed to load asset');
   }
 });
