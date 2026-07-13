@@ -2793,7 +2793,17 @@ app.get('/api/download-asset', authRequired, async (req, res) => {
     const allowedHosts = new Set([
       `${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`,
       'res.cloudinary.com',
+      req.hostname,
     ]);
+
+    if (process.env.PUBLIC_BASE_URL) {
+      try {
+        const publicUrl = new URL(process.env.PUBLIC_BASE_URL);
+        allowedHosts.add(publicUrl.hostname);
+      } catch {
+        // ignore
+      }
+    }
 
     if (!allowedHosts.has(parsedUrl.hostname)) {
       return res.status(400).json({ message: 'Unsupported asset host' });
