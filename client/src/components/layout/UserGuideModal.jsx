@@ -51,7 +51,7 @@ export default function UserGuideModal({ open, onOpenChange }) {
               <ul className="space-y-2.5 text-xs text-foreground">
                 <li className="flex items-start gap-2">
                   <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
-                  <span><strong>Sidebar Menu:</strong> Access all studios, view generation history, refine drafts, check integrations, or top-up your wallet.</span>
+                  <span><strong>Sidebar Menu:</strong> Access all studios (Image, Video, Blog), view generation history, refine drafts, check integrations, or top-up your wallet.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
@@ -59,7 +59,7 @@ export default function UserGuideModal({ open, onOpenChange }) {
                 </li>
                 <li className="flex items-start gap-2">
                   <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
-                  <span><strong>Help Icon:</strong> Look for the help icon in the top navbar to open this guide at any time if you have any questions!</span>
+                  <span><strong>Free Sign Up Credits:</strong> Every new user is automatically awarded <strong>25 Free Credits</strong> upon successful email OTP verification to start exploring immediately.</span>
                 </li>
               </ul>
             </div>
@@ -72,6 +72,12 @@ export default function UserGuideModal({ open, onOpenChange }) {
             <p className="text-sm text-muted-foreground">
               Generate single high-definition images or compile batch visual assets using advanced prompt builders and custom brand overlays.
             </p>
+            <div className="border border-border/60 rounded-xl p-4 bg-secondary/30 mb-3 space-y-2 text-xs">
+              <div className="font-bold text-foreground">Credit Costs:</div>
+              <div>• Single Image Generation: <strong className="text-primary">3 Credits</strong></div>
+              <div>• Text/Prompt Refinement: <strong className="text-primary">1 Credit</strong></div>
+              <div>• Batch Generation: <strong className="text-primary">3 Credits per image</strong> in the batch</div>
+            </div>
             <div className="space-y-3">
               <div className="flex gap-3 items-start">
                 <div className="w-6 h-6 rounded-full bg-indigo-500/10 text-indigo-500 flex items-center justify-center shrink-0 font-mono text-xs font-bold mt-0.5">1</div>
@@ -84,14 +90,14 @@ export default function UserGuideModal({ open, onOpenChange }) {
                 <div className="w-6 h-6 rounded-full bg-indigo-500/10 text-indigo-500 flex items-center justify-center shrink-0 font-mono text-xs font-bold mt-0.5">2</div>
                 <div>
                   <h4 className="text-sm font-semibold text-foreground">Artistic Controls & Styles</h4>
-                  <p className="text-xs text-muted-foreground">Adjust aspect ratios (16:9, 9:16, 1:1), select studio lighting profiles (Cinematic, Dramatic, Studio), and pick artistic styles.</p>
+                  <p className="text-xs text-muted-foreground">Adjust aspect ratios (16:9 Landscape, 9:16 Portrait, 1:1 Square), select studio lighting profiles (Cinematic, Dramatic, Studio, Neon), and pick artistic styles (Photography, Cyberpunk, 3D Render, Vector, Anime).</p>
                 </div>
               </div>
               <div className="flex gap-3 items-start">
                 <div className="w-6 h-6 rounded-full bg-indigo-500/10 text-indigo-500 flex items-center justify-center shrink-0 font-mono text-xs font-bold mt-0.5">3</div>
                 <div>
                   <h4 className="text-sm font-semibold text-foreground">Watermarking & Logo Placement</h4>
-                  <p className="text-xs text-muted-foreground">Select your company logo or the default UDEN brand watermark, select the overlay corner placement (e.g., Top Right), and generate.</p>
+                  <p className="text-xs text-muted-foreground">Toggle the watermarking toggle. You can select your custom uploaded company logo or the default UDEN brand watermark, and choose the overlay corner placement (Top-Left, Top-Right, Bottom-Left, Bottom-Right).</p>
                 </div>
               </div>
             </div>
@@ -104,6 +110,10 @@ export default function UserGuideModal({ open, onOpenChange }) {
             <p className="text-sm text-muted-foreground">
               Bring prompts and scripts to life using high-fidelity Sora video models.
             </p>
+            <div className="border border-border/60 rounded-xl p-4 bg-secondary/30 mb-3 space-y-2 text-xs">
+              <div className="font-bold text-foreground">Credit Costs:</div>
+              <div>• Video Generation: <strong className="text-primary">10 Credits</strong> per generation</div>
+            </div>
             <div className="border border-border/60 rounded-xl p-4 bg-secondary/30 space-y-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Creating Premium Videos</h4>
               <ul className="space-y-2.5 text-xs text-foreground">
@@ -113,11 +123,11 @@ export default function UserGuideModal({ open, onOpenChange }) {
                 </li>
                 <li className="flex items-start gap-2">
                   <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
-                  <span><strong>Duration & Aspect Ratios:</strong> Choose from 4s, 8s, or 12s durations, and select optimal layout proportions (e.g., vertical 9:16 for Reels/Shorts).</span>
+                  <span><strong>Duration & Aspect Ratios:</strong> Choose from 4s, 8s, or 12s durations, and select optimal layout proportions (16:9 Landscape, 9:16 Portrait, 1:1 Square).</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
-                  <span><strong>Render & Watermark:</strong> Videos automatically compile and apply the UDEN brand watermark in the corner. Play renders inline or download directly.</span>
+                  <span><strong>Watermark Overlays:</strong> Toggle the system logo or custom brand logo watermark to overlay onto the video frames. Renders include inline playback and instant `.mp4` downloads.</span>
                 </li>
               </ul>
             </div>
@@ -130,6 +140,17 @@ export default function UserGuideModal({ open, onOpenChange }) {
             <p className="text-sm text-muted-foreground">
               Follow our structured 8-step pipeline to research search gaps, compose detailed drafts, and compile optimized blog copies.
             </p>
+            <div className="border border-border/60 rounded-xl p-4 bg-secondary/30 mb-3 space-y-2 text-xs">
+              <div className="font-bold text-foreground">Credit Costs:</div>
+              <div className="grid grid-cols-2 gap-y-1">
+                <div>• Website Grounding Crawl: <strong className="text-primary">10 Credits</strong></div>
+                <div>• Blog Draft Generation: <strong className="text-primary">10 Credits</strong></div>
+                <div>• Blog SEO Optimization: <strong className="text-primary">5 Credits</strong></div>
+                <div>• Platform Adaptation Post: <strong className="text-primary">5 Credits</strong></div>
+                <div>• Platform Render SEO Audit: <strong className="text-primary">5 Credits</strong></div>
+                <div>• Blog Cover Image: <strong className="text-primary">3 Credits</strong></div>
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div className="border border-border/50 rounded-lg p-2.5 bg-secondary/20">
                 <strong className="text-primary font-mono mr-1">01</strong> Define Company profile.
@@ -138,7 +159,7 @@ export default function UserGuideModal({ open, onOpenChange }) {
                 <strong className="text-primary font-mono mr-1">02</strong> Build customer personas.
               </div>
               <div className="border border-border/50 rounded-lg p-2.5 bg-secondary/20">
-                <strong className="text-primary font-mono mr-1">03</strong> Upload grounding documents.
+                <strong className="text-primary font-mono mr-1">03</strong> Grounding documents (upload files or crawl a URL).
               </div>
               <div className="border border-border/50 rounded-lg p-2.5 bg-secondary/20">
                 <strong className="text-primary font-mono mr-1">04</strong> Create topic guidelines.
@@ -150,10 +171,10 @@ export default function UserGuideModal({ open, onOpenChange }) {
                 <strong className="text-primary font-mono mr-1">06</strong> Generate canonical draft.
               </div>
               <div className="border border-border/50 rounded-lg p-2.5 bg-secondary/20">
-                <strong className="text-primary font-mono mr-1">07</strong> Optimize SEO score.
+                <strong className="text-primary font-mono mr-1">07</strong> Optimize SEO score and keyword density.
               </div>
               <div className="border border-border/50 rounded-lg p-2.5 bg-secondary/20">
-                <strong className="text-primary font-mono mr-1">08</strong> Generate cover images.
+                <strong className="text-primary font-mono mr-1">08</strong> Generate and watermark cover images.
               </div>
             </div>
           </div>
@@ -165,6 +186,10 @@ export default function UserGuideModal({ open, onOpenChange }) {
             <p className="text-sm text-muted-foreground">
               Ensure all your generations map exactly to your company's core guidelines, target audience, and color palettes.
             </p>
+            <div className="border border-border/60 rounded-xl p-4 bg-secondary/30 mb-3 space-y-2 text-xs">
+              <div className="font-bold text-foreground">Credit Costs:</div>
+              <div>• Brand profile setups, logo uploads, and buyer personas do <strong className="text-primary">not</strong> cost any credits.</div>
+            </div>
             <div className="border border-border/60 rounded-xl p-4 bg-secondary/30 space-y-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Setting up your brand identity</h4>
               <ul className="space-y-2.5 text-xs text-foreground">
@@ -191,6 +216,10 @@ export default function UserGuideModal({ open, onOpenChange }) {
             <p className="text-sm text-muted-foreground">
               Track campaign performance and easily share generated assets to social media channels.
             </p>
+            <div className="border border-border/60 rounded-xl p-4 bg-secondary/30 mb-3 space-y-2 text-xs">
+              <div className="font-bold text-foreground">Credit Costs:</div>
+              <div>• OAuth integrations, metric syncing, and sharing links do <strong className="text-primary">not</strong> cost any credits.</div>
+            </div>
             <div className="space-y-3 text-xs">
               <div className="border border-border/60 rounded-xl p-3 bg-secondary/20">
                 <h4 className="font-bold flex items-center gap-1 mb-1 text-foreground">
@@ -228,19 +257,39 @@ export default function UserGuideModal({ open, onOpenChange }) {
                 </thead>
                 <tbody>
                   <tr className="border-b border-border/50">
-                    <td className="p-2">Image Studio Generation</td>
-                    <td className="p-2 text-right font-semibold text-primary">3 Credits</td>
+                    <td className="p-2">Image Studio Generation (Single/Batch)</td>
+                    <td className="p-2 text-right font-semibold text-primary">3 Credits / Image</td>
                   </tr>
                   <tr className="border-b border-border/50">
-                    <td className="p-2">Video Studio Generation</td>
-                    <td className="p-2 text-right font-semibold text-primary">15 Credits</td>
+                    <td className="p-2">Image Studio Prompt Refinement</td>
+                    <td className="p-2 text-right font-semibold text-primary">1 Credit</td>
                   </tr>
                   <tr className="border-b border-border/50">
-                    <td className="p-2">Blog SEO Optimization</td>
+                    <td className="p-2">Video Studio Generation (Sora model)</td>
+                    <td className="p-2 text-right font-semibold text-primary">10 Credits</td>
+                  </tr>
+                  <tr className="border-b border-border/50">
+                    <td className="p-2">Blog Studio Website Crawl</td>
+                    <td className="p-2 text-right font-semibold text-primary">10 Credits</td>
+                  </tr>
+                  <tr className="border-b border-border/50">
+                    <td className="p-2">Blog Studio Draft Generation (Research + Copy)</td>
+                    <td className="p-2 text-right font-semibold text-primary">10 Credits</td>
+                  </tr>
+                  <tr className="border-b border-border/50">
+                    <td className="p-2">Blog Studio SEO Optimization Audit</td>
+                    <td className="p-2 text-right font-semibold text-primary">5 Credits</td>
+                  </tr>
+                  <tr className="border-b border-border/50">
+                    <td className="p-2">Blog Studio Platform Adaptation (Social adapt)</td>
+                    <td className="p-2 text-right font-semibold text-primary">5 Credits</td>
+                  </tr>
+                  <tr className="border-b border-border/50">
+                    <td className="p-2">Blog Studio Platform Adaptation SEO Optimization</td>
                     <td className="p-2 text-right font-semibold text-primary">5 Credits</td>
                   </tr>
                   <tr>
-                    <td className="p-2">Blog Cover Image</td>
+                    <td className="p-2">Blog Studio Cover Image</td>
                     <td className="p-2 text-right font-semibold text-primary">3 Credits</td>
                   </tr>
                 </tbody>
@@ -258,7 +307,7 @@ export default function UserGuideModal({ open, onOpenChange }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl p-0 overflow-hidden bg-background border border-border sm:rounded-2xl shadow-xl flex flex-col h-[520px]">
+      <DialogContent className="max-w-3xl p-0 overflow-hidden bg-background border border-border sm:rounded-2xl shadow-xl flex flex-col h-[560px]">
         <DialogHeader className="p-5 border-b border-border shrink-0 flex flex-row items-center gap-2 text-left">
           <HelpCircle className="w-5 h-5 text-primary shrink-0" />
           <div>
