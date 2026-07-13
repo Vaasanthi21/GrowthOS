@@ -307,9 +307,7 @@ export default function Generate() {
       return () => clearTimeout(timer);
     }
   }, [generatedContent, isGeneratingOrPolling]);
-  const [showPlatformSelect, setShowPlatformSelect] = useState(() => {
-    return !localStorage.getItem("activePersona");
-  });
+  const [showPlatformSelect, setShowPlatformSelect] = useState(true);
 
   const openRefinePage = (content) => {
     if (!content || !lastGenerationParams) {
@@ -1121,9 +1119,7 @@ export default function Generate() {
         <ErrorBoundary>
           <VideoStudio />
         </ErrorBoundary>
-      ) : (
-        <>
-          {showPlatformSelect ? (
+      ) : showPlatformSelect ? (
         <PersonaSelector
           activePlatform={activePersona}
           onSelect={(platformId) => {
@@ -1132,19 +1128,19 @@ export default function Generate() {
           }}
         />
       ) : (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={() => setShowPlatformSelect(true)}
-            className="inline-flex items-center justify-center rounded-full border border-primary/70 bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_-18px_rgba(249,115,22,0.9)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-[0_16px_38px_-18px_rgba(249,115,22,1)]"
-          >
-            <span className="inline-flex items-center gap-2">
-              <Shuffle className="h-3.5 w-3.5" />
-              Switch Platform
-            </span>
-          </button>
-        </div>
-      )}
+        <>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setShowPlatformSelect(true)}
+              className="inline-flex items-center justify-center rounded-full border border-primary/70 bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_-18px_rgba(249,115,22,0.9)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-[0_16px_38px_-18px_rgba(249,115,22,1)]"
+            >
+              <span className="inline-flex items-center gap-2">
+                <Shuffle className="h-3.5 w-3.5" />
+                Switch Platform
+              </span>
+            </button>
+          </div>
 
       <GenerationForm
         activePersona={activePersona}
