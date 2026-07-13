@@ -618,7 +618,7 @@ const overlayLogoOnVideo = async ({
       '-y',
       '-i', inputVideoPath,
       '-i', inputLogoPath,
-      '-filter_complex', `[1:v]scale=180:-1[logo];[0:v][logo]overlay=${overlayPosition}:format=auto`,
+      '-filter_complex', `[1:v]scale=300:-1[logo];[0:v][logo]overlay=${overlayPosition}:format=auto`,
       '-c:v', 'libx264',
       '-preset', 'veryfast',
       '-crf', '23',
@@ -2050,7 +2050,7 @@ if (finalImageUrl && activeLogoUrl && logoPlacement && logoPlacement !== 'none')
       imageUrl: finalImageUrl,
       logoUrl: activeLogoUrl,
       logoPlacement,
-      logoScale: 0.15,
+      logoScale: 0.25,
     });
   } catch (err) {
     console.warn('[IMAGE OVERLAY] Sharp overlay failed:', err);
@@ -2075,7 +2075,7 @@ if (finalImageUrl && arthGangaLogoUrl) {
       imageUrl: finalImageUrl,
       logoUrl: arthGangaLogoUrl,
       logoPlacement: 'bottom-right',
-      logoScale: 0.12,
+      logoScale: 0.25,
     });
   } catch (watermarkErr) {
     console.warn('[IMAGE WATERMARK] Failed to overlay system watermark:', watermarkErr?.message || watermarkErr);
@@ -7120,7 +7120,15 @@ app.post('/api/create-share-link', authRequired, async (req, res) => {
     const allowedHosts = new Set([
       `${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`,
       'res.cloudinary.com',
+      req.hostname,
     ]);
+
+    if (process.env.PUBLIC_BASE_URL) {
+      try {
+        const publicUrl = new URL(process.env.PUBLIC_BASE_URL);
+        allowedHosts.add(publicUrl.hostname);
+      } catch {}
+    }
 
     if (!allowedHosts.has(parsedUrl.hostname)) {
       return res.status(400).json({ message: 'Unsupported asset host' });
