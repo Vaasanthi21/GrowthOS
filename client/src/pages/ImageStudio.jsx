@@ -99,7 +99,9 @@ const getShareLinks = (shareUrl, caption) => {
 export default function ImageStudio() {
   const queryClient = useQueryClient();
   const location = useLocation();
-  const [prompt, setPrompt] = useState(location.state?.prompt || '');
+  const { getJob, setJob, clearJob } = useGenerationJobs();
+  const imageJob = getJob('image');
+  const [prompt, setPrompt] = useState(() => imageJob?.prompt || location.state?.prompt || '');
   const [style, setStyle] = useState('realistic');
   const [outputFormat, setOutputFormat] = useState('instagram_feed');
   const [lighting, setLighting] = useState('cinematic');
@@ -109,8 +111,6 @@ export default function ImageStudio() {
   const [showSharePopover, setShowSharePopover] = useState(false);
   const [shareUrl, setShareUrl] = useState(null);
   const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
-  const { getJob, setJob, clearJob } = useGenerationJobs();
-  const imageJob = getJob('image');
   const navigate = useNavigate();
 
   const openRefinePage = () => {
@@ -160,10 +160,21 @@ export default function ImageStudio() {
   const pollingStatus = imageJob?.pollingStatus || null;
   const stageStartedAt = imageJob?.stageStartedAt || null;
   const [stageElapsedMs, setStageElapsedMs] = useState(0);
-  const [includeCaption, setIncludeCaption] = useState(true);
-  const [generatedCaption, setGeneratedCaption] = useState("");
+  const [includeCaption, setIncludeCaption] = useState(() => {
+    const saved = imageJob?.includeCaption;
+    return saved !== undefined ? saved : true;
+  });
+  const [generatedCaption, setGeneratedCaption] = useState(() => imageJob?.generatedCaption || "");
   const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
   const lastFetchedPromptRef = useRef("");
+
+  useEffect(() => {
+    setJob('image', {
+      prompt,
+      generatedCaption,
+      includeCaption
+    });
+  }, [prompt, generatedCaption, includeCaption, setJob]);
 
   useEffect(() => {
     setShareUrl(null);
@@ -480,6 +491,7 @@ export default function ImageStudio() {
   const handleReset = () => {
     clearJob('image');
     setPrompt('');
+    setGeneratedCaption('');
     setShowSharePopover(false);
     setShareUrl(null);
   };

@@ -97,7 +97,9 @@ const getShareLinks = (videoUrl, caption) => {
 export default function VideoStudio() {
   const queryClient = useQueryClient();
   const location = useLocation();
-  const [prompt, setPrompt] = useState(location.state?.prompt || '');
+  const { getJob, setJob, clearJob } = useGenerationJobs();
+  const videoJob = getJob('video');
+  const [prompt, setPrompt] = useState(() => videoJob?.prompt || location.state?.prompt || '');
   const [platform, setPlatform] = useState('instagram');
   const [style, setStyle] = useState('cinematic');
   const [aspectRatio, setAspectRatio] = useState('9:16'); 
@@ -118,12 +120,6 @@ export default function VideoStudio() {
   const [volume, setVolume] = useState(1);
   const videoRef = useRef(null);
 
-  // Job state (isPolling, pollingStatus, stageStartedAt, generatedVideo, errorMessage)
-  // now lives in GenerationJobsContext instead of local useState, so it survives
-  // navigating away from this page and back, same pattern as ImageStudio.jsx.
-  const { getJob, setJob, clearJob } = useGenerationJobs();
-  const videoJob = getJob('video');
-
   const generatedVideo = videoJob?.generatedVideo || null;
   const generatedThumbnail = videoJob?.generatedThumbnail || null;
   const isPolling = videoJob?.isPolling || false;
@@ -132,10 +128,21 @@ export default function VideoStudio() {
   const errorMessage = videoJob?.errorMessage || null;
   const [stageElapsedMs, setStageElapsedMs] = useState(0);
   const navigate = useNavigate();
-  const [includeCaption, setIncludeCaption] = useState(true);
-  const [generatedCaption, setGeneratedCaption] = useState("");
+  const [includeCaption, setIncludeCaption] = useState(() => {
+    const saved = videoJob?.includeCaption;
+    return saved !== undefined ? saved : true;
+  });
+  const [generatedCaption, setGeneratedCaption] = useState(() => videoJob?.generatedCaption || "");
   const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
   const lastFetchedPromptRef = useRef("");
+
+  useEffect(() => {
+    setJob('video', {
+      prompt,
+      generatedCaption,
+      includeCaption
+    });
+  }, [prompt, generatedCaption, includeCaption, setJob]);
 
   useEffect(() => {
     setShareUrl(null);
@@ -541,6 +548,7 @@ export default function VideoStudio() {
   const handleReset = () => {
     clearJob('video');
     setPrompt('');
+    setGeneratedCaption('');
     setIsPlaying(false);
     setShowSharePopover(false);
     setShareUrl(null);
