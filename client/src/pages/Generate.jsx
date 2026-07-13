@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 import ImageStudio from "./ImageStudio";
 import VideoStudio from "./VideoStudio";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import {
   fetchCreditBalance,
   fetchImageGenerationStatus,
@@ -1062,9 +1063,13 @@ export default function Generate() {
       </div>
 
       {activeTab === "images" ? (
-        <ImageStudio />
+        <ErrorBoundary>
+          <ImageStudio />
+        </ErrorBoundary>
       ) : activeTab === "videos" ? (
-        <VideoStudio />
+        <ErrorBoundary>
+          <VideoStudio />
+        </ErrorBoundary>
       ) : (
         <>
           {showPlatformSelect ? (
