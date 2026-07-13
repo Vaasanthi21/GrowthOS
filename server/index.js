@@ -879,8 +879,6 @@ const generateVideoWithAzure = async ({
     prompt,
     seconds: normalizedDurationSeconds,
     size: soraSize,
-    width: dims.width,
-    height: dims.height,
   };
 
   let { response, data } = await requestVideo(requestBody);
@@ -891,8 +889,6 @@ const generateVideoWithAzure = async ({
       prompt,
       seconds: normalizedDurationSeconds,
       size: soraSize,
-      width: dims.width,
-      height: dims.height,
     };
     ({ response, data } = await requestVideo(requestBody));
   }
