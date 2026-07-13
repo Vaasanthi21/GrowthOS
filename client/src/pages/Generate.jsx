@@ -34,6 +34,11 @@ const IMAGE_STAGE_ESTIMATES_MS = {
   video: 600000,
 };
 
+const cleanBracketedHeaders = (text) => {
+  if (typeof text !== "string") return text;
+  return text.replace(/^\[[A-Z0-9\s_&-]{3,30}\]\s*\n?/gim, "").trim();
+};
+
 const VIDEO_POLL_INTERVAL_MS = 10000;
 
 const formatRemainingTime = (milliseconds) => {
@@ -79,19 +84,32 @@ const buildPrompt = ({
   platform,
   params,
   personaContext,
+  companyProfile,
   toneLabel,
   lengthLabel,
   topic,
   ragContext,
-}) => `You are a social media content creator.
+}) => {
+  const companyName = personaContext?.company || companyProfile?.companyName || "";
+  const tagline = personaContext?.tagline || companyProfile?.tagline || "";
+  const brandVoice = personaContext?.voice || companyProfile?.brandVoice || "";
+  const targetAudience = personaContext?.audience || companyProfile?.targetAudience || "";
+  const productDesc = companyProfile?.productDescription || "";
+  const industry = companyProfile?.industry || "";
+
+  return `You are a social media content creator.
 
 Platform: ${platform.label}
 Audience style: ${platform.description}
 Platform optimization goal: ${platform.optimization}
 Content format: ${params.contentType}
-${personaContext?.company ? `Company name: ${personaContext.company}` : ""}
+${companyName ? `Company name: ${companyName}` : ""}
+${industry ? `Industry: ${industry}` : ""}
+${productDesc ? `Company profile / Product description: ${productDesc}` : ""}
+${targetAudience ? `Target audience: ${targetAudience}` : ""}
+${brandVoice ? `Brand voice guidance: ${brandVoice}` : ""}
+${tagline ? `Brand tagline: ${tagline}` : ""}
 ${personaContext ? `Brand style analysis: ${personaContext.analysis}` : ""}
-${personaContext?.tagline ? `Brand tagline: ${personaContext.tagline}` : ""}
 ${personaContext?.logoUrl ? `Brand logo reference: ${personaContext.logoUrl}` : ""}
 ${personaContext?.tuningPrompt ? `Persistent style instructions: ${personaContext.tuningPrompt}` : ""}
 ${personaContext?.learningSummary ? `Cross-platform brand writing memory: ${personaContext.learningSummary}` : ""}
@@ -105,6 +123,7 @@ Target length: ${lengthLabel}
 ${params.keywords ? `Keywords: ${params.keywords}` : ""}
 
 Important rules:
+- Do NOT include bracketed structural markers, labels, or section headers (e.g., "[HOOK]", "[VALUE STATEMENT]", "[WHY IT MATTERS]", "[ENGAGEMENT SECTION]", "[CTA]", "[IMAGE DESCRIPTION]", etc.) in the output. Write the direct copy ready for publishing.
 - Use the company name only when a brand reference is needed.
 - Do not mention, reveal, or invent any internal persona name in the output.
 - Treat persona settings only as internal brand guidance for tone, structure, phrasing, and brand consistency across all platforms.
@@ -120,26 +139,40 @@ Respond in JSON format:
     { "title": "", "content": "", "word_count": 0 }
   ]
 }`;
+};
 
 const buildEnhancementPrompt = ({
   platform,
   params,
   personaContext,
+  companyProfile,
   toneLabel,
   lengthLabel,
   topic,
   currentContent,
   enhancementPrompt,
   ragContext,
-}) => `You are improving an existing social media post.
+}) => {
+  const companyName = personaContext?.company || companyProfile?.companyName || "";
+  const tagline = personaContext?.tagline || companyProfile?.tagline || "";
+  const brandVoice = personaContext?.voice || companyProfile?.brandVoice || "";
+  const targetAudience = personaContext?.audience || companyProfile?.targetAudience || "";
+  const productDesc = companyProfile?.productDescription || "";
+  const industry = companyProfile?.industry || "";
+
+  return `You are improving an existing social media post.
 
 Platform: ${platform.label}
 Audience style: ${platform.description}
 Platform optimization goal: ${platform.optimization}
 Content format: ${params.contentType}
-${personaContext?.company ? `Company name: ${personaContext.company}` : ""}
+${companyName ? `Company name: ${companyName}` : ""}
+${industry ? `Industry: ${industry}` : ""}
+${productDesc ? `Company profile / Product description: ${productDesc}` : ""}
+${targetAudience ? `Target audience: ${targetAudience}` : ""}
+${brandVoice ? `Brand voice guidance: ${brandVoice}` : ""}
+${tagline ? `Brand tagline: ${tagline}` : ""}
 ${personaContext ? `Brand style analysis: ${personaContext.analysis}` : ""}
-${personaContext?.tagline ? `Brand tagline: ${personaContext.tagline}` : ""}
 ${personaContext?.tuningPrompt ? `Persistent style instructions: ${personaContext.tuningPrompt}` : ""}
 ${personaContext?.learningSummary ? `Cross-platform brand writing memory: ${personaContext.learningSummary}` : ""}
 ${ragContext ? `Approved knowledge base context:\n${ragContext}` : ""}
@@ -160,6 +193,7 @@ Target length: ${lengthLabel}
 ${params.keywords ? `Keywords: ${params.keywords}` : ""}
 
 Important rules:
+- Do NOT include bracketed structural markers, labels, or section headers (e.g., "[HOOK]", "[VALUE STATEMENT]", "[WHY IT MATTERS]", "[ENGAGEMENT SECTION]", "[CTA]", "[IMAGE DESCRIPTION]", etc.) in the output. Write the direct copy ready for publishing.
 - Keep the same core message unless the enhancement request explicitly changes it.
 - Apply the enhancement request while preserving brand voice and platform fit.
 - Return only one improved version, not multiple options.
@@ -173,6 +207,7 @@ Respond in JSON format:
     { "title": "", "content": "", "word_count": 0 }
   ]
 }`;
+};
 
 export default function Generate() {
   const { activePersona, setActivePersona } = useOutletContext();
@@ -237,6 +272,17 @@ export default function Generate() {
     enabled: !!user,
   });
 
+  const { data: companyProfile } = useQuery({
+    queryKey: ["company"],
+    queryFn: async () => {
+      const token = tokenStorage.getUserToken();
+      if (!token) return null;
+      const response = await apiClient.get("/company", token);
+      return response?.data || response || null;
+    },
+    enabled: !!user && !!token,
+  });
+
   const enrichedUser = useMemo(
     () => ({
       ...user,
@@ -253,14 +299,22 @@ export default function Generate() {
   const [lastOriginalPrompt, setLastOriginalPrompt] = useState("");
   const [batchItems, setBatchItems] = useState([]);
   const cancelRef = useRef(false);
+  const resultsRef = useRef(null);
   const [expandedVariant, setExpandedVariant] = useState(null);
   const [exportVariant, setExportVariant] = useState(null);
   const [generationStage, setGenerationStage] = useState("idle");
   const videoPollingRef = useRef(new Set());
   const videoHistorySyncRef = useRef(new Set());
-  const [showPlatformSelect, setShowPlatformSelect] = useState(() => {
-    return !localStorage.getItem("activePersona");
-  });
+
+  useEffect(() => {
+    if (generatedContent && !isGeneratingOrPolling) {
+      const timer = setTimeout(() => {
+        resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [generatedContent, isGeneratingOrPolling]);
+  const [showPlatformSelect, setShowPlatformSelect] = useState(true);
 
   const openRefinePage = (content) => {
     if (!content || !lastGenerationParams) {
@@ -555,6 +609,7 @@ export default function Generate() {
               platform,
               params,
               personaContext: params.companyPersona,
+              companyProfile,
               toneLabel,
               lengthLabel,
               topic: params.topic,
@@ -566,6 +621,10 @@ export default function Generate() {
           ? await generateContent({ prompt })
           : buildMediaOnlyVariants(params.contentType);
 
+        const sanitizedResult = Array.isArray(result)
+          ? result.map(v => ({ ...v, content: cleanBracketedHeaders(v.content) }))
+          : result;
+
         if (contentTypeNeedsImage(params.contentType)) {
           toast({
             title: "Image generation started",
@@ -576,7 +635,7 @@ export default function Generate() {
         }
 
         const withImages = await attachImagesToVariants(
-          result,
+          sanitizedResult,
           params,
           params.topic,
           retrieval?.context || "",
@@ -677,6 +736,7 @@ export default function Generate() {
                     platform: selectedPlatform,
                     params,
                     personaContext: params.companyPersona,
+                    companyProfile,
                     toneLabel,
                     lengthLabel,
                     topic,
@@ -688,6 +748,10 @@ export default function Generate() {
                 ? await generateContent({ prompt })
                 : buildMediaOnlyVariants(params.contentType);
 
+              const sanitizedResult = Array.isArray(result)
+                ? result.map(v => ({ ...v, content: cleanBracketedHeaders(v.content) }))
+                : result;
+
               if (contentTypeNeedsImage(params.contentType)) {
                 toast({
                   title: "Image generation started",
@@ -698,7 +762,7 @@ export default function Generate() {
               }
 
               const withImages = await attachImagesToVariants(
-                result,
+                sanitizedResult,
                 params,
                 topic,
                 retrieval?.context || "",
@@ -1070,9 +1134,7 @@ export default function Generate() {
         <ErrorBoundary>
           <VideoStudio />
         </ErrorBoundary>
-      ) : (
-        <>
-          {showPlatformSelect ? (
+      ) : showPlatformSelect ? (
         <PersonaSelector
           activePlatform={activePersona}
           onSelect={(platformId) => {
@@ -1081,19 +1143,19 @@ export default function Generate() {
           }}
         />
       ) : (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={() => setShowPlatformSelect(true)}
-            className="inline-flex items-center justify-center rounded-full border border-primary/70 bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_-18px_rgba(249,115,22,0.9)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-[0_16px_38px_-18px_rgba(249,115,22,1)]"
-          >
-            <span className="inline-flex items-center gap-2">
-              <Shuffle className="h-3.5 w-3.5" />
-              Switch Platform
-            </span>
-          </button>
-        </div>
-      )}
+        <>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setShowPlatformSelect(true)}
+              className="inline-flex items-center justify-center rounded-full border border-primary/70 bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_-18px_rgba(249,115,22,0.9)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-[0_16px_38px_-18px_rgba(249,115,22,1)]"
+            >
+              <span className="inline-flex items-center gap-2">
+                <Shuffle className="h-3.5 w-3.5" />
+                Switch Platform
+              </span>
+            </button>
+          </div>
 
       <GenerationForm
         activePersona={activePersona}
@@ -1228,7 +1290,7 @@ export default function Generate() {
 
       {/* Results */}
       {generatedContent && !isGeneratingOrPolling && (
-        <div className="space-y-3">
+        <div ref={resultsRef} className="space-y-3 scroll-mt-6">
           <p className="text-[10px] font-semibold uppercase text-muted-foreground">
             Generated Content
           </p>
