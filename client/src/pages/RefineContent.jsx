@@ -58,6 +58,11 @@ const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || "/api").replace(
   "",
 );
 
+const cleanBracketedHeaders = (text) => {
+  if (typeof text !== "string") return text;
+  return text.replace(/^\[[A-Z0-9\s_&-]{3,30}\]\s*\n?/gim, "").trim();
+};
+
 const toneToLabel = (value) => {
   if (value < 30) return "formal";
   if (value < 70) return "balanced";
@@ -141,6 +146,7 @@ Target length: ${lengthToLabel(params.length)}
 ${params.keywords ? `Keywords: ${params.keywords}` : ""}
 
 Rules:
+- Do NOT include bracketed structural markers, labels, or section headers (e.g., "[HOOK]", "[VALUE STATEMENT]", "[WHY IT MATTERS]", "[ENGAGEMENT SECTION]", "[CTA]", "[IMAGE DESCRIPTION]", etc.) in the output. Write the direct copy ready for publishing.
 - Preserve persona alignment and optimize specifically for ${platform.label}.
 - Use retrieved grounding context as the factual source of truth.
 - Use uploaded attachment context when it adds relevant facts, copy, or reference material.
@@ -996,6 +1002,10 @@ export default function RefineContent() {
 
         if (!nextContent) {
           throw new Error("No refined content returned");
+        }
+
+        if (nextContent.content) {
+          nextContent.content = cleanBracketedHeaders(nextContent.content);
         }
       }
 

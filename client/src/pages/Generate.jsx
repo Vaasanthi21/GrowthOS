@@ -34,6 +34,11 @@ const IMAGE_STAGE_ESTIMATES_MS = {
   video: 600000,
 };
 
+const cleanBracketedHeaders = (text) => {
+  if (typeof text !== "string") return text;
+  return text.replace(/^\[[A-Z0-9\s_&-]{3,30}\]\s*\n?/gim, "").trim();
+};
+
 const VIDEO_POLL_INTERVAL_MS = 10000;
 
 const formatRemainingTime = (milliseconds) => {
@@ -118,6 +123,7 @@ Target length: ${lengthLabel}
 ${params.keywords ? `Keywords: ${params.keywords}` : ""}
 
 Important rules:
+- Do NOT include bracketed structural markers, labels, or section headers (e.g., "[HOOK]", "[VALUE STATEMENT]", "[WHY IT MATTERS]", "[ENGAGEMENT SECTION]", "[CTA]", "[IMAGE DESCRIPTION]", etc.) in the output. Write the direct copy ready for publishing.
 - Use the company name only when a brand reference is needed.
 - Do not mention, reveal, or invent any internal persona name in the output.
 - Treat persona settings only as internal brand guidance for tone, structure, phrasing, and brand consistency across all platforms.
@@ -187,6 +193,7 @@ Target length: ${lengthLabel}
 ${params.keywords ? `Keywords: ${params.keywords}` : ""}
 
 Important rules:
+- Do NOT include bracketed structural markers, labels, or section headers (e.g., "[HOOK]", "[VALUE STATEMENT]", "[WHY IT MATTERS]", "[ENGAGEMENT SECTION]", "[CTA]", "[IMAGE DESCRIPTION]", etc.) in the output. Write the direct copy ready for publishing.
 - Keep the same core message unless the enhancement request explicitly changes it.
 - Apply the enhancement request while preserving brand voice and platform fit.
 - Return only one improved version, not multiple options.
@@ -614,6 +621,10 @@ export default function Generate() {
           ? await generateContent({ prompt })
           : buildMediaOnlyVariants(params.contentType);
 
+        const sanitizedResult = Array.isArray(result)
+          ? result.map(v => ({ ...v, content: cleanBracketedHeaders(v.content) }))
+          : result;
+
         if (contentTypeNeedsImage(params.contentType)) {
           toast({
             title: "Image generation started",
@@ -624,7 +635,7 @@ export default function Generate() {
         }
 
         const withImages = await attachImagesToVariants(
-          result,
+          sanitizedResult,
           params,
           params.topic,
           retrieval?.context || "",
@@ -737,6 +748,10 @@ export default function Generate() {
                 ? await generateContent({ prompt })
                 : buildMediaOnlyVariants(params.contentType);
 
+              const sanitizedResult = Array.isArray(result)
+                ? result.map(v => ({ ...v, content: cleanBracketedHeaders(v.content) }))
+                : result;
+
               if (contentTypeNeedsImage(params.contentType)) {
                 toast({
                   title: "Image generation started",
@@ -747,7 +762,7 @@ export default function Generate() {
               }
 
               const withImages = await attachImagesToVariants(
-                result,
+                sanitizedResult,
                 params,
                 topic,
                 retrieval?.context || "",
