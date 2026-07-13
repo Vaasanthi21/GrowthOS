@@ -66,7 +66,7 @@ const formatRemainingTime = (milliseconds) => {
 // Calls the backend to create a masked, non-S3 share link for the given
 // asset URL. Same endpoint the Image Studio uses - hides the bucket host
 // from social crawlers by proxying through /share/:id and /api/public-asset/:id.
-const createShareLink = async (assetUrl, caption, title) => {
+const createShareLink = async (assetUrl, caption, title, thumbnailUrl = '') => {
   const token = tokenStorage.getUserToken();
   const response = await fetch(`${API_ORIGIN}/api/create-share-link`, {
     method: 'POST',
@@ -74,7 +74,7 @@ const createShareLink = async (assetUrl, caption, title) => {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ assetUrl, caption, title }),
+    body: JSON.stringify({ assetUrl, caption, title, thumbnailUrl }),
   });
   if (!response.ok) throw new Error('Failed to create share link');
   const data = await response.json();
@@ -125,6 +125,7 @@ export default function VideoStudio() {
   const videoJob = getJob('video');
 
   const generatedVideo = videoJob?.generatedVideo || null;
+  const generatedThumbnail = videoJob?.generatedThumbnail || null;
   const isPolling = videoJob?.isPolling || false;
   const pollingStatus = videoJob?.pollingStatus || null;
   const stageStartedAt = videoJob?.stageStartedAt || null;
@@ -303,6 +304,7 @@ export default function VideoStudio() {
               variants: [{
                 content: statusResponse.prompt || prompt,
                 video_url: statusResponse.video_url,
+                thumbnail_url: statusResponse.thumbnail_url || null,
                 title: platform + " Video"
               }],
               status: "completed"
@@ -314,6 +316,7 @@ export default function VideoStudio() {
               stageStartedAt: null,
               pollingStatus: 'completed',
               generatedVideo: statusResponse.video_url,
+              generatedThumbnail: statusResponse.thumbnail_url || null,
               errorMessage: null,
             });
             queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
@@ -523,7 +526,7 @@ export default function VideoStudio() {
       try {
         const captionText = includeCaption ? (generatedCaption || prompt) : "";
         const title = `${platform.toUpperCase()} Studio Video (${aspectRatio})`;
-        const url = await createShareLink(generatedVideo, captionText, title);
+        const url = await createShareLink(generatedVideo, captionText, title, generatedThumbnail);
         setShareUrl(url);
       } catch (err) {
         console.error('Failed to create share link:', err);

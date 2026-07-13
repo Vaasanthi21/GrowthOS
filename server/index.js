@@ -668,6 +668,46 @@ const overlayLogoOnVideo = async ({
   }
 };
 
+const extractFirstFrameOfVideo = async (videoBuffer, fileNamePrefix) => {
+  const tempDir = path.join(process.cwd(), 'tmp');
+  await fs.mkdir(tempDir, { recursive: true });
+
+  const inputVideoPath = path.join(tempDir, `${fileNamePrefix}-input.mp4`);
+  const outputImagePath = path.join(tempDir, `${fileNamePrefix}-thumbnail.png`);
+
+  await fs.writeFile(inputVideoPath, videoBuffer);
+
+  await new Promise((resolve, reject) => {
+    const ffmpeg = spawn('ffmpeg', [
+      '-y',
+      '-ss', '00:00:00',
+      '-i', inputVideoPath,
+      '-vframes', '1',
+      '-q:v', '2',
+      outputImagePath,
+    ]);
+
+    let stderr = '';
+    ffmpeg.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+    ffmpeg.on('error', reject);
+    ffmpeg.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(stderr || `ffmpeg exited with code ${code}`));
+    });
+  });
+
+  try {
+    return await fs.readFile(outputImagePath);
+  } finally {
+    await Promise.allSettled([
+      fs.unlink(inputVideoPath),
+      fs.unlink(outputImagePath),
+    ]);
+  }
+};
+
 const saveAzureVideoAsset = async ({
   videoId,
   variant = azureVideoDownloadVariant,
@@ -704,12 +744,31 @@ const saveAzureVideoAsset = async ({
     }
   }
 
-  return await uploadVideoBufferToS3({
-    buffer: outputBuffer,
-    mimeType: 'video/mp4',
-    folder: 'videos',
-    fileName: `${videoId}-${variant}.mp4`,
-  });
+  let thumbnailBuffer = null;
+  try {
+    thumbnailBuffer = await extractFirstFrameOfVideo(outputBuffer, `${videoId}-${variant}`);
+  } catch (thumbnailErr) {
+    console.warn('[VIDEO THUMBNAIL] Failed to extract first frame:', thumbnailErr?.message || thumbnailErr);
+  }
+
+  const [videoUrl, thumbnailUrl] = await Promise.all([
+    uploadVideoBufferToS3({
+      buffer: outputBuffer,
+      mimeType: 'video/mp4',
+      folder: 'videos',
+      fileName: `${videoId}-${variant}.mp4`,
+    }),
+    thumbnailBuffer
+      ? uploadVideoBufferToS3({
+          buffer: thumbnailBuffer,
+          mimeType: 'image/png',
+          folder: 'videos/thumbnails',
+          fileName: `${videoId}-${variant}-thumb.png`,
+        })
+      : Promise.resolve(null),
+  ]);
+
+  return { videoUrl, thumbnailUrl };
 };
 
 const normalizeAzureVideoResult = async ({
@@ -722,18 +781,18 @@ const normalizeAzureVideoResult = async ({
   const normalizedStatus = normalizeAzureVideoStatus(payload);
   const videoId = extractAzureVideoId(payload);
   let resolvedVideoUrl = videoUrl;
+  let resolvedThumbnailUrl = null;
 
   if (normalizedStatus === 'completed' && videoId) {
-    // Only upload to Cloudinary if we don't already have a valid Azure URL, 
-    // OR if we know Azure URLs need auth. Usually, if videoUrl exists and is public, we can use it.
-    // Wait, the Azure output requires auth to view the video, so we must always upload to Cloudinary.
     try {
       console.log(`[VIDEO JOB DEBUG] Attempting Cloudinary upload for ${videoId}, current URL is: ${videoUrl}`);
-      resolvedVideoUrl = await saveAzureVideoAsset({
+      const assetResult = await saveAzureVideoAsset({
         videoId,
         logoUrl,
         logoPlacement,
       });
+      resolvedVideoUrl = assetResult.videoUrl;
+      resolvedThumbnailUrl = assetResult.thumbnailUrl;
       console.log(`[VIDEO JOB DEBUG] Cloudinary upload successful. URL: ${resolvedVideoUrl}`);
     } catch (error) {
       console.error('[VIDEO JOB DEBUG] Azure video Cloudinary upload failed:', error.message || error);
@@ -746,6 +805,7 @@ const normalizeAzureVideoResult = async ({
     status: normalizedStatus === 'completed' && !resolvedVideoUrl ? 'processing' : normalizedStatus,
     status_url: statusUrl,
     provider_response: payload,
+    thumbnail_url: resolvedThumbnailUrl,
   };
 };
 
@@ -791,6 +851,14 @@ const generateVideoWithAzure = async ({
   };
 
   const soraSize = aspectRatioToSoraSize[normalizedAspectRatio] || '720x1280';
+
+  const dimensionsMap = {
+    '16:9': { width: 1280, height: 720 },
+    '9:16': { width: 720, height: 1280 },
+    '1:1': { width: 720, height: 720 },
+  };
+
+  const dims = dimensionsMap[normalizedAspectRatio] || { width: 720, height: 1280 };
 
   const requestVideo = async (body) => {
     const response = await fetch(normalizeAzureVideoEndpoint(azureVideoEndpoint), {
@@ -1463,6 +1531,7 @@ const getVideoJobStatusPayload = (job) => {
     startedAt: new Date(job.startedAt).toISOString(),
     completedAt: job.completedAt ? new Date(job.completedAt).toISOString() : null,
     error: job.error || null,
+    thumbnail_url: job.result?.thumbnail_url || null,
     video_url: job.result?.video_url || null,
   };
 };
@@ -7248,6 +7317,7 @@ app.post('/api/create-share-link', authRequired, async (req, res) => {
     await rawDb.collection('shared_assets').insertOne({
       share_id: shareId,
       asset_url: assetUrl,
+      thumbnail_url: req.body.thumbnailUrl || null,
       caption,
       title,
       user_id: req.user._id,
@@ -7278,9 +7348,9 @@ app.get('/api/share/:id', async (req, res) => {
                     record.asset_url.includes('/videos/') || 
                     (record.asset_url.includes('cloudinary.com') && record.asset_url.includes('/video/'));
 
-    const ogImage = isVideo 
+    const ogImage = record.thumbnail_url || (isVideo 
       ? `${baseUrl}/snowy-mountains.png` 
-      : imageProxyUrl;
+      : imageProxyUrl);
 
     const videoTags = isVideo ? `
   <meta property="og:video" content="${imageProxyUrl}" />
