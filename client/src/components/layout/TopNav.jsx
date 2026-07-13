@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Menu, LogOut, Wallet } from "lucide-react";
+import { Menu, LogOut, Wallet, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/AuthContext";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useQuery } from "@tanstack/react-query";
 import { fetchCreditBalance } from "@/services/aiService";
 import { apiClient, tokenStorage } from "@/api/apiClient";
+import UserGuideModal from "./UserGuideModal";
 import {
   Dialog,
   DialogContent,
@@ -17,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 
 export default function TopNav({ onToggleSidebar }) {
+  const [guideOpen, setGuideOpen] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const { data: creditBalance } = useQuery({
     queryKey: ["user-credit-balance"],
@@ -86,6 +88,17 @@ export default function TopNav({ onToggleSidebar }) {
           </span>
         </div>
 
+        {/* User Guide */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          onClick={() => setGuideOpen(true)}
+          title="User Guide"
+        >
+          <HelpCircle className="w-4 h-4" />
+        </Button>
+
         {/* Logout */}
         <Button
           variant="ghost"
@@ -97,6 +110,8 @@ export default function TopNav({ onToggleSidebar }) {
           <LogOut className="w-4 h-4" />
         </Button>
       </div>
+
+      <UserGuideModal open={guideOpen} onOpenChange={setGuideOpen} />
 
       {/* Logout Confirmation Modal */}
       <Dialog open={logoutConfirmOpen} onOpenChange={setLogoutConfirmOpen}>
