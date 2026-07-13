@@ -302,7 +302,7 @@ export default function VariantCard({
         </div>
       )}
 
-      <div className="flex items-center gap-1.5 pt-1 border-t border-border">
+      <div className="flex items-center flex-wrap gap-1.5 pt-1 border-t border-border">
         <Button
           variant="transparent"
           size="sm"
