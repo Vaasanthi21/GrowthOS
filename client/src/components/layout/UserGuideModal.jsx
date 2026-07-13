@@ -51,7 +51,7 @@ export default function UserGuideModal({ open, onOpenChange }) {
               <ul className="space-y-2.5 text-xs text-foreground">
                 <li className="flex items-start gap-2">
                   <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
-                  <span><strong>Content Studio (Generate):</strong> Note that both the **Image Studio** and **Video Studio** features are fully integrated under the single **Content Studio** tab in the sidebar menu.</span>
+                  <span><strong>Content Studio (Generate):</strong> Note that both the <strong>Image Studio</strong> and <strong>Video Studio</strong> features are fully integrated under the single <strong>Content Studio</strong> tab in the sidebar menu.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
@@ -196,11 +196,11 @@ export default function UserGuideModal({ open, onOpenChange }) {
               <ul className="space-y-2.5 text-xs text-foreground">
                 <li className="flex items-start gap-2">
                   <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
-                  <span><strong>AI Persona Builder:</strong> Input raw background context and let the AI generate targeted target personas automatically (**10 Credits**).</span>
+                  <span><strong>AI Persona Builder:</strong> Input raw background context and let the AI generate targeted target personas automatically (<strong>10 Credits</strong>).</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
-                  <span><strong>Define Profile:</strong> Set up your company description, website domain link, and primary brand colors manually (**FREE**).</span>
+                  <span><strong>Define Profile:</strong> Set up your company description, website domain link, and primary brand colors manually (<strong>FREE</strong>).</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-primary shrink-0" />
