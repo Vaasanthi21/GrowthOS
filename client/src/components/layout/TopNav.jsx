@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Menu, LogOut, Wallet, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -27,9 +27,25 @@ export default function TopNav({ onToggleSidebar }) {
 
   const location = useLocation();
   const navigate = useNavigate();
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
 
   const isMobile = useMediaQuery("(max-width: 640px)");
+
+  useEffect(() => {
+    if (user?.email) {
+      const hasSeen = localStorage.getItem(`hasSeenUserGuide_${user.email}`);
+      if (!hasSeen) {
+        setGuideOpen(true);
+      }
+    }
+  }, [user?.email]);
+
+  const handleGuideOpenChange = (open) => {
+    setGuideOpen(open);
+    if (!open && user?.email) {
+      localStorage.setItem(`hasSeenUserGuide_${user.email}`, "true");
+    }
+  };
 
   const handleLogout = async () => {
     await signOut();
@@ -111,7 +127,7 @@ export default function TopNav({ onToggleSidebar }) {
         </Button>
       </div>
 
-      <UserGuideModal open={guideOpen} onOpenChange={setGuideOpen} />
+      <UserGuideModal open={guideOpen} onOpenChange={handleGuideOpenChange} />
 
       {/* Logout Confirmation Modal */}
       <Dialog open={logoutConfirmOpen} onOpenChange={setLogoutConfirmOpen}>
