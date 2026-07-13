@@ -156,3 +156,44 @@ export const sendSignupOtpEmail = async ({ to, otp, expiresInMinutes = 10 }) => 
     html: htmlContent
   });
 };
+
+export const sendSignupVerificationEmail = async ({ to, otp }) => {
+  const subject = 'Verify your Creative Studio OS account';
+  const htmlContent = `
+    <div style="font-family: sans-serif; padding: 20px; line-height: 1.6; color: #333;">
+      <h2>Welcome to Creative Studio OS!</h2>
+      <p>Thank you for signing up. Please verify your email address using the following 6-digit verification code:</p>
+      <div style="font-size: 24px; font-weight: bold; background: #f0f0f0; padding: 15px; border-radius: 5px; display: inline-block; letter-spacing: 2px; margin: 10px 0;">
+        ${otp}
+      </div>
+      <p>This code will expire in 24 hours.</p>
+      <p>If you did not create an account, please ignore this email.</p>
+    </div>
+  `;
+
+  if (process.env.RESEND_API_KEY) {
+    console.log(`[EMAIL] Sending signup verification email to ${to} using Resend SDK...`);
+    const result = await sendNoReplyEmail(to, subject, htmlContent);
+    if (result.success) {
+      return;
+    }
+  }
+
+  const transporter = createTransporter();
+  const from = getEmailFrom();
+  const text = `Your verification code is ${otp}.`;
+
+  if (!transporter) {
+    console.warn('Email service is not configured. Verification email was not sent.');
+    console.log(`Signup Verification OTP for ${to}: ${otp}`);
+    return;
+  }
+
+  await transporter.sendMail({
+    from,
+    to,
+    subject,
+    text,
+    html: htmlContent
+  });
+};
