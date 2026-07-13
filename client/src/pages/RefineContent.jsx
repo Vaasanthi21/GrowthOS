@@ -6,7 +6,7 @@ import React, {
   useState,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Check,
@@ -51,7 +51,7 @@ import {
   restoreRefineSession,
 } from "@/utils";
 import ExportDialog from "@/components/dialogs/ExportDialog";
-import { tokenStorage } from "@/api/apiClient";
+import { apiClient, tokenStorage } from "@/api/apiClient";
 
 const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || "/api").replace(
   /\/api\/?$/,
@@ -89,21 +89,34 @@ const buildRefinementPrompt = ({
   platform,
   params,
   personaContext,
+  companyProfile,
   topic,
   currentContent,
   enhancementPrompt,
   ragContext,
   conversation,
   attachmentContext,
-}) => `You are refining a social media post through an iterative editing conversation.
+}) => {
+  const companyName = personaContext?.company || companyProfile?.companyName || "";
+  const tagline = personaContext?.tagline || companyProfile?.tagline || "";
+  const brandVoice = personaContext?.voice || companyProfile?.brandVoice || "";
+  const targetAudience = personaContext?.audience || companyProfile?.targetAudience || "";
+  const productDesc = companyProfile?.productDescription || "";
+  const industry = companyProfile?.industry || "";
+
+  return `You are refining a social media post through an iterative editing conversation.
 
 Platform: ${platform.label}
 Audience style: ${platform.description}
 Platform optimization goal: ${platform.optimization}
 Content format: ${params.contentType}
-${personaContext?.company ? `Company name: ${personaContext.company}` : ""}
-${personaContext?.analysis ? `Brand style analysis: ${personaContext.analysis}` : ""}
-${personaContext?.tagline ? `Brand tagline: ${personaContext.tagline}` : ""}
+${companyName ? `Company name: ${companyName}` : ""}
+${industry ? `Industry: ${industry}` : ""}
+${productDesc ? `Company profile / Product description: ${productDesc}` : ""}
+${targetAudience ? `Target audience: ${targetAudience}` : ""}
+${brandVoice ? `Brand voice guidance: ${brandVoice}` : ""}
+${tagline ? `Brand tagline: ${tagline}` : ""}
+${personaContext ? `Brand style analysis: ${personaContext.analysis}` : ""}
 ${personaContext?.tuningPrompt ? `Persistent style instructions: ${personaContext.tuningPrompt}` : ""}
 ${personaContext?.learningSummary ? `Cross-platform brand writing memory: ${personaContext.learningSummary}` : ""}
 ${ragContext ? `Retrieved grounding context:\n${ragContext}` : ""}
@@ -141,6 +154,7 @@ Respond in JSON format:
     { "title": "", "content": "", "word_count": 0 }
   ]
 }`;
+};
 
 const contentTypeNeedsImage = (contentType) =>
   String(contentType || "").includes("image");
@@ -400,6 +414,17 @@ const isMeaningfulMessage = (message) => {
 };
 
 export default function RefineContent() {
+  const token = tokenStorage.getUserToken();
+  const { data: companyProfile } = useQuery({
+    queryKey: ["company"],
+    queryFn: async () => {
+      if (!token) return null;
+      const response = await apiClient.get("/company", token);
+      return response?.data || response || null;
+    },
+    enabled: !!token,
+  });
+
   const location = useLocation();
   const navigate = useNavigate();
   const initialState = useMemo(() => {
@@ -957,6 +982,7 @@ export default function RefineContent() {
           platform,
           params,
           personaContext: params.companyPersona,
+          companyProfile,
           topic: params.topic,
           currentContent: currentContent.content,
           enhancementPrompt: promptText,

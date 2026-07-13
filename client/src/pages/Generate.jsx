@@ -79,19 +79,32 @@ const buildPrompt = ({
   platform,
   params,
   personaContext,
+  companyProfile,
   toneLabel,
   lengthLabel,
   topic,
   ragContext,
-}) => `You are a social media content creator.
+}) => {
+  const companyName = personaContext?.company || companyProfile?.companyName || "";
+  const tagline = personaContext?.tagline || companyProfile?.tagline || "";
+  const brandVoice = personaContext?.voice || companyProfile?.brandVoice || "";
+  const targetAudience = personaContext?.audience || companyProfile?.targetAudience || "";
+  const productDesc = companyProfile?.productDescription || "";
+  const industry = companyProfile?.industry || "";
+
+  return `You are a social media content creator.
 
 Platform: ${platform.label}
 Audience style: ${platform.description}
 Platform optimization goal: ${platform.optimization}
 Content format: ${params.contentType}
-${personaContext?.company ? `Company name: ${personaContext.company}` : ""}
+${companyName ? `Company name: ${companyName}` : ""}
+${industry ? `Industry: ${industry}` : ""}
+${productDesc ? `Company profile / Product description: ${productDesc}` : ""}
+${targetAudience ? `Target audience: ${targetAudience}` : ""}
+${brandVoice ? `Brand voice guidance: ${brandVoice}` : ""}
+${tagline ? `Brand tagline: ${tagline}` : ""}
 ${personaContext ? `Brand style analysis: ${personaContext.analysis}` : ""}
-${personaContext?.tagline ? `Brand tagline: ${personaContext.tagline}` : ""}
 ${personaContext?.logoUrl ? `Brand logo reference: ${personaContext.logoUrl}` : ""}
 ${personaContext?.tuningPrompt ? `Persistent style instructions: ${personaContext.tuningPrompt}` : ""}
 ${personaContext?.learningSummary ? `Cross-platform brand writing memory: ${personaContext.learningSummary}` : ""}
@@ -120,26 +133,40 @@ Respond in JSON format:
     { "title": "", "content": "", "word_count": 0 }
   ]
 }`;
+};
 
 const buildEnhancementPrompt = ({
   platform,
   params,
   personaContext,
+  companyProfile,
   toneLabel,
   lengthLabel,
   topic,
   currentContent,
   enhancementPrompt,
   ragContext,
-}) => `You are improving an existing social media post.
+}) => {
+  const companyName = personaContext?.company || companyProfile?.companyName || "";
+  const tagline = personaContext?.tagline || companyProfile?.tagline || "";
+  const brandVoice = personaContext?.voice || companyProfile?.brandVoice || "";
+  const targetAudience = personaContext?.audience || companyProfile?.targetAudience || "";
+  const productDesc = companyProfile?.productDescription || "";
+  const industry = companyProfile?.industry || "";
+
+  return `You are improving an existing social media post.
 
 Platform: ${platform.label}
 Audience style: ${platform.description}
 Platform optimization goal: ${platform.optimization}
 Content format: ${params.contentType}
-${personaContext?.company ? `Company name: ${personaContext.company}` : ""}
+${companyName ? `Company name: ${companyName}` : ""}
+${industry ? `Industry: ${industry}` : ""}
+${productDesc ? `Company profile / Product description: ${productDesc}` : ""}
+${targetAudience ? `Target audience: ${targetAudience}` : ""}
+${brandVoice ? `Brand voice guidance: ${brandVoice}` : ""}
+${tagline ? `Brand tagline: ${tagline}` : ""}
 ${personaContext ? `Brand style analysis: ${personaContext.analysis}` : ""}
-${personaContext?.tagline ? `Brand tagline: ${personaContext.tagline}` : ""}
 ${personaContext?.tuningPrompt ? `Persistent style instructions: ${personaContext.tuningPrompt}` : ""}
 ${personaContext?.learningSummary ? `Cross-platform brand writing memory: ${personaContext.learningSummary}` : ""}
 ${ragContext ? `Approved knowledge base context:\n${ragContext}` : ""}
@@ -173,6 +200,7 @@ Respond in JSON format:
     { "title": "", "content": "", "word_count": 0 }
   ]
 }`;
+};
 
 export default function Generate() {
   const { activePersona, setActivePersona } = useOutletContext();
@@ -235,6 +263,17 @@ export default function Generate() {
     queryKey: ["user-credit-balance"],
     queryFn: fetchCreditBalance,
     enabled: !!user,
+  });
+
+  const { data: companyProfile } = useQuery({
+    queryKey: ["company"],
+    queryFn: async () => {
+      const token = tokenStorage.getUserToken();
+      if (!token) return null;
+      const response = await apiClient.get("/company", token);
+      return response?.data || response || null;
+    },
+    enabled: !!user && !!token,
   });
 
   const enrichedUser = useMemo(
@@ -555,6 +594,7 @@ export default function Generate() {
               platform,
               params,
               personaContext: params.companyPersona,
+              companyProfile,
               toneLabel,
               lengthLabel,
               topic: params.topic,
@@ -677,6 +717,7 @@ export default function Generate() {
                     platform: selectedPlatform,
                     params,
                     personaContext: params.companyPersona,
+                    companyProfile,
                     toneLabel,
                     lengthLabel,
                     topic,
