@@ -592,6 +592,7 @@ const overlayLogoOnVideo = async ({
   logoUrl,
   logoPlacement = 'bottom-right',
   fileNamePrefix = `video-${Date.now()}`,
+  logoWidth = 140,
 }) => {
   const normalizedPlacement = String(logoPlacement || 'bottom-right')
     .trim()
@@ -629,7 +630,7 @@ const overlayLogoOnVideo = async ({
       '-y',
       '-i', inputVideoPath,
       '-i', inputLogoPath,
-      '-filter_complex', `[1:v]scale=300:-1[logo];[0:v][logo]overlay=${overlayPosition}:format=auto`,
+      '-filter_complex', `[1:v]scale=${logoWidth}:-1[logo];[0:v][logo]overlay=${overlayPosition}:format=auto`,
       '-c:v', 'libx264',
       '-preset', 'veryfast',
       '-crf', '23',
@@ -725,6 +726,7 @@ const saveAzureVideoAsset = async ({
         logoUrl,
         logoPlacement,
         fileNamePrefix: `${videoId}-${variant}`,
+        logoWidth: 140,
       });
     } catch (err) {
       console.warn('[VIDEO OVERLAY] FFmpeg overlay failed:', err?.message || err);
@@ -738,6 +740,7 @@ const saveAzureVideoAsset = async ({
         logoUrl: arthGangaLogoUrl,
         logoPlacement: 'bottom-right',
         fileNamePrefix: `${videoId}-${variant}-watermark`,
+        logoWidth: 120,
       });
     } catch (watermarkErr) {
       console.warn('[VIDEO WATERMARK] Failed to overlay system watermark:', watermarkErr?.message || watermarkErr);
