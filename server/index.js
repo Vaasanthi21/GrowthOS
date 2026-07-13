@@ -27,7 +27,7 @@ import { spawn } from 'child_process';
 import { v2 as cloudinary } from 'cloudinary';
 import { Worker } from 'bullmq';
 import jobRoutes from './routes/jobRoutes.js';
-import { sendPasswordResetOtpEmail } from './services/emailService.js';
+import { sendPasswordResetOtpEmail, sendSignupOtpEmail } from './services/emailService.js';
 import './queues/mockWorker.js';
 import { imageQueue } from './queues/imageQueue.js';
 import { connection } from './queues/redisConnection.js';
@@ -2760,6 +2760,10 @@ const authRequired = async (req, res, next) => {
 
     if (!user) {
       return res.status(401).json({ message: 'User not found' });
+    }
+
+    if (user.status === 'pending') {
+      return res.status(401).json({ message: 'Account verification pending' });
     }
 
     req.user = user;
@@ -5807,6 +5811,15 @@ app.post('/api/auth/register', async (req, res) => {
 
   const existing = await store.findUserByEmail(normalizedEmail);
   if (existing) {
+    if (existing.status === 'pending') {
+      const { otp, otpHash, expiresAt } = createPasswordResetOtp();
+      await store.updateUserById(existing.id || existing._id.toString(), {
+        signup_otp_hash: otpHash,
+        signup_otp_expires_at: expiresAt,
+      });
+      await sendSignupOtpEmail({ to: normalizedEmail, otp, expiresInMinutes: passwordResetOtpExpiryMinutes });
+      return res.status(200).json({ status: 'pending', email: normalizedEmail, message: 'Verification pending. OTP resent to your email.' });
+    }
     return res.status(409).json({ message: 'User already registered' });
   }
 
@@ -5817,40 +5830,110 @@ app.post('/api/auth/register', async (req, res) => {
 
   const password_hash = await bcrypt.hash(password, 10);
   const created_at = nowIso();
-  const creditSettings = await store.getCreditSettings();
-  const defaultSignupCredits = normalizeCreditValue(creditSettings.default_signup_credits, normalizeCreditValue(defaultSignupCreditsEnv, 25));
+  const { otp, otpHash, expiresAt } = createPasswordResetOtp();
+
   const insertedUser = await store.insertUser({
     email: normalizedEmail,
     full_name: fullName,
     phone: normalizedPhone,
     company,
     role: 'user',
-    status: 'active',
+    status: 'pending',
     password_hash,
     created_at,
     plan_id: freePlan.id || freePlan._id?.toString?.() || null,
     plan_name: freePlan.name,
-    credits_balance: defaultSignupCredits,
-    credits_total_allocated: defaultSignupCredits,
+    credits_balance: 0,
+    credits_total_allocated: 0,
     credits_total_purchased: 0,
     credits_total_used: 0,
+    signup_otp_hash: otpHash,
+    signup_otp_expires_at: expiresAt,
+  });
+
+  await sendSignupOtpEmail({ to: normalizedEmail, otp, expiresInMinutes: passwordResetOtpExpiryMinutes });
+
+  res.status(201).json({ status: 'pending', email: normalizedEmail, message: 'Verification pending. OTP sent to your email.' });
+});
+
+app.post('/api/auth/verify-signup-otp', async (req, res) => {
+  const { email, otp } = req.body || {};
+  const normalizedEmail = normalizeEmail(email);
+
+  if (!normalizedEmail || !otp) {
+    return res.status(400).json({ message: 'Email and OTP are required' });
+  }
+
+  const user = await store.findUserByEmail(normalizedEmail);
+
+  if (!user || user.status !== 'pending' || !user.signup_otp_hash || !user.signup_otp_expires_at) {
+    return res.status(400).json({ message: 'No pending registration found for this email' });
+  }
+
+  if (new Date(user.signup_otp_expires_at).getTime() < Date.now()) {
+    return res.status(400).json({ message: 'OTP has expired. Please request a new one.' });
+  }
+
+  const incomingOtpHash = hashPasswordResetOtp(otp);
+
+  if (incomingOtpHash !== user.signup_otp_hash) {
+    return res.status(400).json({ message: 'Invalid OTP code' });
+  }
+
+  const creditSettings = await store.getCreditSettings();
+  const defaultSignupCredits = normalizeCreditValue(creditSettings.default_signup_credits, normalizeCreditValue(defaultSignupCreditsEnv, 25));
+  const created_at = nowIso();
+
+  await store.updateUserById(user.id || user._id.toString(), {
+    status: 'active',
+    credits_balance: defaultSignupCredits,
+    credits_total_allocated: defaultSignupCredits,
+    signup_otp_hash: null,
+    signup_otp_expires_at: null,
   });
 
   if (defaultSignupCredits > 0) {
     await store.insertCreditTransaction({
-      user_id: insertedUser?._id?.toString?.() || insertedUser?.id,
+      user_id: user.id || user._id.toString(),
       amount: defaultSignupCredits,
       balance_after: defaultSignupCredits,
       type: 'signup_bonus',
-      note: 'Default free credits on signup',
+      note: 'Default free credits on signup verification',
       created_at,
       created_by: 'system',
     });
   }
 
-  const user = insertedUser?._id ? insertedUser : (await store.findUserByEmail(normalizedEmail));
-  const token = createToken({ sub: user.id || user._id.toString(), role: user.role, email: user.email });
-  res.status(201).json({ token, user: sanitizeUser(user) });
+  const updatedUser = await store.findUserByEmail(normalizedEmail);
+  const token = createToken({ sub: updatedUser.id || updatedUser._id.toString(), role: updatedUser.role, email: updatedUser.email });
+
+  res.status(200).json({ token, user: sanitizeUser(updatedUser) });
+});
+
+app.post('/api/auth/resend-signup-otp', async (req, res) => {
+  const { email } = req.body || {};
+  const normalizedEmail = normalizeEmail(email);
+
+  if (!normalizedEmail) {
+    return res.status(400).json({ message: 'Email is required' });
+  }
+
+  const user = await store.findUserByEmail(normalizedEmail);
+
+  if (!user || user.status !== 'pending') {
+    return res.status(400).json({ message: 'No pending registration found for this email' });
+  }
+
+  const { otp, otpHash, expiresAt } = createPasswordResetOtp();
+
+  await store.updateUserById(user.id || user._id.toString(), {
+    signup_otp_hash: otpHash,
+    signup_otp_expires_at: expiresAt,
+  });
+
+  await sendSignupOtpEmail({ to: normalizedEmail, otp, expiresInMinutes: passwordResetOtpExpiryMinutes });
+
+  res.status(200).json({ message: 'Verification OTP has been resent to your email.' });
 });
 
 app.post('/api/auth/login', async (req, res) => {
@@ -5860,6 +5943,10 @@ app.post('/api/auth/login', async (req, res) => {
 
   if (!user) {
     return res.status(401).json({ message: 'Invalid email or password' });
+  }
+
+  if (user.status === 'pending') {
+    return res.status(401).json({ message: 'Account verification pending. Please verify your email.' });
   }
 
   const isValid = await bcrypt.compare(password || '', user.password_hash || '');

@@ -85,6 +85,18 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const verifySignUpOtp = async (email, otp) => {
+    try {
+      setAuthError(null);
+      const data = await apiClient.post('/auth/verify-signup-otp', { email, otp });
+      applyAuthenticatedUser(data.user, data.token);
+      return data;
+    } catch (error) {
+      setAuthError(error.message);
+      throw error;
+    }
+  };
+
   const signIn = async (email, password) => {
     try {
       setIsLoadingAuth(true);
@@ -121,6 +133,7 @@ export const AuthProvider = ({ children }) => {
       authError,
       signIn,
       signUp,
+      verifySignUpOtp,
       signOut,
       checkUserAuth,
       navigateToLogin,
