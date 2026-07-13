@@ -266,7 +266,7 @@ export const BlogStudio = () => {
                           {/* Text details */}
                           <div className="mt-3 space-y-1">
                             <div className={`text-[11px] font-bold leading-tight transition-colors duration-300 ${
-                              step.done ? 'text-white' : isActiveStep ? 'text-primary' : 'text-muted-foreground group-hover:text-white'
+                              step.done ? 'text-foreground' : isActiveStep ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'
                             }`}>
                               {step.name}
                             </div>
