@@ -94,6 +94,10 @@ export default function VariantExpandedModal({
   hideExport = false, // History passes hideExport so Export doesn't show there,
                        // while Generate.jsx (which doesn't pass this prop) keeps it.
 }) {
+  const [showSharePopover, setShowSharePopover] = useState(false);
+  const [shareUrl, setShareUrl] = useState(null);
+  const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
+
   if (!variant) return null;
 
   const hasText = Boolean(String(variant.content || "").trim());
@@ -127,10 +131,6 @@ export default function VariantExpandedModal({
 
     await downloadFile(resolveAssetUrl(imageSource), filename);
   };
-
-  const [showSharePopover, setShowSharePopover] = useState(false);
-  const [shareUrl, setShareUrl] = useState(null);
-  const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
 
   const handleCopyLink = async () => {
     if (!shareUrl) return;
