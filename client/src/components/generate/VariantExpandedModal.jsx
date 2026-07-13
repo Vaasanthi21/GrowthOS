@@ -211,9 +211,10 @@ export default function VariantExpandedModal({
     const encodedUrl = encodeURIComponent(url);
     const encodedText = encodeURIComponent(caption || '');
     return {
+      whatsapp: `https://wa.me/?text=${encodedText}%20${encodedUrl}`,
+      twitter: `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedText}`,
       facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
       linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`,
-      twitter: `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedText}`,
     };
   };
 
