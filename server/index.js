@@ -5845,6 +5845,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 
   const password_hash = await bcrypt.hash(password, 10);
+  const created_at = nowIso();
   const creditSettings = await store.getCreditSettings();
   const defaultSignupCredits = normalizeCreditValue(creditSettings.default_signup_credits, normalizeCreditValue(defaultSignupCreditsEnv, 25));
   const { otp, otpHash, expiresAt } = createSignupVerificationOtp();
@@ -6013,12 +6014,32 @@ app.post('/api/auth/verify-email', async (req, res) => {
     return res.status(400).json({ message: 'Invalid or expired verification code' });
   }
 
-  // Update status to active and clear OTP
+  const creditSettings = await store.getCreditSettings();
+  const defaultSignupCredits = normalizeCreditValue(creditSettings.default_signup_credits, normalizeCreditValue(defaultSignupCreditsEnv, 25));
+  const created_at = nowIso();
+
+  // Update status to active, award credits, and clear OTP
   await store.updateUserById(user.id || user._id.toString(), {
     status: 'active',
+    credits_balance: defaultSignupCredits,
+    credits_total_allocated: defaultSignupCredits,
     signup_verification_otp_hash: null,
     signup_verification_otp_expires_at: null,
+    signup_otp_hash: null,
+    signup_otp_expires_at: null,
   });
+
+  if (defaultSignupCredits > 0) {
+    await store.insertCreditTransaction({
+      user_id: user.id || user._id.toString(),
+      amount: defaultSignupCredits,
+      balance_after: defaultSignupCredits,
+      type: 'signup_bonus',
+      note: 'Default free credits on signup verification',
+      created_at,
+      created_by: 'system',
+    });
+  }
 
   // Fetch updated user
   const activeUser = await store.findUserById(user.id || user._id.toString());
