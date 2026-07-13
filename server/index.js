@@ -5851,12 +5851,26 @@ app.post('/api/images/generate', authRequired, async (req, res) => {
                 const overlaidUrl = await overlayLogoOnImage({
                   imageUrl: s3Url,
                   logoUrl: company.logo,
-                  logoPlacement: 'bottom-right',
+                  logoPlacement: 'top-right',
                   logoScale: 0.15,
                 });
                 s3Url = overlaidUrl;
               } catch (overlayErr) {
                 console.error('[IMAGE GENERATION LOGO OVERLAY BACKGROUND FAILED]', overlayErr);
+              }
+            }
+            if (arthGangaLogoUrl) {
+              try {
+                console.log('[IMAGE GENERATION WATERMARK BACKGROUND] Overlaying system watermark:', arthGangaLogoUrl);
+                const overlaidUrl = await overlayLogoOnImage({
+                  imageUrl: s3Url,
+                  logoUrl: arthGangaLogoUrl,
+                  logoPlacement: 'bottom-right',
+                  logoScale: 0.25,
+                });
+                s3Url = overlaidUrl;
+              } catch (watermarkErr) {
+                console.error('[IMAGE GENERATION WATERMARK BACKGROUND FAILED]', watermarkErr);
               }
             }
             finalImageUrl = s3Url;
