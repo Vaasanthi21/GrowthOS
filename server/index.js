@@ -1536,6 +1536,19 @@ const getVideoJobStatusPayload = (job) => {
   };
 };
 
+const updateVideoJobInDb = async (jobId, updates) => {
+  if (!rawDb) return;
+  try {
+    await rawDb.collection('video_generations').updateOne(
+      { job_id: jobId },
+      { $set: updates },
+      { upsert: true }
+    );
+  } catch (err) {
+    console.error(`[VIDEO JOB DB] Failed to update job ${jobId}:`, err.message);
+  }
+};
+
 const updateVideoJob = (jobId, updates) => {
   const existing = videoGenerationJobs.get(jobId);
   if (!existing) {
@@ -1547,6 +1560,23 @@ const updateVideoJob = (jobId, updates) => {
     ...updates,
   };
   videoGenerationJobs.set(jobId, nextJob);
+
+  const dbUpdates = {};
+  if (updates.status) dbUpdates.status = updates.status;
+  if (updates.phase) dbUpdates.phase = updates.phase;
+  if (updates.progress !== undefined) dbUpdates.progress = updates.progress;
+  if (updates.videoId) dbUpdates.video_id = updates.videoId;
+  if (updates.error) dbUpdates.error = updates.error;
+  if (updates.completedAt) dbUpdates.completed_at = new Date(updates.completedAt).toISOString();
+  if (updates.result) {
+    if (updates.result.video_url) dbUpdates.video_url = updates.result.video_url;
+    if (updates.result.thumbnail_url) dbUpdates.thumbnail_url = updates.result.thumbnail_url;
+  }
+
+  if (Object.keys(dbUpdates).length > 0) {
+    updateVideoJobInDb(jobId, dbUpdates);
+  }
+
   return nextJob;
 };
 
@@ -1570,6 +1600,22 @@ const startVideoGenerationJob = ({ prompt, aspectRatio = '', logoUrl = '', logoP
     error: null,
     result: null,
   });
+
+  if (rawDb) {
+    rawDb.collection('video_generations').insertOne({
+      job_id: jobId,
+      video_id: jobId,
+      prompt,
+      status: 'queued',
+      phase: 'Queued for video generation',
+      progress: 5,
+      estimatedTotalMs,
+      startedAt,
+      logoUrl,
+      logoPlacement,
+      created_at: new Date(startedAt).toISOString(),
+    }).catch(err => console.error(`[VIDEO JOB DB] Failed to save startup metadata for ${jobId}:`, err.message));
+  }
 
   console.log(`[VIDEO JOB] queued ${jobId} prompt=${String(prompt).slice(0,80)}`);
 
@@ -2777,10 +2823,14 @@ const createMongoStore = (db) => ({
     });
   },
   async saveVideoGeneration(entry) {
-    const result = await db.collection('video_generations').insertOne(entry);
+    await db.collection('video_generations').updateOne(
+      { job_id: entry.job_id },
+      { $set: entry },
+      { upsert: true }
+    );
 
     return await db.collection('video_generations').findOne({
-      _id: result.insertedId,
+      job_id: entry.job_id,
     });
   },
 });
@@ -7551,19 +7601,109 @@ app.get('/api/video-status/:id', authRequired, async (req, res) => {
       return res.json(getVideoJobStatusPayload(localJob));
     }
 
+    if (rawDb) {
+      const dbRecord = await rawDb.collection('video_generations').findOne({ job_id: req.params.id });
+      if (dbRecord) {
+        if (dbRecord.status === 'completed' || dbRecord.status === 'failed') {
+          return res.json({
+            video_id: dbRecord.job_id,
+            status: dbRecord.status,
+            prompt: dbRecord.prompt,
+            phase: dbRecord.phase || (dbRecord.status === 'completed' ? 'Video generated' : 'Video generation failed'),
+            progress: dbRecord.status === 'completed' ? 100 : 99,
+            error: dbRecord.error || null,
+            video_url: dbRecord.video_url || null,
+            thumbnail_url: dbRecord.thumbnail_url || null,
+          });
+        }
+
+        const azureVideoId = dbRecord.video_id;
+        if (azureVideoId && azureVideoId !== dbRecord.job_id) {
+          console.log(`[VIDEO RESUME] Checking Azure status directly for ${azureVideoId} (internal ID: ${dbRecord.job_id})`);
+          
+          const statusUrl = `${normalizeAzureVideoEndpoint(azureVideoEndpoint)}/${encodeURIComponent(String(azureVideoId).trim())}`;
+          const payload = await fetchAzureVideoStatus({ statusUrl });
+          const normalizedStatus = normalizeAzureVideoStatus(payload);
+
+          if (normalizedStatus === 'completed' || normalizedStatus === 'succeeded') {
+            try {
+              console.log(`[VIDEO RESUME] Azure job complete. Process overlay and upload for ${dbRecord.job_id}`);
+              const assetResult = await saveAzureVideoAsset({
+                videoId: azureVideoId,
+                logoUrl: dbRecord.logoUrl || '',
+                logoPlacement: dbRecord.logoPlacement || 'none',
+              });
+
+              await rawDb.collection('video_generations').updateOne(
+                { job_id: dbRecord.job_id },
+                { $set: {
+                  status: 'completed',
+                  phase: 'Video generated',
+                  progress: 100,
+                  video_url: assetResult.videoUrl,
+                  thumbnail_url: assetResult.thumbnailUrl,
+                  completed_at: new Date().toISOString(),
+                }}
+              );
+
+              return res.json({
+                video_id: dbRecord.job_id,
+                status: 'completed',
+                prompt: dbRecord.prompt,
+                phase: 'Video generated',
+                progress: 100,
+                error: null,
+                video_url: assetResult.videoUrl,
+                thumbnail_url: assetResult.thumbnailUrl,
+              });
+            } catch (uploadErr) {
+              console.error(`[VIDEO RESUME] Failed to process video upload:`, uploadErr);
+              throw uploadErr;
+            }
+          } else if (normalizedStatus === 'failed') {
+            const errorMsg = payload?.error?.message || payload?.message || 'Video generation failed on Azure';
+            await rawDb.collection('video_generations').updateOne(
+              { job_id: dbRecord.job_id },
+              { $set: { status: 'failed', phase: 'Video generation failed', error: errorMsg }}
+            );
+
+            return res.json({
+              video_id: dbRecord.job_id,
+              status: 'failed',
+              prompt: dbRecord.prompt,
+              phase: 'Video generation failed',
+              progress: 99,
+              error: errorMsg,
+              video_url: null,
+            });
+          } else {
+            return res.json({
+              video_id: dbRecord.job_id,
+              status: 'processing',
+              prompt: dbRecord.prompt,
+              phase: 'Azure is rendering the video',
+              progress: 60,
+              error: null,
+              video_url: null,
+            });
+          }
+        }
+      }
+    }
+
     const result = await getAzureVideoStatusById({ videoId: req.params.id });
     res.json(result);
-    } catch (error) {
-      console.error('Video status error:', error);
+  } catch (error) {
+    console.error('Video status error:', error);
 
-      return res.json({
-        video_id: req.params.id,
-        status: 'failed',
-        phase: 'Azure video status check failed',
-        retrying: false,
-        error: error.message || 'Failed to fetch video status',
-      });
-    }
+    return res.json({
+      video_id: req.params.id,
+      status: 'failed',
+      phase: 'Azure video status check failed',
+      retrying: false,
+      error: error.message || 'Failed to fetch video status',
+    });
+  }
 });
 
 // Temporary debug endpoint: list in-memory video jobs (admin use only)
