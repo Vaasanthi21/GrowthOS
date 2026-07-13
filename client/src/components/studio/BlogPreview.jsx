@@ -377,6 +377,8 @@ export const BlogPreview = ({ blogId, onBack }) => {
     }
   });
 
+  const [refetchIntervalValue, setRefetchIntervalValue] = useState(false);
+
   // 3. Fetch images for cover art
   const { data: blogImages = [] } = useQuery({
     queryKey: ['images', blogId],
@@ -385,8 +387,18 @@ export const BlogPreview = ({ blogId, onBack }) => {
       const response = await api.get(`/images/${blogId}`);
       return response.data.data || [];
     },
-    enabled: !!blogId
+    enabled: !!blogId,
+    refetchInterval: refetchIntervalValue
   });
+
+  useEffect(() => {
+    const hasGenerating = blogImages.some(img => img.imageUrl === 'generating');
+    if (hasGenerating) {
+      setRefetchIntervalValue(3000);
+    } else {
+      setRefetchIntervalValue(false);
+    }
+  }, [blogImages]);
 
   const coverImageTaskId = blogId && activeTab ? `preview_image_generate_${blogId}_${activeTab}` : null;
   const adaptTaskId = blogId && activeTab ? `preview_adapt_${blogId}_${activeTab}` : null;
@@ -1309,8 +1321,10 @@ export const BlogPreview = ({ blogId, onBack }) => {
         <div className="bg-card text-card-foreground border border-border/60 rounded-2xl p-4 w-full max-w-4xl flex flex-col sm:flex-row items-center justify-between gap-4 select-none mx-auto shadow-sm">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-secondary border border-border flex items-center justify-center text-primary relative overflow-hidden shrink-0 select-none">
-              {resolvedCoverImageUrl ? (
+              {resolvedCoverImageUrl && resolvedCoverImageUrl !== 'generating' ? (
                 <img src={resolvedCoverImageUrl} alt="Cover preview" className="w-full h-full object-cover" />
+              ) : resolvedCoverImageUrl === 'generating' ? (
+                <Loader2 className="w-5 h-5 animate-spin text-primary" />
               ) : (
                 <ImageIcon size={20} className="text-muted-foreground/80" />
               )}
@@ -1331,7 +1345,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
           </div>
 
           <div className="shrink-0 flex items-center gap-2">
-            {resolvedCoverImageUrl && (
+            {resolvedCoverImageUrl && resolvedCoverImageUrl !== 'generating' && (
               <button
                 onClick={handleDownloadCoverImage}
                 className="px-4 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground border border-border font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
@@ -1743,7 +1757,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
                           title={renderedRecord.title}
                           copy={cleanCopyWithoutTrailingHashtags(cleanPlatformCopy(renderedRecord.copy, renderedRecord.title || blogRecord.title))}
                           hashtags={renderedRecord.hashtags}
-                          imageUrl={resolvedCoverImageUrl}
+                          imageUrl={resolvedCoverImageUrl === 'generating' ? null : resolvedCoverImageUrl}
                         />
                       )}
 
@@ -1756,7 +1770,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
                             title={renderedRecord.title}
                             subtitle={subtitle}
                             copy={copyWithCodeBlockTables}
-                            imageUrl={resolvedCoverImageUrl}
+                            imageUrl={resolvedCoverImageUrl === 'generating' ? null : resolvedCoverImageUrl}
                           />
                         );
                       })()}
@@ -1768,7 +1782,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
                             title={renderedRecord.title}
                             subtitle={subtitle}
                             copy={cleanPlatformCopy(cleanCopy, renderedRecord.title || blogRecord.title)}
-                            imageUrl={resolvedCoverImageUrl}
+                            imageUrl={resolvedCoverImageUrl === 'generating' ? null : resolvedCoverImageUrl}
                           />
                         );
                       })()}
@@ -1778,7 +1792,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
                           title={renderedRecord.title}
                           copy={cleanCopyWithoutTrailingHashtags(cleanPlatformCopy(renderedRecord.copy, renderedRecord.title || blogRecord.title))}
                           hashtags={renderedRecord.hashtags}
-                          imageUrl={resolvedCoverImageUrl}
+                          imageUrl={resolvedCoverImageUrl === 'generating' ? null : resolvedCoverImageUrl}
                         />
                       )}
 
@@ -1790,7 +1804,7 @@ export const BlogPreview = ({ blogId, onBack }) => {
                             title={renderedRecord.title}
                             subtitle={displaySubtitle}
                             copy={cleanPlatformCopy(cleanCopy, renderedRecord.title || blogRecord.title)}
-                            imageUrl={resolvedCoverImageUrl}
+                            imageUrl={resolvedCoverImageUrl === 'generating' ? null : resolvedCoverImageUrl}
                           />
                         );
                       })()}
