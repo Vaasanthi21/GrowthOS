@@ -33,9 +33,12 @@ export default function TopNav({ onToggleSidebar }) {
 
   useEffect(() => {
     if (user?.email) {
+      const isNewUser = localStorage.getItem("isNewUserSignUp");
       const hasSeen = localStorage.getItem(`hasSeenUserGuide_${user.email}`);
-      if (!hasSeen) {
+      if (isNewUser === "true" && !hasSeen) {
         setGuideOpen(true);
+        // Clear the signup flag so it doesn't trigger on subsequent login sessions or page reloads
+        localStorage.removeItem("isNewUserSignUp");
       }
     }
   }, [user?.email]);

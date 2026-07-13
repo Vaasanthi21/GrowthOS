@@ -116,6 +116,7 @@ export default function Register() {
     setIsLoading(true);
     try {
       await verifyEmail(registeredEmail, verificationOtp);
+      localStorage.setItem("isNewUserSignUp", "true");
       toast({
         title: "Verified successfully!",
         description: "Welcome to Creative Studio OS!",
