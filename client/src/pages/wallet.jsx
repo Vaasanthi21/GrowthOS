@@ -41,8 +41,8 @@ const CREDIT_COSTS = [
   { type: "Text Only", credits: 1 },
   { type: "Image", credits: 3 },
   { type: "Text + Image", credits: 4 },
-  { type: "Video", credits: 10 },
-  { type: "Text + Video", credits: 11 },
+  { type: "Video", credits: 69 },
+  { type: "Text + Video", credits: 70 },
 ];
 
 const BLOG_CREDIT_COSTS = [
