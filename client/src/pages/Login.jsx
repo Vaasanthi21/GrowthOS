@@ -5,7 +5,7 @@ import { apiClient, tokenStorage } from "@/api/apiClient";
 import { useAuth } from "@/lib/AuthContext";
 import OtpSplitInput from "@/components/ui/OtpSplitInput";
 
-export default function Login() {
+export default function Login({ initialAuthMode = "login" }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { signIn, verifyEmail, resendVerificationOtp, isAuthenticated } = useAuth();
@@ -13,7 +13,7 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [authMode, setAuthMode] = useState("login"); // login | forgot | verify-otp | reset-password | verify-signup
+  const [authMode, setAuthMode] = useState(initialAuthMode); // login | forgot | verify-otp | reset-password | verify-signup
   const [resetEmail, setResetEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");

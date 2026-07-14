@@ -72,8 +72,8 @@ const AuthenticatedApp = () => {
         <Route path="/blog/:slug" element={<BlogPostPage />} />
         <Route path="/faq" element={<FAQPage />} />
         <Route path="/contact" element={<ContactPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<Login initialAuthMode="forgot" />} />
         <Route path="/register" element={<Register />} />
         <Route element={<SuperAdminLayout />}>
           <Route path="/superadmin/dashboard" element={<SuperAdminDashboard />} />
@@ -95,6 +95,7 @@ const AuthenticatedApp = () => {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<Login initialAuthMode="forgot" />} />
       <Route element={<AdminRoute />}>
         <Route path="/admin" element={<AdminDashboard />} />
       </Route>
