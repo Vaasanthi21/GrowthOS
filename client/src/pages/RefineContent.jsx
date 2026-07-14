@@ -1273,21 +1273,20 @@ export default function RefineContent() {
     }
   };
 
-  const handleShareCurrentImage = async () => {
-    const imageSource =
-      currentContent?.image_url ||
-      (currentContent?.image_base64
-        ? `data:image/png;base64,${currentContent.image_base64}`
-        : null);
-    if (!imageSource) {
+  const handleShareCurrentAsset = async (type = "image") => {
+    const assetUrl = type === "video" 
+      ? currentContent?.video_url 
+      : (currentContent?.image_url || (currentContent?.image_base64 ? `data:image/png;base64,${currentContent.image_base64}` : null));
+
+    if (!assetUrl) {
       return;
     }
 
     try {
-      let finalShareUrl = imageSource;
-      const isExternalUrl = /^https?:\/\//i.test(imageSource);
+      let finalShareUrl = assetUrl;
+      const isExternalUrl = /^https?:\/\//i.test(assetUrl);
 
-      if (isExternalUrl && (imageSource.includes('.amazonaws.com') || imageSource.includes('s3.'))) {
+      if (isExternalUrl && (assetUrl.includes('.amazonaws.com') || assetUrl.includes('s3.'))) {
         try {
           const token = tokenStorage.getUserToken();
           const shareResponse = await fetch(`${API_ORIGIN}/api/create-share-link`, {
@@ -1297,9 +1296,10 @@ export default function RefineContent() {
               Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
-              assetUrl: imageSource,
-              title: currentContent?.title || "Generated image",
-              caption: currentContent?.image_revised_prompt || currentContent?.title || "Check out this visual",
+              assetUrl,
+              title: currentContent?.title || (type === "video" ? "Generated video" : "Generated image"),
+              caption: currentContent?.content || currentContent?.caption || currentContent?.text || (type === "video" ? currentContent?.video_prompt : currentContent?.image_revised_prompt || currentContent?.image_prompt) || "Check out this visual",
+              thumbnailUrl: type === "video" ? currentContent?.video_thumbnail || null : null,
             }),
           });
 
@@ -1316,18 +1316,19 @@ export default function RefineContent() {
 
       setShareDialogData({
         url: finalShareUrl,
-        title: currentContent?.title || "Generated image",
+        title: currentContent?.title || (type === "video" ? "Generated video" : "Generated image"),
         text:
           currentContent?.content ||
-          currentContent?.image_revised_prompt ||
-          currentContent?.image_prompt ||
+          currentContent?.caption ||
+          currentContent?.text ||
+          (type === "video" ? currentContent?.video_prompt : currentContent?.image_revised_prompt || currentContent?.image_prompt) ||
           currentContent?.title ||
-          "Generated image",
+          (type === "video" ? "Generated video" : "Generated image"),
       });
     } catch (error) {
       toast({
-        title: "Image share failed",
-        description: "Unable to share this image right now.",
+        title: `${type === "video" ? "Video" : "Image"} share failed`,
+        description: `Unable to share this ${type} right now.`,
         variant: "destructive",
         duration: 2500,
       });
@@ -1410,17 +1411,20 @@ export default function RefineContent() {
     }
   };
 
-  const handleShareMessageImage = async (message) => {
-    const imageSource = getMessageImageSource(message);
-    if (!imageSource) {
+  const handleShareMessageAsset = async (message, type = "image") => {
+    const assetUrl = type === "video" 
+      ? message?.video_url 
+      : getMessageImageSource(message);
+
+    if (!assetUrl) {
       return;
     }
 
     try {
-      let finalShareUrl = imageSource;
-      const isExternalUrl = /^https?:\/\//i.test(imageSource);
+      let finalShareUrl = assetUrl;
+      const isExternalUrl = /^https?:\/\//i.test(assetUrl);
 
-      if (isExternalUrl && (imageSource.includes('.amazonaws.com') || imageSource.includes('s3.'))) {
+      if (isExternalUrl && (assetUrl.includes('.amazonaws.com') || assetUrl.includes('s3.'))) {
         try {
           const token = tokenStorage.getUserToken();
           const shareResponse = await fetch(`${API_ORIGIN}/api/create-share-link`, {
@@ -1430,9 +1434,10 @@ export default function RefineContent() {
               Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
-              assetUrl: imageSource,
-              title: message?.title || currentContent?.title || "Generated image",
-              caption: message?.image_revised_prompt || message?.image_prompt || "Check out this visual",
+              assetUrl,
+              title: message?.title || currentContent?.title || (type === "video" ? "Generated video" : "Generated image"),
+              caption: message?.content || message?.caption || message?.text || (type === "video" ? message?.video_prompt : message?.image_revised_prompt || message?.image_prompt) || "Check out this visual",
+              thumbnailUrl: type === "video" ? message?.video_thumbnail || null : null,
             }),
           });
 
@@ -1449,17 +1454,19 @@ export default function RefineContent() {
 
       setShareDialogData({
         url: finalShareUrl,
-        title: message?.title || currentContent?.title || "Generated image",
+        title: message?.title || currentContent?.title || (type === "video" ? "Generated video" : "Generated image"),
         text:
-          message?.image_revised_prompt ||
-          message?.image_prompt ||
           message?.content ||
-          "Generated image",
+          message?.caption ||
+          message?.text ||
+          (type === "video" ? message?.video_prompt : message?.image_revised_prompt || message?.image_prompt) ||
+          message?.title ||
+          (type === "video" ? "Generated video" : "Generated image"),
       });
     } catch (error) {
       toast({
-        title: "Image share failed",
-        description: "Unable to share this image right now.",
+        title: `${type === "video" ? "Video" : "Image"} share failed`,
+        description: `Unable to share this ${type} right now.`,
         variant: "destructive",
         duration: 2500,
       });
@@ -1566,16 +1573,28 @@ export default function RefineContent() {
                 />
               ) : null}
             </div>
-            <div className="flex items-center justify-end gap-2 border-t border-zinc-800 px-6 py-4">
+            <div className="flex items-center justify-end gap-2 border-t border-border/70 px-6 py-4">
               {currentContent?.video_url ? (
-                <a
-                  href={currentContent.video_url}
-                  download
-                  className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-                >
-                  <Download className="h-4 w-4" />
-                  Download video
-                </a>
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => handleShareCurrentAsset("video")}
+                  >
+                    <Share2 className="h-4 w-4" />
+                    Share video
+                  </Button>
+                  <a
+                    href={currentContent.video_url}
+                    download
+                    className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download video
+                  </a>
+                </>
               ) : (
                 <>
                   <Button
@@ -1583,7 +1602,7 @@ export default function RefineContent() {
                     variant="outline"
                     size="sm"
                     className="gap-2"
-                    onClick={handleShareCurrentImage}
+                    onClick={() => handleShareCurrentAsset("image")}
                   >
                     <Share2 className="h-4 w-4" />
                     Share image
@@ -1740,14 +1759,26 @@ export default function RefineContent() {
                       )}
                       <div className="flex items-center justify-end gap-2 border-t border-border/70 bg-card/80 px-3 py-2">
                         {message.video_url ? (
-                          <a
-                            href={message.video_url}
-                            download
-                            className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90"
-                          >
-                            <Download className="h-3.5 w-3.5" />
-                            Download video
-                          </a>
+                          <>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+                              onClick={() => handleShareMessageAsset(message, "video")}
+                            >
+                              <Share2 className="h-3.5 w-3.5" />
+                              Share video
+                            </Button>
+                            <a
+                              href={message.video_url}
+                              download
+                              className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              Download video
+                            </a>
+                          </>
                         ) : (
                           <>
                             <Button
@@ -1755,7 +1786,7 @@ export default function RefineContent() {
                               variant="ghost"
                               size="sm"
                               className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
-                              onClick={() => handleShareMessageImage(message)}
+                              onClick={() => handleShareMessageAsset(message, "image")}
                             >
                               <Share2 className="h-3.5 w-3.5" />
                               Share image
@@ -1806,6 +1837,16 @@ export default function RefineContent() {
                             className="max-h-[420px] w-full object-contain bg-black"
                           />
                           <div className="flex items-center justify-end gap-2 border-t border-border/70 bg-card/80 px-3 py-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+                              onClick={() => handleShareMessageAsset(message, "video")}
+                            >
+                              <Share2 className="h-3.5 w-3.5" />
+                              Share video
+                            </Button>
                             <a
                               href={message.video_url}
                               download
@@ -1841,7 +1882,7 @@ export default function RefineContent() {
                               variant="ghost"
                               size="sm"
                               className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
-                              onClick={() => handleShareMessageImage(message)}
+                              onClick={() => handleShareMessageAsset(message, "image")}
                             >
                               <Share2 className="h-3.5 w-3.5" />
                               Share image
