@@ -143,14 +143,14 @@ export default function ImageStudio() {
       },
       generatedContent: {
         image_url: generatedImage,
-        content: '',
+        content: includeCaption ? (generatedCaption || "") : "",
       },
       ragContext: '',
       originalPrompt: prompt,
       messages: [
         {
           role: "assistant",
-          content: "",
+          content: includeCaption ? (generatedCaption || "") : "",
           image_url: generatedImage,
           image_prompt: prompt,
         },
