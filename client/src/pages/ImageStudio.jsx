@@ -118,7 +118,7 @@ export default function ImageStudio() {
 
     const selectedPersonaObj = personasList?.find(p => p.id === selectedPersona) || null;
     const activePersonaKey = selectedPersona || 'linkedin';
-    const selectedFormat = formats.find(f => f.id === outputFormat) || formats[0];
+    const selectedFormat = OUTPUT_FORMATS.find(f => f.value === outputFormat) || OUTPUT_FORMATS[0];
 
     const refineState = {
       activePersona: activePersonaKey,
