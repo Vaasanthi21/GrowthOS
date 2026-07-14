@@ -17,6 +17,8 @@ import {
   Image as ImageIcon,
   Loader2,
   Paperclip,
+  Facebook,
+  Linkedin,
   Send,
   Share2,
   Sparkles,
@@ -460,6 +462,7 @@ export default function RefineContent() {
   const [isImageGenerationPending, setIsImageGenerationPending] =
     useState(false);
   const [imageGenerationStatus, setImageGenerationStatus] = useState(null);
+  const [shareDialogData, setShareDialogData] = useState(null);
   const latestRefineHistoryIdRef = useRef(null);
   const sessionRootHistoryIdRef = useRef(
     initialState?.sessionRootHistoryId || initialState?.historyId || null,
@@ -1304,25 +1307,14 @@ export default function RefineContent() {
         }
       }
 
-      if (navigator.share) {
-        await navigator.share({
-          title: currentContent?.title || "Generated image",
-          text:
-            currentContent?.image_revised_prompt ||
-            currentContent?.image_prompt ||
-            currentContent?.title ||
-            "Generated image",
-          url: finalShareUrl,
-        });
-        return;
-      }
-
-      await navigator.clipboard.writeText(finalShareUrl);
-      toast({
-        title: "Image link copied",
-        description:
-          "Native share is unavailable here, so the image link was copied instead.",
-        duration: 2000,
+      setShareDialogData({
+        url: finalShareUrl,
+        title: currentContent?.title || "Generated image",
+        text:
+          currentContent?.image_revised_prompt ||
+          currentContent?.image_prompt ||
+          currentContent?.title ||
+          "Generated image",
       });
     } catch (error) {
       toast({
@@ -1447,25 +1439,14 @@ export default function RefineContent() {
         }
       }
 
-      if (navigator.share) {
-        await navigator.share({
-          title: message?.title || currentContent?.title || "Generated image",
-          text:
-            message?.image_revised_prompt ||
-            message?.image_prompt ||
-            message?.content ||
-            "Generated image",
-          url: finalShareUrl,
-        });
-        return;
-      }
-
-      await navigator.clipboard.writeText(finalShareUrl);
-      toast({
-        title: "Image link copied",
-        description:
-          "Native share is unavailable here, so the image link was copied instead.",
-        duration: 2000,
+      setShareDialogData({
+        url: finalShareUrl,
+        title: message?.title || currentContent?.title || "Generated image",
+        text:
+          message?.image_revised_prompt ||
+          message?.image_prompt ||
+          message?.content ||
+          "Generated image",
       });
     } catch (error) {
       toast({
@@ -1612,6 +1593,76 @@ export default function RefineContent() {
                 </>
               )}
             </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={!!shareDialogData} onOpenChange={(open) => !open && setShareDialogData(null)}>
+          <DialogContent className="max-w-md border-border/70 bg-background/98 p-6">
+            <DialogHeader className="mb-4">
+              <DialogTitle className="font-display text-lg text-center">Share Visual</DialogTitle>
+            </DialogHeader>
+            {shareDialogData && (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-xs break-all select-all font-mono">
+                  {shareDialogData.url}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <a
+                    href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareDialogData.url)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setShareDialogData(null)}
+                    className="flex items-center justify-center gap-2 rounded-lg border border-border/70 bg-card hover:bg-muted py-2.5 text-sm font-medium transition-colors"
+                  >
+                    <Linkedin className="h-4 w-4 text-[#0077b5]" />
+                    LinkedIn
+                  </a>
+                  <a
+                    href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareDialogData.text)}&url=${encodeURIComponent(shareDialogData.url)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setShareDialogData(null)}
+                    className="flex items-center justify-center gap-2 rounded-lg border border-border/70 bg-card hover:bg-muted py-2.5 text-sm font-medium transition-colors"
+                  >
+                    Twitter / X
+                  </a>
+                  <a
+                    href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareDialogData.url)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setShareDialogData(null)}
+                    className="flex items-center justify-center gap-2 rounded-lg border border-border/70 bg-card hover:bg-muted py-2.5 text-sm font-medium transition-colors"
+                  >
+                    <Facebook className="h-4 w-4 text-[#1877f2]" />
+                    Facebook
+                  </a>
+                  <a
+                    href={`https://wa.me/?text=${encodeURIComponent(shareDialogData.text + ' ' + shareDialogData.url)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setShareDialogData(null)}
+                    className="flex items-center justify-center gap-2 rounded-lg border border-border/70 bg-card hover:bg-muted py-2.5 text-sm font-medium transition-colors"
+                  >
+                    WhatsApp
+                  </a>
+                </div>
+                <Button
+                  onClick={() => {
+                    navigator.clipboard.writeText(shareDialogData.url);
+                    toast({
+                      title: "Link copied",
+                      description: "The share link has been copied to your clipboard.",
+                      duration: 2000,
+                    });
+                    setShareDialogData(null);
+                  }}
+                  className="w-full mt-2"
+                >
+                  <Copy className="h-4 w-4 mr-2" />
+                  Copy Share Link
+                </Button>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
 
