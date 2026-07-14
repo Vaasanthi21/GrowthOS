@@ -176,31 +176,14 @@ const isImageOnlyContentType = (contentType) => {
 };
 
 const normalizeImageOnlyContent = (content, contentType) => {
-  if (!isImageOnlyContentType(contentType) || !content) {
-    return content;
-  }
-
-  return {
-    ...content,
-    content: "",
-  };
+  return content;
 };
 
 const normalizeImageOnlyMessages = (messages, contentType) => {
-  if (!isImageOnlyContentType(contentType) || !Array.isArray(messages)) {
-    return Array.isArray(messages) ? messages.filter(Boolean) : [];
+  if (!Array.isArray(messages)) {
+    return [];
   }
-
-  return messages.filter(Boolean).map((message) => {
-    if (message?.role !== "assistant") {
-      return message;
-    }
-
-    return {
-      ...message,
-      content: message.image_url || message.image_base64 ? "" : message.content,
-    };
-  });
+  return messages.filter(Boolean);
 };
 
 const formatDuration = (value) => {
@@ -986,7 +969,7 @@ export default function RefineContent() {
       if (imageOnlyRefinement) {
         nextContent = {
           ...currentContent,
-          content: "",
+          content: currentContent?.content || "",
           title: currentContent?.title || params.topic || "Generated visual",
           image_url: null,
           image_base64: null,
@@ -1021,7 +1004,7 @@ export default function RefineContent() {
 
       const assistantMessage = {
         role: "assistant",
-        content: imageOnlyRefinement ? "" : nextContent.content || "",
+        content: nextContent.content || "",
         image_url: nextContent.image_url || null,
         image_base64: nextContent.image_base64 || null,
         image_prompt: nextContent.image_prompt || null,
