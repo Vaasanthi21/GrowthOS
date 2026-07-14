@@ -1542,9 +1542,9 @@ export default function RefineContent() {
 
       <div className="space-y-4">
         <Dialog open={isImageViewerOpen} onOpenChange={setIsImageViewerOpen}>
-          <DialogContent className="max-w-5xl overflow-hidden border-border/70 bg-background p-0">
-            <DialogHeader className="border-b border-border/70 px-6 py-4">
-              <DialogTitle className="font-display text-lg">
+          <DialogContent className="max-w-5xl overflow-hidden border-zinc-800 bg-[#16181d] text-white p-0">
+            <DialogHeader className="border-b border-zinc-800 px-6 py-4">
+              <DialogTitle className="font-display text-lg text-white">
                 {currentContent?.title || "Generated visual"}
               </DialogTitle>
             </DialogHeader>
@@ -1566,7 +1566,7 @@ export default function RefineContent() {
                 />
               ) : null}
             </div>
-            <div className="flex items-center justify-end gap-2 border-t border-border/70 px-6 py-4">
+            <div className="flex items-center justify-end gap-2 border-t border-zinc-800 px-6 py-4">
               {currentContent?.video_url ? (
                 <a
                   href={currentContent.video_url}
@@ -1605,20 +1605,20 @@ export default function RefineContent() {
         </Dialog>
 
         <Dialog open={!!shareDialogData} onOpenChange={(open) => !open && setShareDialogData(null)}>
-          <DialogContent className="max-w-md border-border/70 bg-background p-6">
+          <DialogContent className="max-w-md border-zinc-800 bg-[#16181d] text-white p-6">
             <DialogHeader className="mb-4">
-              <DialogTitle className="font-display text-lg text-center">Share Visual</DialogTitle>
+              <DialogTitle className="font-display text-lg text-center text-white">Share Visual</DialogTitle>
             </DialogHeader>
             {shareDialogData && (
               <div className="space-y-4">
-                <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-xs break-all select-all font-mono">
+                <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-xs break-all select-all font-mono text-zinc-300">
                   {shareDialogData.url}
                 </div>
 
                 {shareDialogData.text && (
-                  <div className="space-y-1.5 rounded-lg border border-border/70 bg-muted/10 p-3">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-                      <span className="font-semibold text-foreground/80">Social Caption</span>
+                  <div className="space-y-1.5 rounded-lg border border-zinc-800 bg-zinc-900/30 p-3">
+                    <div className="flex items-center justify-between text-xs text-zinc-400 mb-1">
+                      <span className="font-semibold text-zinc-200">Social Caption</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -1630,7 +1630,7 @@ export default function RefineContent() {
                         Copy Caption Text
                       </button>
                     </div>
-                    <div className="text-xs max-h-24 overflow-y-auto whitespace-pre-wrap select-all scrollbar-thin">
+                    <div className="text-xs max-h-24 overflow-y-auto whitespace-pre-wrap select-all scrollbar-thin text-zinc-300">
                       {shareDialogData.text}
                     </div>
                   </div>
@@ -1642,7 +1642,7 @@ export default function RefineContent() {
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => setShareDialogData(null)}
-                    className="flex items-center justify-center gap-2 rounded-lg border border-border/70 bg-card hover:bg-muted py-2.5 text-sm font-medium transition-colors"
+                    className="flex items-center justify-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 py-2.5 text-sm font-medium text-white transition-colors"
                   >
                     <Linkedin className="h-4 w-4 text-[#0077b5]" />
                     LinkedIn
@@ -1652,7 +1652,7 @@ export default function RefineContent() {
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => setShareDialogData(null)}
-                    className="flex items-center justify-center gap-2 rounded-lg border border-border/70 bg-card hover:bg-muted py-2.5 text-sm font-medium transition-colors"
+                    className="flex items-center justify-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 py-2.5 text-sm font-medium text-white transition-colors"
                   >
                     Twitter / X
                   </a>
@@ -1661,7 +1661,7 @@ export default function RefineContent() {
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => setShareDialogData(null)}
-                    className="flex items-center justify-center gap-2 rounded-lg border border-border/70 bg-card hover:bg-muted py-2.5 text-sm font-medium transition-colors"
+                    className="flex items-center justify-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 py-2.5 text-sm font-medium text-white transition-colors"
                   >
                     <Facebook className="h-4 w-4 text-[#1877f2]" />
                     Facebook
@@ -1671,7 +1671,7 @@ export default function RefineContent() {
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => setShareDialogData(null)}
-                    className="flex items-center justify-center gap-2 rounded-lg border border-border/70 bg-card hover:bg-muted py-2.5 text-sm font-medium transition-colors"
+                    className="flex items-center justify-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 py-2.5 text-sm font-medium text-white transition-colors"
                   >
                     WhatsApp
                   </a>
