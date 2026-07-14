@@ -118,6 +118,7 @@ export default function ImageStudio() {
 
     const selectedPersonaObj = personasList?.find(p => p.id === selectedPersona) || null;
     const activePersonaKey = selectedPersona || 'linkedin';
+    const selectedFormat = formats.find(f => f.id === outputFormat) || formats[0];
 
     const refineState = {
       activePersona: activePersonaKey,
@@ -132,6 +133,13 @@ export default function ImageStudio() {
           name: selectedPersonaObj.name,
           company: selectedPersonaObj.company || selectedPersonaObj.name,
         } : null,
+        logoPlacement: logoPlacement || 'none',
+        useOriginalLogo: true,
+        aspectRatio: selectedFormat?.aspectRatioBucket || null,
+        width: selectedFormat?.width || null,
+        height: selectedFormat?.height || null,
+        outputWidth: selectedFormat?.width || null,
+        outputHeight: selectedFormat?.height || null,
       },
       generatedContent: {
         image_url: generatedImage,
