@@ -200,10 +200,10 @@ export default function ImageStudio() {
     try {
       const token = tokenStorage.getUserToken();
       const captionRes = await apiClient.post('/generate-caption', { prompt: trimmed }, token);
-      setGeneratedCaption(captionRes?.caption || trimmed);
+      setGeneratedCaption(captionRes?.caption || "");
     } catch (e) {
       console.error("Failed to generate caption:", e);
-      setGeneratedCaption(trimmed);
+      setGeneratedCaption("");
     } finally {
       setIsGeneratingCaption(false);
     }

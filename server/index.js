@@ -7015,8 +7015,11 @@ app.post('/api/generate-caption', authRequired, async (req, res) => {
     const config = getTextGenerationConfig();
     console.log('[GENERATE CAPTION CONFIG] config apiKey exists:', !!config.apiKey, 'apiUrl:', config.apiUrl);
     if (!config.apiKey || !config.apiUrl) {
-      console.log('[GENERATE CAPTION] Missing config, falling back to prompt');
-      return res.json({ caption: prompt });
+      console.log('[GENERATE CAPTION] Missing config, falling back to brand copy');
+      const brandDefault = company?.companyName 
+        ? `Excited to share our latest update from ${company.companyName}! Discover more opportunities with us. #Growth #${company.companyName.replace(/\s+/g, '')}`
+        : `Excited to share our latest update! #GrowthOS`;
+      return res.json({ caption: brandDefault });
     }
 
     const headers = { 'Content-Type': 'application/json' };
@@ -7057,13 +7060,19 @@ app.post('/api/generate-caption', authRequired, async (req, res) => {
     const data = await response.json().catch(() => ({}));
     const content = data?.choices?.[0]?.message?.content;
     if (!content) {
-      return res.json({ caption: prompt });
+      const brandDefault = company?.companyName 
+        ? `Excited to share our latest update from ${company.companyName}! Discover more opportunities with us. #Growth #${company.companyName.replace(/\s+/g, '')}`
+        : `Excited to share our latest update! #GrowthOS`;
+      return res.json({ caption: brandDefault });
     }
 
     res.json({ caption: String(content).trim().replace(/^["']|["']$/g, '') });
   } catch (error) {
     console.error('Failed to generate caption:', error);
-    res.json({ caption: prompt });
+    const brandDefault = company?.companyName 
+      ? `Excited to share our latest update from ${company.companyName}! Discover more opportunities with us. #Growth #${company.companyName.replace(/\s+/g, '')}`
+      : `Excited to share our latest update! #GrowthOS`;
+    res.json({ caption: brandDefault });
   }
 });
 
