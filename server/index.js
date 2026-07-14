@@ -7483,9 +7483,20 @@ app.get('/api/public-asset/:id', async (req, res) => {
     if (!record) {
       return res.status(404).send('Not found');
     }
-    return res.redirect(record.asset_url);
+    
+    const response = await fetch(record.asset_url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch original asset: ${response.statusText}`);
+    }
+
+    const contentType = response.headers.get('content-type') || 'image/png';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=31536000');
+
+    const buffer = await response.arrayBuffer();
+    return res.send(Buffer.from(buffer));
   } catch (error) {
-    console.error('[PUBLIC ASSET REDIRECT FAILED]', error?.message || error);
+    console.error('[PUBLIC ASSET PROXY FAILED]', error?.message || error);
     res.status(500).send('Failed to load asset');
   }
 });
