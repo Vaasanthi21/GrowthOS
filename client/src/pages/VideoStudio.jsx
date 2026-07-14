@@ -210,6 +210,7 @@ export default function VideoStudio() {
           name: selectedPersonaObj.name,
           company: selectedPersonaObj.company || selectedPersonaObj.name,
         } : null,
+      },
       generatedContent: {
         video_url: generatedVideo,
         content: includeCaption ? (generatedCaption || "") : "",
