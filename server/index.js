@@ -7371,8 +7371,8 @@ app.get('/api/generate-image/:jobId/status', authRequired, async (req, res) => {
 app.post('/api/create-share-link', authRequired, async (req, res) => {
   try {
     const assetUrl = String(req.body?.assetUrl || '').trim();
-    const caption = String(req.body?.caption || '').trim().slice(0, 300);
-    const title = String(req.body?.title || 'Check out this asset').trim().slice(0, 120);
+    const caption = String(req.body?.caption || '').trim().slice(0, 4000);
+    const title = String(req.body?.title || 'Check out this asset').trim().slice(0, 200);
 
     if (!assetUrl) {
       return res.status(400).json({ message: 'assetUrl is required' });
@@ -7461,7 +7461,10 @@ app.get('/api/share/:id', async (req, res) => {
   <meta property="og:image" content="${ogImage}" />
   <meta property="og:url" content="${shareUrl}" />
   <meta property="og:type" content="${isVideo ? 'video.other' : 'website'}" />
-  <meta name="twitter:card" content="summary_large_image" />${videoTags}
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${escapeHtml(record.title)}" />
+  <meta name="twitter:description" content="${escapeHtml(record.caption)}" />
+  <meta name="twitter:image" content="${ogImage}" />${videoTags}
   <script>
     window.location.href = "${imageProxyUrl}";
   </script>

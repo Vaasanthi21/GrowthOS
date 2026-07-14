@@ -1318,6 +1318,7 @@ export default function RefineContent() {
         url: finalShareUrl,
         title: currentContent?.title || "Generated image",
         text:
+          currentContent?.content ||
           currentContent?.image_revised_prompt ||
           currentContent?.image_prompt ||
           currentContent?.title ||
@@ -1541,7 +1542,7 @@ export default function RefineContent() {
 
       <div className="space-y-4">
         <Dialog open={isImageViewerOpen} onOpenChange={setIsImageViewerOpen}>
-          <DialogContent className="max-w-5xl overflow-hidden border-border/70 bg-background/98 p-0">
+          <DialogContent className="max-w-5xl overflow-hidden border-border/70 bg-background p-0">
             <DialogHeader className="border-b border-border/70 px-6 py-4">
               <DialogTitle className="font-display text-lg">
                 {currentContent?.title || "Generated visual"}
@@ -1604,7 +1605,7 @@ export default function RefineContent() {
         </Dialog>
 
         <Dialog open={!!shareDialogData} onOpenChange={(open) => !open && setShareDialogData(null)}>
-          <DialogContent className="max-w-md border-border/70 bg-background/98 p-6">
+          <DialogContent className="max-w-md border-border/70 bg-background p-6">
             <DialogHeader className="mb-4">
               <DialogTitle className="font-display text-lg text-center">Share Visual</DialogTitle>
             </DialogHeader>
@@ -1613,6 +1614,28 @@ export default function RefineContent() {
                 <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-xs break-all select-all font-mono">
                   {shareDialogData.url}
                 </div>
+
+                {shareDialogData.text && (
+                  <div className="space-y-1.5 rounded-lg border border-border/70 bg-muted/10 p-3">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                      <span className="font-semibold text-foreground/80">Social Caption</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(shareDialogData.text);
+                          toast({ title: "Caption copied!", duration: 1500 });
+                        }}
+                        className="text-primary hover:underline font-medium cursor-pointer"
+                      >
+                        Copy Caption Text
+                      </button>
+                    </div>
+                    <div className="text-xs max-h-24 overflow-y-auto whitespace-pre-wrap select-all scrollbar-thin">
+                      {shareDialogData.text}
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-3">
                   <a
                     href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareDialogData.url)}`}
