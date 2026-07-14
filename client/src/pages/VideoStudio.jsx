@@ -210,17 +210,16 @@ export default function VideoStudio() {
           name: selectedPersonaObj.name,
           company: selectedPersonaObj.company || selectedPersonaObj.name,
         } : null,
-      },
       generatedContent: {
         video_url: generatedVideo,
-        content: '',
+        content: includeCaption ? (generatedCaption || "") : "",
       },
       ragContext: '',
       originalPrompt: prompt,
       messages: [
         {
           role: "assistant",
-          content: "",
+          content: includeCaption ? (generatedCaption || "") : "",
           video_url: generatedVideo,
           video_prompt: prompt,
         },

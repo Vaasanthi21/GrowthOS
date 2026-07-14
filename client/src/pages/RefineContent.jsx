@@ -1549,9 +1549,9 @@ export default function RefineContent() {
 
       <div className="space-y-4">
         <Dialog open={isImageViewerOpen} onOpenChange={setIsImageViewerOpen}>
-          <DialogContent className="max-w-5xl overflow-hidden border-zinc-800 bg-[#16181d] text-white p-0">
-            <DialogHeader className="border-b border-zinc-800 px-6 py-4">
-              <DialogTitle className="font-display text-lg text-white">
+          <DialogContent className="max-w-5xl overflow-hidden border-border bg-card text-card-foreground p-0">
+            <DialogHeader className="border-b border-border/70 px-6 py-4">
+              <DialogTitle className="font-display text-lg text-foreground">
                 {currentContent?.title || "Generated visual"}
               </DialogTitle>
             </DialogHeader>
@@ -1624,20 +1624,20 @@ export default function RefineContent() {
         </Dialog>
 
         <Dialog open={!!shareDialogData} onOpenChange={(open) => !open && setShareDialogData(null)}>
-          <DialogContent className="max-w-md border-zinc-800 bg-[#16181d] text-white p-6">
+          <DialogContent className="max-w-md border-border bg-card text-card-foreground p-6">
             <DialogHeader className="mb-4">
-              <DialogTitle className="font-display text-lg text-center text-white">Share Visual</DialogTitle>
+              <DialogTitle className="font-display text-lg text-center text-foreground">Share Visual</DialogTitle>
             </DialogHeader>
             {shareDialogData && (
               <div className="space-y-4">
-                <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-xs break-all select-all font-mono text-zinc-300">
+                <div className="rounded-lg border border-border bg-secondary/50 p-3 text-xs break-all select-all font-mono text-muted-foreground">
                   {shareDialogData.url}
                 </div>
 
                 {shareDialogData.text && (
-                  <div className="space-y-1.5 rounded-lg border border-zinc-800 bg-zinc-900/30 p-3">
-                    <div className="flex items-center justify-between text-xs text-zinc-400 mb-1">
-                      <span className="font-semibold text-zinc-200">Social Caption</span>
+                  <div className="space-y-1.5 rounded-lg border border-border bg-secondary/30 p-3">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                      <span className="font-semibold text-foreground">Social Caption</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -1649,7 +1649,7 @@ export default function RefineContent() {
                         Copy Caption Text
                       </button>
                     </div>
-                    <div className="text-xs max-h-24 overflow-y-auto whitespace-pre-wrap select-all scrollbar-thin text-zinc-300">
+                    <div className="text-xs max-h-24 overflow-y-auto whitespace-pre-wrap select-all scrollbar-thin text-foreground">
                       {shareDialogData.text}
                     </div>
                   </div>
@@ -1661,7 +1661,7 @@ export default function RefineContent() {
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => setShareDialogData(null)}
-                    className="flex items-center justify-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 py-2.5 text-sm font-medium text-white transition-colors"
+                    className="flex items-center justify-center gap-2 rounded-lg border border-border bg-secondary hover:bg-secondary/80 py-2.5 text-sm font-medium text-foreground transition-colors"
                   >
                     <Linkedin className="h-4 w-4 text-[#0077b5]" />
                     LinkedIn
@@ -1671,7 +1671,7 @@ export default function RefineContent() {
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => setShareDialogData(null)}
-                    className="flex items-center justify-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 py-2.5 text-sm font-medium text-white transition-colors"
+                    className="flex items-center justify-center gap-2 rounded-lg border border-border bg-secondary hover:bg-secondary/80 py-2.5 text-sm font-medium text-foreground transition-colors"
                   >
                     Twitter / X
                   </a>
@@ -1680,7 +1680,7 @@ export default function RefineContent() {
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => setShareDialogData(null)}
-                    className="flex items-center justify-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 py-2.5 text-sm font-medium text-white transition-colors"
+                    className="flex items-center justify-center gap-2 rounded-lg border border-border bg-secondary hover:bg-secondary/80 py-2.5 text-sm font-medium text-foreground transition-colors"
                   >
                     <Facebook className="h-4 w-4 text-[#1877f2]" />
                     Facebook
@@ -1690,7 +1690,7 @@ export default function RefineContent() {
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => setShareDialogData(null)}
-                    className="flex items-center justify-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 py-2.5 text-sm font-medium text-white transition-colors"
+                    className="flex items-center justify-center gap-2 rounded-lg border border-border bg-secondary hover:bg-secondary/80 py-2.5 text-sm font-medium text-foreground transition-colors"
                   >
                     WhatsApp
                   </a>
