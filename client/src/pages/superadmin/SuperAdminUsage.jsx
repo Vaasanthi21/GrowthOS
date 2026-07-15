@@ -2,7 +2,8 @@ import React, { useState } from "react";
 import { useQuery } from '@tanstack/react-query';
 import { Search, Zap, AlertTriangle, CheckCircle, TrendingUp, Filter } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 import {
   Select,
   SelectContent,
@@ -80,6 +81,57 @@ export default function SuperAdminUsage() {
               {usageData.filter((u) => u.status === "warning" || u.status === "critical").length}
             </CardTitle>
           </CardHeader>
+        </Card>
+      </div>
+
+      {/* Aggregate Usage & Load Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Generation Volume by Format</CardTitle>
+            <CardDescription>Total AI API writes categorized by output type</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={data?.contentTypes ?? []}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="type" stroke="hsl(var(--muted-foreground))" />
+                <YAxis stroke="hsl(var(--muted-foreground))" />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "8px"
+                  }}
+                />
+                <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">System Load Trend</CardTitle>
+            <CardDescription>Monthly history generation counts</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={data?.monthlyTrend ?? []}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" />
+                <YAxis stroke="hsl(var(--muted-foreground))" />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "8px"
+                  }}
+                />
+                <Line type="monotone" dataKey="apiCalls" stroke="#22C55E" strokeWidth={2.5} />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
         </Card>
       </div>
 

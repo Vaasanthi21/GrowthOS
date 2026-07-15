@@ -2411,23 +2411,26 @@ const createMongoStore = (db) => ({
       await plansCollection.insertMany([
         {
           name: 'Free',
-          price: 0,
-          credits: 25,
+          price_monthly: 0,
+          credits_limit: 25,
           persona_limit: 1,
+          status: 'active',
           created_at: nowIso(),
         },
         {
           name: 'Pro',
-          price: 49,
-          credits: 500,
+          price_monthly: 49,
+          credits_limit: 500,
           persona_limit: 5,
+          status: 'active',
           created_at: nowIso(),
         },
         {
           name: 'Enterprise',
-          price: 199,
-          credits: 2500,
+          price_monthly: 199,
+          credits_limit: 2500,
           persona_limit: 20,
+          status: 'active',
           created_at: nowIso(),
         }
       ]);
@@ -2671,6 +2674,24 @@ const createMongoStore = (db) => ({
   },
   async findPlanByName(name) {
     return await db.collection('plans').findOne({ name });
+  },
+  async insertPlan(plan) {
+    const result = await db.collection('plans').insertOne({
+      ...plan,
+      created_at: nowIso(),
+    });
+    return await db.collection('plans').findOne({ _id: result.insertedId });
+  },
+  async updatePlan(id, updates) {
+    await db.collection('plans').updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updates }
+    );
+    return await db.collection('plans').findOne({ _id: new ObjectId(id) });
+  },
+  async deletePlan(id) {
+    const result = await db.collection('plans').deleteOne({ _id: new ObjectId(id) });
+    return result.deletedCount > 0;
   },
   async listHistory(filter = {}, sortField = 'created_date', limit, offset = 0) {
     const collection = db.collection('content_history');
@@ -8630,6 +8651,50 @@ app.patch('/api/superadmin/users/:id/persona-limit', superAdminRequired, async (
 app.get('/api/superadmin/plans', superAdminRequired, async (_req, res) => {
   const plans = await store.listPlans();
   res.json(plans.map((plan) => ({ ...plan, id: plan.id || plan._id?.toString?.() })));
+});
+
+app.post('/api/superadmin/plans', superAdminRequired, async (req, res) => {
+  const { name, price_monthly, credits_limit, persona_limit, status } = req.body || {};
+  if (!name) {
+    return res.status(400).json({ message: 'Plan name is required' });
+  }
+  try {
+    const plan = await store.insertPlan({
+      name,
+      price_monthly: Number(price_monthly ?? 0),
+      credits_limit: Number(credits_limit ?? 0),
+      persona_limit: Number(persona_limit ?? 1),
+      status: status || 'active',
+    });
+    res.json({ ...plan, id: plan._id?.toString?.() });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+app.put('/api/superadmin/plans/:id', superAdminRequired, async (req, res) => {
+  const { name, price_monthly, credits_limit, persona_limit, status } = req.body || {};
+  try {
+    const plan = await store.updatePlan(req.params.id, {
+      name,
+      price_monthly: Number(price_monthly ?? 0),
+      credits_limit: Number(credits_limit ?? 0),
+      persona_limit: Number(persona_limit ?? 1),
+      status: status || 'active',
+    });
+    res.json({ ...plan, id: plan._id?.toString?.() });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+app.delete('/api/superadmin/plans/:id', superAdminRequired, async (req, res) => {
+  try {
+    const success = await store.deletePlan(req.params.id);
+    res.json({ success });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
 });
 
 // ─── LinkedIn Ads Campaign Tracker Endpoints ─────────────────────────────────

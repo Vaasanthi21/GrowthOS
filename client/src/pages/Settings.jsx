@@ -270,6 +270,7 @@ export default function Settings() {
           <Button
             variant="ghost"
             className="w-full justify-start text-sm gap-2 h-9"
+            onClick={() => navigate("/support")}
           >
             <ExternalLink className="w-3.5 h-3.5" /> Support
           </Button>

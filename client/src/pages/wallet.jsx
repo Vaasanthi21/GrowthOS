@@ -82,7 +82,7 @@ export default function WalletPage() {
     } else {
       toast({
         title: "Request submitted successfully",
-        description: "Payment gateway integration is coming soon.",
+        description: "Our sales team will contact you shortly.",
       });
     }
   } catch (error) {

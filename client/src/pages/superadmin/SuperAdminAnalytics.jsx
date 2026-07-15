@@ -44,6 +44,32 @@ export default function SuperAdminAnalytics() {
       ]
     : [];
 
+  const creditOverviewData = React.useMemo(() => {
+    if (!data?.userRows) return [];
+    let allocated = 0;
+    let used = 0;
+    data.userRows.forEach(u => {
+      allocated += Number(u.allocated || u.credits_total_allocated || 0);
+      used += Number(u.used || u.credits_total_used || 0);
+    });
+    return [
+      { name: "Allocated", credits: allocated },
+      { name: "Consumed", credits: used }
+    ];
+  }, [data]);
+
+  const successFailureData = React.useMemo(() => {
+    if (!data?.totals) return [];
+    const total = data.totals.totalGenerations || 0;
+    const rate = data.totals.successRate || 0;
+    const completed = Math.round((total * rate) / 100);
+    const failed = Math.max(total - completed, 0);
+    return [
+      { name: "Successful", value: completed, color: "#22C55E" },
+      { name: "Failed", value: failed, color: "#EF4444" }
+    ];
+  }, [data]);
+
   return (
     <div className="space-y-6 max-w-7xl">
       <div>
@@ -188,29 +214,63 @@ export default function SuperAdminAnalytics() {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">API Call Volume</CardTitle>
-          <CardDescription>History write volume over time</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={data?.monthlyTrend ?? []}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" />
-              <YAxis stroke="hsl(var(--muted-foreground))" />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: "hsl(var(--card))", 
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: "8px"
-                }} 
-              />
-              <Bar dataKey="apiCalls" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Credit Allocation vs Consumption</CardTitle>
+            <CardDescription>Total credits granted vs consumed</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={creditOverviewData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" />
+                <YAxis stroke="hsl(var(--muted-foreground))" />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: "hsl(var(--card))", 
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "8px"
+                  }} 
+                />
+                <Bar dataKey="credits" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]}>
+                  {creditOverviewData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={index === 0 ? "hsl(var(--primary))" : "#22C55E"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">System Generation Health</CardTitle>
+            <CardDescription>Successful vs failed job completions</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={successFailureData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={100}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {successFailureData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

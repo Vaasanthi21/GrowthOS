@@ -409,3 +409,30 @@ export async function updateUserPersonaLimit(userId, payload) {
 
   return await apiClient.patch(`/superadmin/users/${userId}/persona-limit`, payload, token);
 }
+
+export async function createSuperAdminPlan(payload) {
+  const token = tokenStorage.getSuperAdminToken();
+  if (!token) {
+    throw new Error('Super admin token not available');
+  }
+
+  return await apiClient.post('/superadmin/plans', payload, token);
+}
+
+export async function updateSuperAdminPlan(planId, payload) {
+  const token = tokenStorage.getSuperAdminToken();
+  if (!token) {
+    throw new Error('Super admin token not available');
+  }
+
+  return await apiClient.put(`/superadmin/plans/${planId}`, payload, token);
+}
+
+export async function deleteSuperAdminPlan(planId) {
+  const token = tokenStorage.getSuperAdminToken();
+  if (!token) {
+    throw new Error('Super admin token not available');
+  }
+
+  return await apiClient.delete(`/superadmin/plans/${planId}`, token);
+}
