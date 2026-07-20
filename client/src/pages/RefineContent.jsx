@@ -53,6 +53,7 @@ import {
   restoreRefineSession,
 } from "@/utils";
 import ExportDialog from "@/components/dialogs/ExportDialog";
+import CaptionCharacterCounter from "@/components/generate/CaptionCharacterCounter";
 import { apiClient, tokenStorage } from "@/api/apiClient";
 
 const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || "/api").replace(

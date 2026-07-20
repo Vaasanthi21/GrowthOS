@@ -14,6 +14,7 @@ import { apiClient, tokenStorage } from '@/api/apiClient';
 import { addHistoryEntry } from '@/services/aiService';
 import ConfirmDialog from "@/components/dialogs/ConfirmDialog";
 import { persistRefineSession } from '@/utils';
+import CaptionCharacterCounter from '@/components/generate/CaptionCharacterCounter';
 
 const PLATFORMS = [
   { value: 'instagram', label: 'Instagram' },
@@ -150,17 +151,22 @@ export default function VideoStudio() {
     setGeneratedCaption("");
   }, [includeCaption]);
 
-  const triggerCaptionGeneration = useCallback(async (textPrompt) => {
+  const [selectedTone, setSelectedTone] = useState("Professional");
+
+  const triggerCaptionGeneration = useCallback(async (textPrompt, toneOverride, platformOverride) => {
     const trimmed = String(textPrompt || '').trim();
     if (!trimmed) return;
-    if (isGeneratingCaption) return;
-    if (lastFetchedPromptRef.current === trimmed && generatedCaption) return;
+    const toneToUse = toneOverride || selectedTone;
+    const platformToUse = platformOverride || platform || 'instagram';
 
-    lastFetchedPromptRef.current = trimmed;
     setIsGeneratingCaption(true);
     try {
       const token = tokenStorage.getUserToken();
-      const captionRes = await apiClient.post('/generate-caption', { prompt: trimmed }, token);
+      const captionRes = await apiClient.post('/generate-caption', {
+        prompt: trimmed,
+        platform: platformToUse,
+        tone: toneToUse,
+      }, token);
       setGeneratedCaption(captionRes?.caption || trimmed);
     } catch (e) {
       console.error("Failed to generate caption:", e);
@@ -168,7 +174,7 @@ export default function VideoStudio() {
     } finally {
       setIsGeneratingCaption(false);
     }
-  }, [isGeneratingCaption, generatedCaption]);
+  }, [selectedTone, platform]);
 
   useEffect(() => {
     if (generatedVideo && includeCaption && !generatedCaption && !isGeneratingCaption) {
@@ -189,7 +195,7 @@ export default function VideoStudio() {
   const handleRegenerateCaption = () => {
     setShareUrl(null);
     lastFetchedPromptRef.current = "";
-    triggerCaptionGeneration(prompt);
+    triggerCaptionGeneration(prompt, selectedTone, platform);
   };
 
   const openRefinePage = () => {
@@ -832,10 +838,26 @@ export default function VideoStudio() {
                   </div>
 
                   {includeCaption && (
-                    <div className="w-full max-w-[440px] p-3.5 rounded-xl border border-border/50 bg-background/50 text-left relative group">
-                      <div className="flex justify-between items-center mb-1.5">
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-primary">Generated AI Caption</span>
-                        <div className="flex items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
+                    <div className="w-full max-w-[440px] p-3.5 rounded-xl border border-border/50 bg-background/50 text-left relative group space-y-2">
+                      <div className="flex flex-wrap justify-between items-center gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-primary">Generated AI Caption</span>
+                          <CaptionCharacterCounter text={generatedCaption} platform={platform} />
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            value={selectedTone}
+                            onChange={(e) => {
+                              setSelectedTone(e.target.value);
+                              triggerCaptionGeneration(prompt, e.target.value, platform);
+                            }}
+                            className="bg-card border border-border text-foreground text-[11px] rounded px-1.5 py-0.5"
+                          >
+                            <option value="Professional">Professional</option>
+                            <option value="Casual">Casual</option>
+                            <option value="Witty">Witty</option>
+                            <option value="Inspirational">Inspirational</option>
+                          </select>
                           <Button
                             variant="ghost"
                             size="icon"

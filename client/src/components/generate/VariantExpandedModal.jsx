@@ -6,9 +6,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, Share2, Zap, Loader2 } from "lucide-react";
+import { Download, Share2, Zap, Loader2, RefreshCw, Copy } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import { tokenStorage } from "@/api/apiClient";
+import CaptionCharacterCounter from "./CaptionCharacterCounter";
 
 const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || "/api").replace(
   /\/api\/?$/,
@@ -97,8 +98,67 @@ export default function VariantExpandedModal({
   const [showSharePopover, setShowSharePopover] = useState(false);
   const [shareUrl, setShareUrl] = useState(null);
   const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
+  const [captionText, setCaptionText] = useState(variant?.content || variant?.caption || "");
+  const [selectedPlatform, setSelectedPlatform] = useState("instagram");
+  const [selectedTone, setSelectedTone] = useState("Professional");
+  const [isRegeneratingCaption, setIsRegeneratingCaption] = useState(false);
 
   if (!variant) return null;
+
+  const handleRegenerateCaption = async (platformOverride, toneOverride) => {
+    const p = platformOverride || selectedPlatform;
+    const t = toneOverride || selectedTone;
+    setIsRegeneratingCaption(true);
+    try {
+      const token = tokenStorage.getUserToken();
+      const response = await fetch(`${API_ORIGIN}/api/generate-caption`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          prompt: variant.title || captionText || "Creative post update",
+          platform: p,
+          tone: t,
+        }),
+      });
+      const data = await response.json();
+      if (data.caption) {
+        setCaptionText(data.caption);
+        variant.content = data.caption;
+        toast({
+          title: "Caption regenerated!",
+          description: `Generated new ${p} caption in ${t} tone.`,
+          duration: 3000,
+        });
+      }
+    } catch (err) {
+      console.error("Failed to regenerate caption:", err);
+      toast({
+        title: "Regeneration failed",
+        description: "Could not regenerate caption.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRegeneratingCaption(false);
+    }
+  };
+
+  const handleCopyCaption = async () => {
+    const textToCopy = captionText || variant?.content || "";
+    if (!textToCopy) return;
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      toast({
+        title: "Caption copied",
+        description: "Text caption copied to clipboard.",
+        duration: 2000,
+      });
+    } catch (err) {
+      console.error("Copy caption failed:", err);
+    }
+  };
 
   const hasText = Boolean(String(variant.content || "").trim());
   const hasImage = Boolean(variant.image_url || variant.image_base64);
@@ -242,8 +302,73 @@ export default function VariantExpandedModal({
         </DialogHeader>
         <div className="flex-1 overflow-y-auto pr-2">
           {hasText ? (
-            <div className="text-sm text-secondary-foreground leading-relaxed whitespace-pre-wrap">
-              {variant.content}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2 bg-muted/40 p-2.5 rounded-md border border-border/50 text-xs">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <label className="text-[10px] uppercase font-semibold text-muted-foreground">Platform:</label>
+                  <select
+                    value={selectedPlatform}
+                    onChange={(e) => {
+                      setSelectedPlatform(e.target.value);
+                      handleRegenerateCaption(e.target.value, selectedTone);
+                    }}
+                    className="bg-card border border-border text-foreground text-xs rounded px-2 py-1"
+                  >
+                    <option value="instagram">Instagram</option>
+                    <option value="linkedin">LinkedIn</option>
+                    <option value="twitter">Twitter / X</option>
+                    <option value="facebook">Facebook</option>
+                    <option value="whatsapp">WhatsApp</option>
+                  </select>
+
+                  <label className="text-[10px] uppercase font-semibold text-muted-foreground ml-1">Tone:</label>
+                  <select
+                    value={selectedTone}
+                    onChange={(e) => {
+                      setSelectedTone(e.target.value);
+                      handleRegenerateCaption(selectedPlatform, e.target.value);
+                    }}
+                    className="bg-card border border-border text-foreground text-xs rounded px-2 py-1"
+                  >
+                    <option value="Professional">Professional</option>
+                    <option value="Casual">Casual</option>
+                    <option value="Witty">Witty</option>
+                    <option value="Inspirational">Inspirational</option>
+                  </select>
+
+                  <CaptionCharacterCounter text={captionText} platform={selectedPlatform} />
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs px-2.5 gap-1"
+                    onClick={handleCopyCaption}
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    Copy caption
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs px-2.5 gap-1"
+                    onClick={() => handleRegenerateCaption()}
+                    disabled={isRegeneratingCaption}
+                  >
+                    {isRegeneratingCaption ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    )}
+                    Regenerate caption
+                  </Button>
+                </div>
+              </div>
+
+              <div className="text-sm text-secondary-foreground leading-relaxed whitespace-pre-wrap p-1">
+                {captionText}
+              </div>
             </div>
           ) : isVideoMode ? (
             <div className="rounded-lg border border-dashed border-border/70 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">

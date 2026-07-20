@@ -7018,31 +7018,155 @@ const cloudinaryGravityMap = {
   'bottom-right': 'south_east',
 };
 
+const PLATFORM_CAPTION_SPECS = {
+  linkedin: {
+    name: 'LinkedIn',
+    charLimit: '1,200–1,500 characters (long-form performs best)',
+    toneDefault: 'Professional, thought leadership, storytelling',
+    emojiRule: '0 to 2 emojis max',
+    hashtagRule: 'Exactly 3 relevant hashtags at the bottom',
+    ctaDefault: 'Comment your thoughts below',
+    structure: 'Hook line → 3–4 insight lines → CTA → 3 hashtags',
+    examples: [
+      `90% of Tier 2 college students never get a fair shot at placement. We're changing that.
+
+Early in my career, I noticed a huge gap between potential and opportunity. Bright engineers were getting filtered out before their resume even touched a human desk.
+
+Here is what we learned building for them:
+1. Skills matter more than campus tags.
+2. Direct project proof beats standard resumes every time.
+3. Industry mentorship accelerates growth by 3x.
+
+If you are building in edtech or talent mobility, I would love to connect.
+
+What is one hiring practice you think is outdated? Drop your thoughts below.
+
+#CareerGrowth #EdTech #Hiring`
+    ]
+  },
+  instagram: {
+    name: 'Instagram',
+    charLimit: '125–150 characters (keep primary text before the "more" button)',
+    toneDefault: 'Visual, engaging, trendy, authentic',
+    emojiRule: '5 to 8 emojis naturally placed',
+    hashtagRule: '5 to 8 hashtags (mix broad + niche)',
+    ctaDefault: 'Link in bio',
+    structure: 'Attention hook in line 1 → short line breaks → CTA (Link in bio / DM us) → hashtags',
+    examples: [
+      `Ready to scale your brand like a pro? 🚀✨
+
+Here is the secret formula top creators use every single day 👇
+
+🔥 High impact visuals
+💡 Bold hooks
+🎯 Clear CTAs
+
+Link in bio to try it now! 📲
+
+#GrowthMarketing #SocialMediaStrategy #ContentCreator #BrandBuilding #DigitalMarketing`
+    ]
+  },
+  facebook: {
+    name: 'Facebook',
+    charLimit: '40–80 characters (short posts perform best)',
+    toneDefault: 'Conversational, community-driven, friendly',
+    emojiRule: '1 to 2 emojis max',
+    hashtagRule: '0 hashtags (do NOT use hashtags on Facebook)',
+    ctaDefault: 'Share if you agree / Comment your thoughts',
+    structure: 'Punchy community question or statement → short CTA',
+    examples: [
+      `Which feature helped your team scale faster this month? Comment your thoughts below! 👇`,
+      `Great design isn't just about looks — it's about clarity. Share if you agree! 💡`
+    ]
+  },
+  twitter: {
+    name: 'Twitter / X',
+    charLimit: '240–270 characters (leaves room for link)',
+    toneDefault: 'Punchy, opinionated, conversational, concise',
+    emojiRule: '1 to 2 emojis max',
+    hashtagRule: '1 to 2 hashtags max',
+    ctaDefault: 'Retweet if you agree',
+    structure: 'Hook in first 5 words → punchy insight → short CTA',
+    examples: [
+      `Most founders overcomplicate content.
+
+Here is the 3-step flywheel that actually works:
+1. Document, don't invent.
+2. Turn customer questions into posts.
+3. Repurpose top 10% winners.
+
+Which step is your team missing? #Growth #Marketing`
+    ]
+  },
+  whatsapp: {
+    name: 'WhatsApp',
+    charLimit: '100–200 characters',
+    toneDefault: 'Personal, direct, warm, conversational',
+    emojiRule: '1 to 2 emojis max',
+    hashtagRule: '0 hashtags (do NOT use hashtags)',
+    ctaDefault: 'Reply YES to know more',
+    structure: 'Friendly direct message → CTA: "Reply YES to know more"',
+    examples: [
+      `Hey there! 👋 We just dropped our new growth toolkit for teams. Want exclusive early access before the official launch?
+
+Reply YES to know more!`
+    ]
+  }
+};
+
 app.post('/api/generate-caption', authRequired, async (req, res) => {
   const userId = req.user.id || req.user._id.toString();
   const prompt = String(req.body?.prompt || '').trim();
-  console.log('[GENERATE CAPTION REQUEST] prompt:', prompt);
+  const rawPlatform = String(req.body?.platform || 'instagram').trim().toLowerCase();
+  const selectedTone = String(req.body?.tone || 'Professional').trim();
+  const customCta = String(req.body?.ctaType || '').trim();
+  
+  const platformKey = PLATFORM_CAPTION_SPECS[rawPlatform] ? rawPlatform : 'instagram';
+  const spec = PLATFORM_CAPTION_SPECS[platformKey];
+
+  console.log(`[GENERATE CAPTION REQUEST] platform: ${spec.name}, tone: ${selectedTone}, prompt: ${prompt.slice(0, 100)}`);
+
   if (!prompt) {
     return res.status(400).json({ message: 'Prompt is required' });
   }
 
   try {
     const company = await rawDb.collection('companies').findOne({ user_id: userQuery(userId) }) || {};
-    let enrichedPrompt = prompt;
-    if (company && company.companyName) {
-      const brandContext = `[Brand Profile - Company: ${company.companyName}${company.industry ? ` (${company.industry})` : ''}.${company.productDescription ? ` About: ${company.productDescription}.` : ''}]`;
-      enrichedPrompt = `${brandContext}\n\n${prompt}`;
-    }
+    const brandName = company.companyName || 'Our Brand';
+    
+    let brandContext = `Brand Name: ${brandName}`;
+    if (company.industry) brandContext += `, Industry: ${company.industry}`;
+    if (company.productDescription) brandContext += `, About: ${company.productDescription}`;
 
     const config = getTextGenerationConfig();
-    console.log('[GENERATE CAPTION CONFIG] config apiKey exists:', !!config.apiKey, 'apiUrl:', config.apiUrl);
     if (!config.apiKey || !config.apiUrl) {
-      console.log('[GENERATE CAPTION] Missing config, falling back to brand copy');
-      const brandDefault = company?.companyName 
-        ? `Excited to share our latest update from ${company.companyName}! Discover more opportunities with us. #Growth #${company.companyName.replace(/\s+/g, '')}`
-        : `Excited to share our latest update! #GrowthOS`;
+      const brandDefault = `Excited to share our latest update from ${brandName}! ${spec.ctaDefault}.`;
       return res.json({ caption: brandDefault });
     }
+
+    const systemPrompt = `You are a world-class social media copywriter specializing in ${spec.name}.
+Platform: ${spec.name}
+Character Limit: ${spec.charLimit}
+Tone: ${selectedTone} (${spec.toneDefault})
+Brand Name: ${brandName}
+CTA: ${customCta || spec.ctaDefault}
+
+RULES:
+- Hook MUST be in the first line.
+- Emojis: ${spec.emojiRule}.
+- Hashtags: ${spec.hashtagRule}.
+- Formatting: Use clean line breaks between sentences.
+- End with a clear Call To Action.
+- Do NOT output generic AI buzzwords or preamble (e.g., "Here is your caption:").
+- Output ONLY the final caption copy directly.
+
+EXAMPLES OF HIGH-PERFORMING ${spec.name.toUpperCase()} CAPTIONS:
+${spec.examples.map(ex => `"""\n${ex}\n"""`).join('\n\n')}`;
+
+    const userPrompt = `Content Topic / Instructions: ${prompt}
+Context: ${brandContext}
+
+Write a high-converting ${spec.name} caption in a ${selectedTone} tone now:`;
 
     const headers = { 'Content-Type': 'application/json' };
     let requestUrl = String(config.apiUrl || '').trim();
@@ -7065,35 +7189,25 @@ app.post('/api/generate-caption', authRequired, async (req, res) => {
       headers,
       body: JSON.stringify({
         messages: [
-          {
-            role: 'system',
-            content: 'You are a social media copywriter. Generate a single highly-engaging, short social media caption (max 2 sentences) with 2-3 relevant hashtags based on the user prompt. Return only the caption text directly. Do not include quotes, wrappers, or explanations.',
-          },
-          {
-            role: 'user',
-            content: enrichedPrompt,
-          },
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
         ],
         temperature: 0.7,
-        max_completion_tokens: 300,
+        max_completion_tokens: 600,
       }),
     });
 
     const data = await response.json().catch(() => ({}));
     const content = data?.choices?.[0]?.message?.content;
     if (!content) {
-      const brandDefault = company?.companyName 
-        ? `Excited to share our latest update from ${company.companyName}! Discover more opportunities with us. #Growth #${company.companyName.replace(/\s+/g, '')}`
-        : `Excited to share our latest update! #GrowthOS`;
+      const brandDefault = `Excited to share our latest update from ${brandName}! ${spec.ctaDefault}.`;
       return res.json({ caption: brandDefault });
     }
 
     res.json({ caption: String(content).trim().replace(/^["']|["']$/g, '') });
   } catch (error) {
     console.error('Failed to generate caption:', error);
-    const brandDefault = company?.companyName 
-      ? `Excited to share our latest update from ${company.companyName}! Discover more opportunities with us. #Growth #${company.companyName.replace(/\s+/g, '')}`
-      : `Excited to share our latest update! #GrowthOS`;
+    const brandDefault = `Excited to share our latest update! Discover more with us.`;
     res.json({ caption: brandDefault });
   }
 });
