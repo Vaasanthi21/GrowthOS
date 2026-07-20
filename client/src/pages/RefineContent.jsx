@@ -1267,38 +1267,35 @@ export default function RefineContent() {
 
     try {
       let finalShareUrl = assetUrl;
-      const isExternalUrl = /^https?:\/\//i.test(assetUrl);
 
-      if (isExternalUrl && (assetUrl.includes('.amazonaws.com') || assetUrl.includes('s3.'))) {
-        try {
-          const token = tokenStorage.getUserToken();
-          const shareResponse = await fetch(`${API_ORIGIN}/api/create-share-link`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              assetUrl,
-              title: currentContent?.title || (type === "video" ? "Generated video" : "Generated image"),
-              caption: currentContent?.content || currentContent?.caption || currentContent?.text || (type === "video" ? currentContent?.video_prompt : currentContent?.image_revised_prompt || currentContent?.image_prompt) || "Check out this visual",
-              thumbnailUrl: type === "video" ? currentContent?.video_thumbnail || null : null,
-            }),
-          });
+      try {
+        const token = tokenStorage.getUserToken();
+        const shareResponse = await fetch(`${API_ORIGIN}/api/create-share-link`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            assetUrl,
+            title: currentContent?.title || (type === "video" ? "Generated video" : "Generated image"),
+            caption: currentContent?.content || currentContent?.caption || currentContent?.text || (type === "video" ? currentContent?.video_prompt : currentContent?.image_revised_prompt || currentContent?.image_prompt) || "Check out this visual",
+            thumbnailUrl: type === "video" ? currentContent?.video_thumbnail || null : null,
+          }),
+        });
 
-          if (shareResponse.ok) {
-            const shareData = await shareResponse.json();
-            if (shareData.shareUrl) {
-              finalShareUrl = shareData.shareUrl;
-            }
+        if (shareResponse.ok) {
+          const shareData = await shareResponse.json();
+          if (shareData.shareUrl) {
+            finalShareUrl = String(shareData.shareUrl).replace('/api/share/', '/share/');
           }
-        } catch (err) {
-          console.error("Failed to create brand share link, falling back to direct URL:", err);
         }
+      } catch (err) {
+        console.error("Failed to create brand share link, falling back to direct URL:", err);
       }
 
       setShareDialogData({
-        url: finalShareUrl,
+        url: String(finalShareUrl).replace('/api/share/', '/share/'),
         title: currentContent?.title || (type === "video" ? "Generated video" : "Generated image"),
         text:
           currentContent?.content ||
@@ -1405,38 +1402,35 @@ export default function RefineContent() {
 
     try {
       let finalShareUrl = assetUrl;
-      const isExternalUrl = /^https?:\/\//i.test(assetUrl);
 
-      if (isExternalUrl && (assetUrl.includes('.amazonaws.com') || assetUrl.includes('s3.'))) {
-        try {
-          const token = tokenStorage.getUserToken();
-          const shareResponse = await fetch(`${API_ORIGIN}/api/create-share-link`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              assetUrl,
-              title: message?.title || currentContent?.title || (type === "video" ? "Generated video" : "Generated image"),
-              caption: message?.content || message?.caption || message?.text || (type === "video" ? message?.video_prompt : message?.image_revised_prompt || message?.image_prompt) || "Check out this visual",
-              thumbnailUrl: type === "video" ? message?.video_thumbnail || null : null,
-            }),
-          });
+      try {
+        const token = tokenStorage.getUserToken();
+        const shareResponse = await fetch(`${API_ORIGIN}/api/create-share-link`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            assetUrl,
+            title: message?.title || currentContent?.title || (type === "video" ? "Generated video" : "Generated image"),
+            caption: message?.content || message?.caption || message?.text || (type === "video" ? message?.video_prompt : message?.image_revised_prompt || message?.image_prompt) || "Check out this visual",
+            thumbnailUrl: type === "video" ? message?.video_thumbnail || null : null,
+          }),
+        });
 
-          if (shareResponse.ok) {
-            const shareData = await shareResponse.json();
-            if (shareData.shareUrl) {
-              finalShareUrl = shareData.shareUrl;
-            }
+        if (shareResponse.ok) {
+          const shareData = await shareResponse.json();
+          if (shareData.shareUrl) {
+            finalShareUrl = String(shareData.shareUrl).replace('/api/share/', '/share/');
           }
-        } catch (err) {
-          console.error("Failed to create brand share link, falling back to direct URL:", err);
         }
+      } catch (err) {
+        console.error("Failed to create brand share link, falling back to direct URL:", err);
       }
 
       setShareDialogData({
-        url: finalShareUrl,
+        url: String(finalShareUrl).replace('/api/share/', '/share/'),
         title: message?.title || currentContent?.title || (type === "video" ? "Generated video" : "Generated image"),
         text:
           message?.content ||
@@ -1643,26 +1637,56 @@ export default function RefineContent() {
                     href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareDialogData.url)}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    onClick={() => setShareDialogData(null)}
+                    onClick={() => {
+                      if (shareDialogData.text) {
+                        navigator.clipboard.writeText(shareDialogData.text);
+                        toast({
+                          title: "Caption copied!",
+                          description: "Caption copied to clipboard. Press Ctrl+V in LinkedIn to paste it into your post.",
+                          duration: 4000,
+                        });
+                      }
+                      setShareDialogData(null);
+                    }}
                     className="flex items-center justify-center gap-2 rounded-lg border border-border bg-secondary hover:bg-secondary/80 py-2.5 text-sm font-medium text-foreground transition-colors"
                   >
                     <Linkedin className="h-4 w-4 text-[#0077b5]" />
                     LinkedIn
                   </a>
                   <a
-                    href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareDialogData.text)}&url=${encodeURIComponent(shareDialogData.url)}`}
+                    href={`https://x.com/intent/post?text=${encodeURIComponent(shareDialogData.text)}&url=${encodeURIComponent(shareDialogData.url)}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    onClick={() => setShareDialogData(null)}
+                    onClick={() => {
+                      if (shareDialogData.text) {
+                        navigator.clipboard.writeText(shareDialogData.text);
+                        toast({
+                          title: "Caption copied!",
+                          description: "Caption copied to clipboard. Press Ctrl+V in X/Twitter to paste into your post.",
+                          duration: 4000,
+                        });
+                      }
+                      setShareDialogData(null);
+                    }}
                     className="flex items-center justify-center gap-2 rounded-lg border border-border bg-secondary hover:bg-secondary/80 py-2.5 text-sm font-medium text-foreground transition-colors"
                   >
                     Twitter / X
                   </a>
                   <a
-                    href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareDialogData.url)}`}
+                    href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareDialogData.url)}&quote=${encodeURIComponent(shareDialogData.text)}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    onClick={() => setShareDialogData(null)}
+                    onClick={() => {
+                      if (shareDialogData.text) {
+                        navigator.clipboard.writeText(shareDialogData.text);
+                        toast({
+                          title: "Caption copied to clipboard!",
+                          description: "Press Ctrl+V (or Paste) in Facebook's post box to insert your text caption.",
+                          duration: 4000,
+                        });
+                      }
+                      setShareDialogData(null);
+                    }}
                     className="flex items-center justify-center gap-2 rounded-lg border border-border bg-secondary hover:bg-secondary/80 py-2.5 text-sm font-medium text-foreground transition-colors"
                   >
                     <Facebook className="h-4 w-4 text-[#1877f2]" />
@@ -1672,27 +1696,54 @@ export default function RefineContent() {
                     href={`https://wa.me/?text=${encodeURIComponent(shareDialogData.text + ' ' + shareDialogData.url)}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    onClick={() => setShareDialogData(null)}
+                    onClick={() => {
+                      if (shareDialogData.text) {
+                        navigator.clipboard.writeText(shareDialogData.text);
+                        toast({
+                          title: "Caption copied!",
+                          description: "Caption copied to clipboard. Press Ctrl+V in WhatsApp to paste into your chat.",
+                          duration: 3000,
+                        });
+                      }
+                      setShareDialogData(null);
+                    }}
                     className="flex items-center justify-center gap-2 rounded-lg border border-border bg-secondary hover:bg-secondary/80 py-2.5 text-sm font-medium text-foreground transition-colors"
                   >
                     WhatsApp
                   </a>
                 </div>
-                <Button
-                  onClick={() => {
-                    navigator.clipboard.writeText(shareDialogData.url);
-                    toast({
-                      title: "Link copied",
-                      description: "The share link has been copied to your clipboard.",
-                      duration: 2000,
-                    });
-                    setShareDialogData(null);
-                  }}
-                  className="w-full mt-2"
-                >
-                  <Copy className="h-4 w-4 mr-2" />
-                  Copy Share Link
-                </Button>
+                <div className="flex gap-2 mt-2">
+                  <Button
+                    onClick={() => {
+                      navigator.clipboard.writeText(shareDialogData.text);
+                      toast({
+                        title: "Caption copied",
+                        description: "The text caption has been copied to your clipboard.",
+                        duration: 2000,
+                      });
+                    }}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copy Caption
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      navigator.clipboard.writeText(shareDialogData.url);
+                      toast({
+                        title: "Link copied",
+                        description: "The share link has been copied to your clipboard.",
+                        duration: 2000,
+                      });
+                      setShareDialogData(null);
+                    }}
+                    className="flex-1"
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copy Link
+                  </Button>
+                </div>
               </div>
             )}
           </DialogContent>

@@ -82,16 +82,17 @@ const createShareLink = async (imageUrl, caption, title) => {
   });
   if (!response.ok) throw new Error('Failed to create share link');
   const data = await response.json();
-  return data.shareUrl;
+  return String(data.shareUrl || '').replace('/api/share/', '/share/');
 };
 
 const getShareLinks = (shareUrl, caption) => {
-  const encodedUrl = encodeURIComponent(shareUrl);
-  const encodedText = encodeURIComponent(caption);
+  const sanitizedUrl = String(shareUrl || '').replace('/api/share/', '/share/');
+  const encodedUrl = encodeURIComponent(sanitizedUrl);
+  const encodedText = encodeURIComponent(caption || '');
   return {
     whatsapp: `https://wa.me/?text=${encodedText}%20${encodedUrl}`,
-    twitter: `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`,
-    facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
+    twitter: `https://x.com/intent/post?text=${encodedText}&url=${encodedUrl}`,
+    facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}&quote=${encodedText}`,
     linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`,
   };
 };
@@ -828,12 +829,38 @@ export default function ImageStudio() {
                               href={url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              onClick={() => setShowSharePopover(false)}
+                              onClick={() => {
+                                if (generatedCaption) {
+                                  navigator.clipboard.writeText(generatedCaption);
+                                  toast({
+                                    title: "Caption copied!",
+                                    description: `Caption copied to clipboard. Press Ctrl+V in ${platformName} to paste into your post.`,
+                                    duration: 4000,
+                                  });
+                                }
+                                setShowSharePopover(false);
+                              }}
                               className="block w-full text-left text-sm px-3 py-2 rounded-md capitalize transition-colors hover:bg-primary hover:text-primary-foreground"
                             >
                               {platformName}
                             </a>
                           ))}
+                          <button
+                            onClick={() => {
+                              if (generatedCaption) {
+                                navigator.clipboard.writeText(generatedCaption);
+                                toast({
+                                  title: "Caption copied",
+                                  description: "The text caption has been copied to your clipboard.",
+                                  duration: 2000,
+                                });
+                              }
+                              setShowSharePopover(false);
+                            }}
+                            className="block w-full text-left text-sm px-3 py-2 rounded-md transition-colors hover:bg-primary hover:text-primary-foreground"
+                          >
+                            Copy caption
+                          </button>
                           <button
                             onClick={handleCopyLink}
                             className="block w-full text-left text-sm px-3 py-2 rounded-md transition-colors hover:bg-primary hover:text-primary-foreground"

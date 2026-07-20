@@ -185,13 +185,14 @@ export default function VariantExpandedModal({
           },
           body: JSON.stringify({
             assetUrl: resolveAssetUrl(mediaUrl),
-            caption: variant.caption || variant.text || "",
+            caption: variant.content || variant.caption || variant.text || variant.image_revised_prompt || variant.image_prompt || "",
             title: variant.title || "Check out this post"
           }),
         });
         if (!response.ok) throw new Error('Failed to create share link');
         const data = await response.json();
-        setShareUrl(data.shareUrl);
+        const cleanUrl = String(data.shareUrl || '').replace('/api/share/', '/share/');
+        setShareUrl(cleanUrl);
       } catch (err) {
         console.error('Failed to create share link:', err);
         toast({
@@ -208,12 +209,13 @@ export default function VariantExpandedModal({
   };
 
   const getShareLinks = (url, caption) => {
-    const encodedUrl = encodeURIComponent(url);
+    const sanitizedUrl = String(url || '').replace('/api/share/', '/share/');
+    const encodedUrl = encodeURIComponent(sanitizedUrl);
     const encodedText = encodeURIComponent(caption || '');
     return {
       whatsapp: `https://wa.me/?text=${encodedText}%20${encodedUrl}`,
-      twitter: `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedText}`,
-      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
+      twitter: `https://x.com/intent/post?text=${encodedText}&url=${encodedUrl}`,
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}&quote=${encodedText}`,
       linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`,
     };
   };
@@ -418,19 +420,47 @@ export default function VariantExpandedModal({
                   Share
                 </Button>
                 {showSharePopover && shareUrl && (
-                  <div className="absolute bottom-full mb-2 right-0 w-36 bg-card border border-border rounded-lg shadow-lg p-1.5 space-y-0.5 z-20">
-                    {Object.entries(getShareLinks(shareUrl, variant.caption || variant.text)).map(([platformName, url]) => (
+                  <div className="absolute bottom-full mb-2 right-0 w-40 bg-card border border-border rounded-lg shadow-lg p-1.5 space-y-0.5 z-20">
+                    {Object.entries(getShareLinks(shareUrl, variant.content || variant.caption || variant.text || "")).map(([platformName, url]) => (
                       <a
                         key={platformName}
                         href={url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        onClick={() => setShowSharePopover(false)}
+                        onClick={() => {
+                          const text = variant.content || variant.caption || variant.text || "";
+                          if (text) {
+                            navigator.clipboard.writeText(text);
+                            toast({
+                              title: "Caption copied!",
+                              description: `Caption copied to clipboard. Press Ctrl+V in ${platformName} to paste into your post.`,
+                              duration: 4000,
+                            });
+                          }
+                          setShowSharePopover(false);
+                        }}
                         className="block w-full text-left text-xs px-2 py-1.5 rounded capitalize text-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
                       >
                         {platformName}
                       </a>
                     ))}
+                    <button
+                      onClick={() => {
+                        const text = variant.content || variant.caption || variant.text || "";
+                        if (text) {
+                          navigator.clipboard.writeText(text);
+                          toast({
+                            title: "Caption copied",
+                            description: "The text caption has been copied to your clipboard.",
+                            duration: 2000,
+                          });
+                        }
+                        setShowSharePopover(false);
+                      }}
+                      className="block w-full text-left text-xs px-2 py-1.5 rounded text-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
+                    >
+                      Copy caption
+                    </button>
                     <button
                       onClick={handleCopyLink}
                       className="block w-full text-left text-xs px-2 py-1.5 rounded text-foreground transition-colors hover:bg-primary hover:text-primary-foreground"

@@ -39,7 +39,16 @@ export const LinkedInPreview = ({ title, copy, hashtags = [], imageUrl, companyL
           >
             <Bookmark size={15} className={bookmarked ? 'fill-primary' : ''} />
           </button>
-          <button className="p-1.5 hover:bg-muted hover:text-foreground rounded-lg transition-colors">
+          <button 
+            onClick={() => {
+              if (copy) {
+                navigator.clipboard.writeText(copy);
+                alert("LinkedIn article copy copied to clipboard!");
+              }
+            }}
+            className="p-1.5 hover:bg-muted hover:text-foreground rounded-lg transition-colors"
+            title="Copy Article Text"
+          >
             <Share2 size={15} />
           </button>
         </div>

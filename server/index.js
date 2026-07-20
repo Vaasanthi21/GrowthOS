@@ -57,6 +57,7 @@ const s3Client = new S3Client({
 });
 
 const app = express();
+app.set('trust proxy', true);
 const port = Number(process.env.PORT || 4000);
 const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017';
 const dbName = process.env.MONGODB_DB_NAME || 'creative_studio_os';
@@ -7396,47 +7397,40 @@ app.get('/api/generate-image/:jobId/status', authRequired, async (req, res) => {
   console.log("[IMAGE JOB STATUS]", job.id, "status:", job.status, "result:", job.result);
   return res.json(getImageJobStatusPayload(job));
 });
-// ─── Public Share Links (hides S3 bucket from social previews) ─────────────
+// ─── Public Share Links (hides S3 bucket from social previews & enables Facebook/LinkedIn/Twitter OG tags) ─────────────
+
+const getPublicBaseUrl = (req) => {
+  let base = process.env.PUBLIC_BASE_URL || '';
+  if (!base) {
+    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+    let host = req.headers['x-forwarded-host'] || req.get('host') || 'www.udenai.com';
+    const scheme = (proto === 'http' && !host.includes('localhost') && !host.includes('127.0.0.1')) ? 'https' : proto;
+    base = `${scheme}://${host}`;
+  }
+  return base.replace(/\/$/, '').replace(/\/api\/?$/, '');
+};
 
 app.post('/api/create-share-link', authRequired, async (req, res) => {
   try {
-    const assetUrl = String(req.body?.assetUrl || '').trim();
+    const rawAssetUrl = String(req.body?.assetUrl || '').trim();
     const caption = String(req.body?.caption || '').trim().slice(0, 4000);
     const title = String(req.body?.title || 'Check out this asset').trim().slice(0, 200);
 
-    if (!assetUrl) {
+    if (!rawAssetUrl) {
       return res.status(400).json({ message: 'assetUrl is required' });
     }
 
-    let parsedUrl;
-    try {
-      parsedUrl = new URL(assetUrl);
-    } catch {
-      return res.status(400).json({ message: 'Invalid asset URL' });
-    }
-
-    const allowedHosts = new Set([
-      `${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`,
-      'res.cloudinary.com',
-      req.hostname,
-    ]);
-
-    if (process.env.PUBLIC_BASE_URL) {
-      try {
-        const publicUrl = new URL(process.env.PUBLIC_BASE_URL);
-        allowedHosts.add(publicUrl.hostname);
-      } catch {}
-    }
-
-    if (!allowedHosts.has(parsedUrl.hostname)) {
-      return res.status(400).json({ message: 'Unsupported asset host' });
+    const baseUrl = getPublicBaseUrl(req);
+    let fullAssetUrl = rawAssetUrl;
+    if (rawAssetUrl.startsWith('/')) {
+      fullAssetUrl = `${baseUrl}${rawAssetUrl}`;
     }
 
     const shareId = crypto.randomBytes(8).toString('hex');
 
     await rawDb.collection('shared_assets').insertOne({
       share_id: shareId,
-      asset_url: assetUrl,
+      asset_url: fullAssetUrl,
       thumbnail_url: req.body.thumbnailUrl || null,
       caption,
       title,
@@ -7444,63 +7438,202 @@ app.post('/api/create-share-link', authRequired, async (req, res) => {
       created_at: nowIso(),
     });
 
-    const baseUrl = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-    return res.json({ shareUrl: `${baseUrl}/api/share/${shareId}` });
+    const cleanShareUrl = `${baseUrl}/share/${shareId}`.replace('/api/share/', '/share/');
+    return res.json({ shareUrl: cleanShareUrl });
   } catch (error) {
     console.error('[CREATE SHARE LINK FAILED]', error?.message || error);
     return res.status(500).json({ message: 'Failed to create share link' });
   }
 });
 
-// Public — no auth. This is the page Facebook/WhatsApp/LinkedIn crawlers hit.
-app.get('/api/share/:id', async (req, res) => {
+// Public — no auth. Handles /share/:id, /api/share/:id, and /share/preview/:id
+app.get(['/share/:id', '/api/share/:id', '/share/preview/:id'], async (req, res) => {
   try {
     const record = await rawDb.collection('shared_assets').findOne({ share_id: req.params.id });
     if (!record) {
-      return res.status(404).send('Not found');
+      return res.status(404).send('<!DOCTYPE html><html><head><title>Asset Not Found</title></head><body style="font-family:sans-serif;text-align:center;padding:50px;"><h2>Asset Not Found or Expired</h2><p><a href="/">Go to GrowthOS</a></p></body></html>');
     }
 
-    const baseUrl = (process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-    const imageProxyUrl = `${baseUrl}/api/public-asset/${req.params.id}`;
-    const shareUrl = `${baseUrl}/api/share/${req.params.id}`;
+    const baseUrl = getPublicBaseUrl(req);
+    const imageProxyUrl = `${baseUrl}/public-asset/${req.params.id}`;
+    const shareUrl = `${baseUrl}/share/${req.params.id}`;
 
-    const isVideo = record.asset_url.toLowerCase().match(/\.(mp4|webm|ogg|mov|m4v)$/) || 
-                    record.asset_url.includes('/videos/') || 
-                    (record.asset_url.includes('cloudinary.com') && record.asset_url.includes('/video/'));
+    const isVideo = (record.asset_url || '').toLowerCase().match(/\.(mp4|webm|ogg|mov|m4v)$/) || 
+                    (record.asset_url || '').includes('/videos/') || 
+                    ((record.asset_url || '').includes('cloudinary.com') && (record.asset_url || '').includes('/video/'));
 
     const ogImage = record.thumbnail_url || (isVideo 
       ? `${baseUrl}/snowy-mountains.png` 
       : imageProxyUrl);
 
+    const escapeHtml = (str) => String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+
+    const title = escapeHtml(record.title || 'Creative Asset');
+    const caption = escapeHtml(record.caption || 'Check out this generated creative asset on GrowthOS.');
+
     const videoTags = isVideo ? `
   <meta property="og:video" content="${imageProxyUrl}" />
   <meta property="og:video:secure_url" content="${imageProxyUrl}" />
-  <meta property="og:video:type" content="video/mp4" />` : '';
+  <meta property="og:video:type" content="video/mp4" />
+  <meta property="og:video:width" content="1200" />
+  <meta property="og:video:height" content="630" />` : '';
 
-    const escapeHtml = (str) => String(str || '')
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const userAgent = String(req.headers['user-agent'] || '').toLowerCase();
+    const isCrawler = /facebookexternalhit|facebot|twitterbot|linkedinbot|slackbot|whatsapp|telegrambot|discordbot|googlebot|crawler|bot|spider/i.test(userAgent);
 
-    res.setHeader('Content-Type', 'text/html');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+
     res.send(`<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>${escapeHtml(record.title)}</title>
-  <meta property="og:title" content="${escapeHtml(record.title)}" />
-  <meta property="og:description" content="${escapeHtml(record.caption)}" />
-  <meta property="og:image" content="${ogImage}" />
-  <meta property="og:url" content="${shareUrl}" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${title}</title>
+  
+  <!-- Primary Meta Tags -->
+  <meta name="title" content="${title}" />
+  <meta name="description" content="${caption}" />
+
+  <!-- Open Graph / Facebook / LinkedIn / WhatsApp -->
+  <meta property="og:site_name" content="Creative Studio OS" />
   <meta property="og:type" content="${isVideo ? 'video.other' : 'website'}" />
+  <meta property="og:url" content="${shareUrl}" />
+  <meta property="og:title" content="${title}" />
+  <meta property="og:description" content="${caption}" />
+  <meta property="og:image" content="${ogImage}" />
+  <meta property="og:image:secure_url" content="${ogImage}" />
+  <meta property="og:image:type" content="${isVideo ? 'video/mp4' : 'image/png'}" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="${title}" />${videoTags}
+
+  <!-- Twitter / X -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="${escapeHtml(record.title)}" />
-  <meta name="twitter:description" content="${escapeHtml(record.caption)}" />
-  <meta name="twitter:image" content="${ogImage}" />${videoTags}
-  <script>
-    window.location.href = "${imageProxyUrl}";
-  </script>
+  <meta name="twitter:url" content="${shareUrl}" />
+  <meta name="twitter:title" content="${title}" />
+  <meta name="twitter:description" content="${caption}" />
+  <meta name="twitter:image" content="${ogImage}" />
+  <meta name="twitter:image:src" content="${ogImage}" />
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #090d16;
+      color: #f3f4f6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      max-width: 680px;
+      width: 100%;
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);
+    }
+    .media-container {
+      width: 100%;
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      max-height: 480px;
+      overflow: hidden;
+    }
+    .media-container img, .media-container video {
+      width: 100%;
+      height: auto;
+      max-height: 480px;
+      object-fit: contain;
+    }
+    .content {
+      padding: 24px;
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: #ffffff;
+    }
+    p {
+      font-size: 14px;
+      line-height: 1.6;
+      color: #9ca3af;
+      white-space: pre-wrap;
+      margin-bottom: 20px;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+    .btn-primary { background: #2563eb; color: #fff; border: none; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-secondary { background: #374151; color: #f3f4f6; border: none; }
+    .btn-secondary:hover { background: #4b5563; }
+    .brand-footer {
+      margin-top: 24px;
+      font-size: 12px;
+      color: #6b7280;
+      text-align: center;
+    }
+  </style>
 </head>
 <body>
-  <p>Redirecting... <a href="${imageProxyUrl}">View asset</a></p>
+  <div class="card">
+    <div class="media-container">
+      ${isVideo 
+        ? `<video controls src="${imageProxyUrl}" poster="${ogImage}" style="width:100%;"></video>`
+        : `<img src="${imageProxyUrl}" alt="${title}" />`
+      }
+    </div>
+    <div class="content">
+      <h1>${title}</h1>
+      <p id="captionText">${caption}</p>
+      <div class="actions">
+        <button class="btn btn-secondary" onclick="copyCaption()">Copy Caption</button>
+        <a class="btn btn-primary" href="${imageProxyUrl}" download target="_blank">Download Visual</a>
+        <a class="btn btn-secondary" href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}&quote=${encodeURIComponent(caption)}" target="_blank" rel="noopener">Share on Facebook</a>
+        <a class="btn btn-secondary" href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}" target="_blank" rel="noopener">Share on LinkedIn</a>
+      </div>
+    </div>
+  </div>
+  <div class="brand-footer">
+    Powered by <strong>Creative Studio OS</strong>
+  </div>
+
+  <script>
+    function copyCaption() {
+      const text = document.getElementById('captionText').innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        alert('Caption copied to clipboard!');
+      });
+    }
+  </script>
 </body>
 </html>`);
   } catch (error) {
@@ -7510,24 +7643,39 @@ app.get('/api/share/:id', async (req, res) => {
 });
 
 // Public — no auth. Streams the actual image without exposing the bucket URL.
-app.get('/api/public-asset/:id', async (req, res) => {
+app.get(['/api/public-asset/:id', '/public-asset/:id'], async (req, res) => {
   try {
     const record = await rawDb.collection('shared_assets').findOne({ share_id: req.params.id });
     if (!record) {
       return res.status(404).send('Not found');
     }
     
-    const response = await fetch(record.asset_url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch original asset: ${response.statusText}`);
+    let targetUrl = record.asset_url || '';
+    if (targetUrl.includes('/public-asset/') || targetUrl.includes('/share/')) {
+      targetUrl = record.thumbnail_url || record.original_url || '';
     }
 
-    const contentType = response.headers.get('content-type') || 'image/png';
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=31536000');
+    if (!targetUrl) {
+      return res.status(404).send('Asset target missing');
+    }
 
-    const buffer = await response.arrayBuffer();
-    return res.send(Buffer.from(buffer));
+    if (targetUrl.startsWith('data:')) {
+      const parts = targetUrl.split(',');
+      const mime = parts[0].match(/:(.*?);/)?.[1] || 'image/png';
+      const buf = Buffer.from(parts[1], 'base64');
+      res.setHeader('Content-Type', mime);
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      return res.send(buf);
+    }
+
+    const assetResponse = await axios.get(targetUrl, { responseType: 'arraybuffer', timeout: 15000 });
+    const contentType = assetResponse.headers['content-type'] || 'image/png';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    return res.send(Buffer.from(assetResponse.data));
   } catch (error) {
     console.error('[PUBLIC ASSET PROXY FAILED]', error?.message || error);
     res.status(500).send('Failed to load asset');
