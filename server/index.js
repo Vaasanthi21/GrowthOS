@@ -2266,29 +2266,68 @@ const generateTextVariants = async ({ prompt }) => {
     headers['X-Title'] = 'Creative Studio OS';
   }
 
-  const response = await fetch(requestUrl, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      messages: [
-        {
-          role: 'system',
-          content: 'Return only valid JSON. Output schema: {"variants":[{"title":"string","content":"string","word_count":number}]}',
-        },
-        {
-          role: 'user',
-          content: String(prompt || '').trim(),
-        },
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.8,
-      max_completion_tokens: 2000,
-    }),
-  });
+  let response;
+  let data = {};
+  let attempts = 0;
+  const maxAttempts = 3;
 
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data?.error?.message || data?.message || `Text generation failed: ${response.status} ${response.statusText}`);
+  while (attempts < maxAttempts) {
+    attempts++;
+    try {
+      response = await fetch(requestUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          messages: [
+            {
+              role: 'system',
+              content: 'Return only valid JSON. Output schema: {"variants":[{"title":"string","content":"string","word_count":number}]}',
+            },
+            {
+              role: 'user',
+              content: String(prompt || '').trim(),
+            },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.8,
+          max_completion_tokens: 2000,
+        }),
+      });
+
+      data = await response.json().catch(() => ({}));
+
+      if (response.status === 429 && attempts < maxAttempts) {
+        console.warn(`[TEXT AI RATE LIMIT] Attempt ${attempts}/${maxAttempts} rate limited. Retrying in ${attempts * 1500}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, attempts * 1500));
+        continue;
+      }
+
+      break;
+    } catch (fetchErr) {
+      if (attempts < maxAttempts) {
+        console.warn(`[TEXT AI NETWORK ERROR] Attempt ${attempts}/${maxAttempts} failed: ${fetchErr.message}. Retrying...`);
+        await new Promise((resolve) => setTimeout(resolve, attempts * 1500));
+        continue;
+      }
+      throw fetchErr;
+    }
+  }
+
+  if (!response?.ok) {
+    const errorMsg = data?.error?.message || data?.message || `Text generation failed: ${response?.status} ${response?.statusText}`;
+    if (response?.status === 429 || /rate limit|quota/i.test(errorMsg)) {
+      console.error('[TEXT AI RATE LIMIT EXCEEDED] Provider model quota reached. Generating fallback structure for user request.');
+      // Extract main topic from prompt
+      const topicMatch = String(prompt).match(/Generate 1 polished post about:\s*"([^"]+)"/i) || String(prompt).match(/about:\s*"([^"]+)"/i);
+      const cleanTopic = topicMatch?.[1] || 'Our latest announcement';
+      
+      return [{
+        title: cleanTopic,
+        content: `Big news: We are launching ${cleanTopic}!\n\nOur platform is built to help you connect, grow, and achieve your goals faster. Stay tuned as we release more features and updates this month.\n\nWhat is one feature you are most excited about? Comment below!`,
+        word_count: 45,
+      }];
+    }
+    throw new Error(errorMsg);
   }
 
   const content = data?.choices?.[0]?.message?.content;
@@ -7184,20 +7223,45 @@ Write a high-converting ${spec.name} caption in a ${selectedTone} tone now:`;
       headers.Authorization = `Bearer ${config.apiKey}`;
     }
 
-    const response = await fetch(requestUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.7,
-        max_completion_tokens: 600,
-      }),
-    });
+    let response;
+    let data = {};
+    let attempts = 0;
+    const maxAttempts = 3;
 
-    const data = await response.json().catch(() => ({}));
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        response = await fetch(requestUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            temperature: 0.7,
+            max_completion_tokens: 600,
+          }),
+        });
+
+        data = await response.json().catch(() => ({}));
+
+        if (response.status === 429 && attempts < maxAttempts) {
+          console.warn(`[CAPTION RATE LIMIT] Attempt ${attempts}/${maxAttempts} rate limited. Retrying...`);
+          await new Promise((resolve) => setTimeout(resolve, attempts * 1500));
+          continue;
+        }
+
+        break;
+      } catch (fetchErr) {
+        if (attempts < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, attempts * 1500));
+          continue;
+        }
+        break;
+      }
+    }
+
     const content = data?.choices?.[0]?.message?.content;
     if (!content) {
       const brandDefault = `Excited to share our latest update from ${brandName}! ${spec.ctaDefault}.`;
