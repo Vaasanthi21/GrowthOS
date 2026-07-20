@@ -7655,8 +7655,15 @@ app.get(['/api/public-asset/:id', '/public-asset/:id'], async (req, res) => {
       targetUrl = record.thumbnail_url || record.original_url || '';
     }
 
-    if (!targetUrl) {
-      return res.status(404).send('Asset target missing');
+    if (!targetUrl || targetUrl.includes('/public-asset/') || targetUrl.includes('/share/')) {
+      const fallbackPath = path.join('/var/www/growth-os-prod', 'snowy-mountains.png');
+      if (fs.existsSync(fallbackPath)) {
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        return res.sendFile(fallbackPath);
+      }
+      return res.redirect('https://www.udenai.com/snowy-mountains.png');
     }
 
     if (targetUrl.startsWith('data:')) {
@@ -7669,16 +7676,27 @@ app.get(['/api/public-asset/:id', '/public-asset/:id'], async (req, res) => {
       return res.send(buf);
     }
 
-    const assetResponse = await axios.get(targetUrl, { responseType: 'arraybuffer', timeout: 15000 });
-    const contentType = assetResponse.headers['content-type'] || 'image/png';
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-
-    return res.send(Buffer.from(assetResponse.data));
+    try {
+      const assetResponse = await axios.get(targetUrl, { responseType: 'arraybuffer', timeout: 15000 });
+      const contentType = assetResponse.headers['content-type'] || 'image/png';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      return res.send(Buffer.from(assetResponse.data));
+    } catch (fetchErr) {
+      console.error('[PUBLIC ASSET FETCH ERROR]', fetchErr.message);
+      const fallbackPath = path.join('/var/www/growth-os-prod', 'snowy-mountains.png');
+      if (fs.existsSync(fallbackPath)) {
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        return res.sendFile(fallbackPath);
+      }
+      return res.redirect('https://www.udenai.com/snowy-mountains.png');
+    }
   } catch (error) {
     console.error('[PUBLIC ASSET PROXY FAILED]', error?.message || error);
-    res.status(500).send('Failed to load asset');
+    return res.redirect('https://www.udenai.com/snowy-mountains.png');
   }
 });
 
