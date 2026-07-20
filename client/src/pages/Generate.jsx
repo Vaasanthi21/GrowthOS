@@ -97,6 +97,22 @@ const buildPrompt = ({
   const productDesc = companyProfile?.productDescription || "";
   const industry = companyProfile?.industry || "";
 
+  const platformKey = String(platform.id || platform.value || platform.name || platform.label || "").toLowerCase();
+  let platformRules = "";
+  if (platformKey.includes("linkedin")) {
+    platformRules = `- PLATFORM FORMATTING (LinkedIn): Length 1,200-1,500 characters. Use Hook line -> 3-4 insight lines -> CTA -> exactly 3 hashtags. Use 0-2 emojis max. Tone: Professional thought leadership.`;
+  } else if (platformKey.includes("instagram")) {
+    platformRules = `- PLATFORM FORMATTING (Instagram): Length 125-150 characters for primary hook before 'more'. Include 5-8 emojis and 5-8 hashtags at bottom. CTA: 'Link in bio' or 'DM us'.`;
+  } else if (platformKey.includes("facebook")) {
+    platformRules = `- PLATFORM FORMATTING (Facebook): Length 40-80 characters short post. Include 1-2 emojis. Do NOT include any hashtags.`;
+  } else if (platformKey.includes("twitter") || platformKey.includes("x")) {
+    platformRules = `- PLATFORM FORMATTING (Twitter/X): Length 240-270 characters. First 5 words MUST be a hook. Use 1-2 hashtags max.`;
+  } else if (platformKey.includes("whatsapp")) {
+    platformRules = `- PLATFORM FORMATTING (WhatsApp): Length 100-200 characters personal direct message. Use 1-2 emojis. Do NOT include hashtags. CTA: 'Reply YES to know more'.`;
+  } else {
+    platformRules = `- Adapt final packaging and formatting to ${platform.label}.`;
+  }
+
   return `You are a social media content creator.
 
 Platform: ${platform.label}
@@ -130,7 +146,7 @@ Important rules:
 - Treat learned memory as cross-platform brand behavior, not as topic memory and not as platform-specific formatting rules.
 - Use the approved knowledge base context as the source of truth for factual claims, product details, offers, differentiators, and constraints.
 - If the approved knowledge base context does not support a factual claim, do not invent it.
-- Adapt the final packaging, pacing, and formatting to ${platform.label} while keeping the same brand voice.
+${platformRules}
 - Optimize the post for maximum reach, attention retention, and engagement on ${platform.label} without sounding clickbait or low quality.
 
 Respond in JSON format:
