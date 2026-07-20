@@ -1305,6 +1305,7 @@ export default function RefineContent() {
           (type === "video" ? currentContent?.video_prompt : currentContent?.image_revised_prompt || currentContent?.image_prompt) ||
           currentContent?.title ||
           (type === "video" ? "Generated video" : "Generated image"),
+        mediaUrl: assetUrl,
       });
     } catch (error) {
       toast({
@@ -1314,6 +1315,68 @@ export default function RefineContent() {
         duration: 2500,
       });
     }
+  };
+
+  const resolveAssetUrl = (value) => {
+    const source = String(value || "").trim();
+    if (!source) return "";
+    if (source.includes('amazonaws.com') || source.includes('/images/')) {
+      const filename = source.split('/').pop();
+      const baseUrl = window.location.origin;
+      return `${baseUrl}/api/images/view/${filename}`;
+    }
+    if (/^https?:\/\//i.test(source) || source.startsWith("data:") || source.startsWith("blob:")) {
+      return source;
+    }
+    return `${API_ORIGIN}${source.startsWith("/") ? source : `/${source}`}`;
+  };
+
+  const handleInstagramShare = async () => {
+    if (!shareDialogData) return;
+    const mediaUrl = shareDialogData.mediaUrl;
+    const caption = shareDialogData.text || "";
+    const title = shareDialogData.title || "Instagram Post";
+
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    if (isMobile && navigator.share && navigator.canShare && mediaUrl) {
+      try {
+        const fileExtension = mediaUrl.toLowerCase().match(/\.(mp4|webm|ogg|mov|m4v)$/) || mediaUrl.includes('/videos/') ? 'mp4' : 'png';
+        const response = await fetch(resolveAssetUrl(mediaUrl));
+        const blob = await response.blob();
+        const file = new File([blob], `post.${fileExtension}`, { type: blob.type });
+        
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: title,
+            text: caption,
+            files: [file]
+          });
+          setShareDialogData(null);
+          return;
+        }
+      } catch (err) {
+        console.warn("Mobile native sharing failed, falling back to copy/download:", err);
+      }
+    }
+
+    // Desktop/Fallback Flow
+    if (caption) {
+      try {
+        await navigator.clipboard.writeText(caption);
+      } catch (err) {
+        console.warn("Clipboard copy failed:", err);
+      }
+    }
+
+    toast({
+      title: "Ready for Instagram! 📸",
+      description: "Caption copied to clipboard! Paste the caption when creating your post in the Instagram app.",
+      duration: 6000,
+    });
+
+    window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
+    setShareDialogData(null);
   };
 
   const getMessageImageSource = (message) =>
@@ -1712,6 +1775,13 @@ export default function RefineContent() {
                   >
                     WhatsApp
                   </a>
+                  <button
+                    type="button"
+                    onClick={handleInstagramShare}
+                    className="flex items-center justify-center gap-2 rounded-lg border border-border bg-secondary hover:bg-secondary/80 py-2.5 text-sm font-medium text-foreground transition-colors cursor-pointer"
+                  >
+                    Instagram
+                  </button>
                 </div>
                 <div className="flex gap-2 mt-2">
                   <Button

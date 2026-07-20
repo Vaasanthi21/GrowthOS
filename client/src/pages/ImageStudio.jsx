@@ -473,6 +473,62 @@ export default function ImageStudio() {
     setShowSharePopover(false);
   };
 
+  const resolveAssetUrl = (value) => {
+    const source = String(value || "").trim();
+    if (!source) return "";
+    if (source.includes('amazonaws.com') || source.includes('/images/')) {
+      const filename = source.split('/').pop();
+      const baseUrl = window.location.origin;
+      return `${baseUrl}/api/images/view/${filename}`;
+    }
+    if (/^https?:\/\//i.test(source) || source.startsWith("data:") || source.startsWith("blob:")) {
+      return source;
+    }
+    return `${API_ORIGIN}${source.startsWith("/") ? source : `/${source}`}`;
+  };
+
+  const handleInstagramShare = async () => {
+    const mediaUrl = generatedImage;
+    const caption = generatedCaption || prompt || "";
+    const title = `${style.toUpperCase()} Studio Design (${selectedFormat.label})`;
+
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    if (isMobile && navigator.share && navigator.canShare && mediaUrl) {
+      try {
+        const response = await fetch(resolveAssetUrl(mediaUrl));
+        const blob = await response.blob();
+        const file = new File([blob], `post.png`, { type: blob.type });
+        
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: title,
+            text: caption,
+            files: [file]
+          });
+          setShowSharePopover(false);
+          return;
+        }
+      } catch (err) {
+        console.warn("Mobile native sharing failed, falling back to copy/download:", err);
+      }
+    }
+
+    // Desktop/Fallback Flow
+    if (caption) {
+      try {
+        await navigator.clipboard.writeText(caption);
+      } catch (err) {
+        console.warn("Clipboard copy failed:", err);
+      }
+    }
+
+    alert("Ready for Instagram! 📸\n\nCaption copied to clipboard! Paste the caption when creating your post in the Instagram app.");
+
+    window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
+    setShowSharePopover(false);
+  };
+
   const handleOpenSharePopover = async () => {
     if (showSharePopover) {
       setShowSharePopover(false);
@@ -862,6 +918,12 @@ export default function ImageStudio() {
                               {platformName}
                             </a>
                           ))}
+                          <button
+                            onClick={handleInstagramShare}
+                            className="block w-full text-left text-sm px-3 py-2 rounded-md capitalize transition-colors hover:bg-primary hover:text-primary-foreground"
+                          >
+                            Instagram
+                          </button>
                           <button
                             onClick={() => {
                               if (generatedCaption) {

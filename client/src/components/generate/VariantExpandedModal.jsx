@@ -224,6 +224,58 @@ export default function VariantExpandedModal({
     setShowSharePopover(false);
   };
 
+  const handleInstagramShare = async () => {
+    const mediaUrl = variant.video_url || variant.image_url || (variant.image_base64 ? `data:image/png;base64,${variant.image_base64}` : null);
+    const caption = variant.content || variant.caption || variant.text || "";
+    const title = variant.title || "Instagram Post";
+
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    if (isMobile && navigator.share && navigator.canShare && mediaUrl) {
+      try {
+        const fileExtension = mediaUrl.toLowerCase().match(/\.(mp4|webm|ogg|mov|m4v)$/) || mediaUrl.includes('/videos/') ? 'mp4' : 'png';
+        const response = await fetch(resolveAssetUrl(mediaUrl));
+        const blob = await response.blob();
+        const file = new File([blob], `post.${fileExtension}`, { type: blob.type });
+        
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: title,
+            text: caption,
+            files: [file]
+          });
+          toast({
+            title: "Instagram Share",
+            description: "Opening Instagram via system share sheet...",
+            duration: 3000,
+          });
+          setShowSharePopover(false);
+          return;
+        }
+      } catch (err) {
+        console.warn("Mobile native sharing failed, falling back to copy/download:", err);
+      }
+    }
+
+    // Desktop/Fallback Flow
+    if (caption) {
+      try {
+        await navigator.clipboard.writeText(caption);
+      } catch (err) {
+        console.warn("Clipboard copy failed:", err);
+      }
+    }
+
+    toast({
+      title: "Ready for Instagram! 📸",
+      description: "Caption copied to clipboard! Paste the caption when creating your post in the Instagram app.",
+      duration: 6000,
+    });
+
+    window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
+    setShowSharePopover(false);
+  };
+
   const handleOpenSharePopover = async () => {
     if (showSharePopover) {
       setShowSharePopover(false);
@@ -569,6 +621,12 @@ export default function VariantExpandedModal({
                         {platformName}
                       </a>
                     ))}
+                    <button
+                      onClick={handleInstagramShare}
+                      className="block w-full text-left text-xs px-2 py-1.5 rounded capitalize text-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
+                    >
+                      Instagram
+                    </button>
                     <button
                       onClick={() => {
                         const text = variant.content || variant.caption || variant.text || "";
