@@ -233,12 +233,6 @@ export default function ImageStudio() {
     }
   };
 
-  const handleRegenerateCaption = () => {
-    setShareUrl(null);
-    lastFetchedPromptRef.current = "";
-    triggerCaptionGeneration(prompt);
-  };
-
   const hasResumedRef = useRef(false);
 
   const { data: personasList, isLoading: loadingPersonas } = useQuery({
