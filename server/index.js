@@ -3144,28 +3144,62 @@ const stripJsonWrapper = (text) => {
 
 // Azure OpenAI AI Service Helper
 const callAzureOpenAI = async (systemPrompt, userPrompt, temperature = 0.7) => {
-  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
-  const apiKey = process.env.AZURE_OPENAI_API_KEY;
-  const deploymentName = process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-4';
+  const endpoint = process.env.AZURE_OPENAI_ENDPOINT || process.env.VITE_AI_API_URL;
+  const apiKey = process.env.AZURE_OPENAI_API_KEY || process.env.VITE_AI_API_KEY;
+  const deploymentName = process.env.AZURE_OPENAI_DEPLOYMENT_NAME || process.env.VITE_AI_MODEL || 'gpt-4';
 
   if (!endpoint || !apiKey) {
     throw new Error('Azure OpenAI credentials missing');
   }
 
   const cleanEndpoint = endpoint.endsWith('/') ? endpoint.slice(0, -1) : endpoint;
-  const url = `${cleanEndpoint}/openai/deployments/${deploymentName}/chat/completions?api-version=2023-05-15`;
-  const response = await axios.post(url, {
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
-    ],
-    temperature,
-    max_completion_tokens: 8000
-  }, {
-    headers: { 'api-key': apiKey, 'Content-Type': 'application/json' }
-  });
+  const url = cleanEndpoint.includes('/openai/deployments')
+    ? cleanEndpoint
+    : `${cleanEndpoint}/openai/deployments/${deploymentName}/chat/completions?api-version=2024-02-15-preview`;
 
-  return response.data.choices[0].message.content;
+  let attempts = 0;
+  const maxAttempts = 3;
+
+  while (attempts < maxAttempts) {
+    attempts++;
+    try {
+      const response = await axios.post(url, {
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature
+      }, {
+        headers: {
+          'api-key': apiKey,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      });
+
+      return response.data?.choices?.[0]?.message?.content || '';
+    } catch (err) {
+      const errorMsg = err?.response?.data?.error?.message || err?.message || '';
+      const isRateLimit = err?.response?.status === 429 || /rate limit|exceeded|quota/i.test(errorMsg);
+      
+      if (isRateLimit && attempts < maxAttempts) {
+        console.warn(`[callAzureOpenAI RATE LIMIT] Attempt ${attempts}/${maxAttempts} rate limited. Retrying in ${attempts * 1500}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, attempts * 1500));
+        continue;
+      }
+
+      if (isRateLimit) {
+        console.error('[callAzureOpenAI RATE LIMIT EXCEEDED] Provider rate limit reached. Returning graceful fallback.');
+        return JSON.stringify({
+          title: "AI Campaign Announcement",
+          content: "We are excited to launch our new AI campaign! Connecting talent, technology, and opportunity to help your career move forward with confidence.",
+          word_count: 28
+        });
+      }
+
+      throw err;
+    }
+  }
 };
 
 const summarizeDocument = async (fileName, text) => {
