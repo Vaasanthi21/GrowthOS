@@ -70,22 +70,27 @@ export class CompositionEngine {
         const normScenePath = path.join(tempDir, `${sessionPrefix}_scene_${i}_norm.mp4`);
         intermediateFiles.push(rawScenePath, normScenePath);
 
-        let inputPathToNormalize = rawScenePath;
+        let inputPathToNormalize = null;
 
-        if (sceneAssetUrl && (sceneAssetUrl.startsWith('http://') || sceneAssetUrl.startsWith('https://'))) {
-          try {
-            const resp = await fetch(sceneAssetUrl, { signal: AbortSignal.timeout(15000) });
-            if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
-            const arrayBuf = await resp.arrayBuffer();
-            fs.writeFileSync(rawScenePath, Buffer.from(arrayBuf));
-          } catch (downloadErr) {
-            console.warn(`[COMPOSITION ENGINE] Failed to download scene ${i} from ${sceneAssetUrl}:`, downloadErr.message);
-            inputPathToNormalize = null;
-          }
+        if (scene.localPath && fs.existsSync(scene.localPath)) {
+          inputPathToNormalize = scene.localPath;
         } else if (sceneAssetUrl && fs.existsSync(sceneAssetUrl)) {
           inputPathToNormalize = sceneAssetUrl;
-        } else {
-          inputPathToNormalize = null;
+        } else if (sceneAssetUrl && (sceneAssetUrl.startsWith('http://') || sceneAssetUrl.startsWith('https://'))) {
+          let downloadSuccess = false;
+          for (let attempt = 1; attempt <= 3 && !downloadSuccess; attempt++) {
+            try {
+              const resp = await fetch(sceneAssetUrl, { signal: AbortSignal.timeout(60000) });
+              if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+              const arrayBuf = await resp.arrayBuffer();
+              fs.writeFileSync(rawScenePath, Buffer.from(arrayBuf));
+              inputPathToNormalize = rawScenePath;
+              downloadSuccess = true;
+            } catch (downloadErr) {
+              console.warn(`[COMPOSITION ENGINE] Attempt ${attempt}/3 failed to download scene ${i} from ${sceneAssetUrl}:`, downloadErr.message);
+              if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 1500));
+            }
+          }
         }
 
         if (inputPathToNormalize && fs.existsSync(inputPathToNormalize)) {

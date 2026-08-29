@@ -772,20 +772,6 @@ const saveAzureVideoAsset = async ({
     }
   }
 
-  if (arthGangaLogoUrl) {
-    try {
-      outputBuffer = await overlayLogoOnVideo({
-        videoBuffer: outputBuffer,
-        logoUrl: arthGangaLogoUrl,
-        logoPlacement: 'bottom-right',
-        fileNamePrefix: `${videoId}-${variant}-watermark`,
-        logoWidth: 120,
-      });
-    } catch (watermarkErr) {
-      console.warn('[VIDEO WATERMARK] Failed to overlay system watermark:', watermarkErr?.message || watermarkErr);
-    }
-  }
-
   let thumbnailBuffer = null;
   try {
     thumbnailBuffer = await extractFirstFrameOfVideo(outputBuffer, `${videoId}-${variant}`);
