@@ -6,6 +6,7 @@ import { useGenerationJobs } from '@/contexts/GenerationJobsContext';
 import { buildCompanyPersonaPayload } from '@/utils/personaPayload';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from "@/components/ui/progress";
@@ -15,6 +16,7 @@ import { apiClient, tokenStorage } from '@/api/apiClient';
 import { addHistoryEntry } from '@/services/aiService';
 import ConfirmDialog from "@/components/dialogs/ConfirmDialog";
 import { persistRefineSession } from '@/utils';
+import CaptionCharacterCounter from '@/components/generate/CaptionCharacterCounter';
 
 // Each preset carries the exact pixel output the user expects, plus the
 // platform label used for AI prompt tailoring and the aspect-ratio bucket
@@ -110,6 +112,7 @@ export default function ImageStudio() {
   const [selectedPersona, setSelectedPersona] = useState(''); 
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showSharePopover, setShowSharePopover] = useState(false);
+  const [isInstagramModalOpen, setIsInstagramModalOpen] = useState(false);
   const [shareUrl, setShareUrl] = useState(null);
   const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
   const navigate = useNavigate();
@@ -490,6 +493,7 @@ export default function ImageStudio() {
   const handleInstagramShare = async () => {
     const mediaUrl = generatedImage;
     const caption = generatedCaption || prompt || "";
+    const selectedFormat = OUTPUT_FORMATS.find(f => f.value === outputFormat) || OUTPUT_FORMATS[0];
     const title = `${style.toUpperCase()} Studio Design (${selectedFormat.label})`;
 
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -514,7 +518,16 @@ export default function ImageStudio() {
       }
     }
 
-    // Desktop/Fallback Flow
+    setIsInstagramModalOpen(true);
+    setShowSharePopover(false);
+  };
+
+  const handleInstagramCopyAndDownload = async () => {
+    const mediaUrl = generatedImage;
+    const caption = generatedCaption || prompt || "";
+    const selectedFormat = OUTPUT_FORMATS.find(f => f.value === outputFormat) || OUTPUT_FORMATS[0];
+    const title = `${style.toUpperCase()} Studio Design (${selectedFormat.label})`;
+
     if (caption) {
       try {
         await navigator.clipboard.writeText(caption);
@@ -523,10 +536,37 @@ export default function ImageStudio() {
       }
     }
 
-    alert("Ready for Instagram! 📸\n\nCaption copied to clipboard! Paste the caption when creating your post in the Instagram app.");
+    if (mediaUrl) {
+      const filename = `${String(title).replace(/[^a-z0-9]/gi, "_").toLowerCase()}_instagram.png`;
+      try {
+        const token = tokenStorage.getUserToken();
+        const downloadUrl = `${API_ORIGIN}/api/download-asset?url=${encodeURIComponent(mediaUrl)}&filename=${encodeURIComponent(filename)}`;
+        const response = await fetch(downloadUrl, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Auth-Token': token,
+          },
+        });
+        if (response.ok) {
+          const blob = await response.blob();
+          const blobUrl = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+        } else {
+          window.open(mediaUrl, '_blank', 'noopener,noreferrer');
+        }
+      } catch (error) {
+        console.error('Download failed:', error);
+        window.open(mediaUrl, '_blank', 'noopener,noreferrer');
+      }
+    }
 
-    window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
-    setShowSharePopover(false);
+    alert("Instagram Assets Ready! 📸\n\nImage downloaded & caption copied — paste in Instagram app.");
   };
 
   const handleOpenSharePopover = async () => {
@@ -984,6 +1024,56 @@ export default function ImageStudio() {
         description={`High-fidelity image canvas compiling can utilize up to 2-3 minutes of render cluster time. Output will be sized exactly for ${selectedFormat.label} (${selectedFormat.dimensions}). Please maintain this viewport session active.`}
         confirmLabel="Generate Image"
       />
+
+      {/* Instagram Share Modal */}
+      <Dialog open={isInstagramModalOpen} onOpenChange={setIsInstagramModalOpen}>
+        <DialogContent className="sm:max-w-md bg-card border-border text-foreground p-6 rounded-lg shadow-xl">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 pb-2 border-b border-border">
+              <span className="text-xl">📸</span>
+              <h3 className="text-lg font-semibold">Share to Instagram</h3>
+            </div>
+            
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Instagram does not support direct sharing from web browsers on desktop. Follow these steps to post:
+            </p>
+
+            <div className="bg-muted/40 rounded-lg p-3.5 border border-border/50 space-y-3 text-xs">
+              <div className="flex gap-2">
+                <span className="font-bold text-primary">1.</span>
+                <p>Click <strong>Copy & Download</strong> to get your media and copy your caption to the clipboard.</p>
+              </div>
+              <div className="flex gap-2">
+                <span className="font-bold text-primary">2.</span>
+                <p>Click <strong>Go to Instagram</strong> to open Instagram in a new tab.</p>
+              </div>
+              <div className="flex gap-2">
+                <span className="font-bold text-primary">3.</span>
+                <p>Click the <strong>Create (+)</strong> button on Instagram, upload your file, and paste your caption.</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
+              <Button
+                onClick={handleInstagramCopyAndDownload}
+                className="flex-1 text-xs gap-1.5 py-2 font-medium"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Copy & Download
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
+                }}
+                className="flex-1 text-xs gap-1.5 py-2 font-medium"
+              >
+                Go to Instagram
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

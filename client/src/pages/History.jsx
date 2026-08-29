@@ -10,7 +10,7 @@ import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Search, Trash2, Eye, Clock, Loader2, Filter } from "lucide-react";
+import { Search, Trash2, Eye, Clock, Loader2, Filter, Video, Play } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -441,18 +441,45 @@ export default function History() {
                           setExpandedVariant({ ...v, fullEntry: entry })
                         }
                       >
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
-                          Variant {i + 1}
-                          {v.title ? ` — ${v.title}` : ""}
-                        </p>
-                        <p className="text-xs text-secondary-foreground line-clamp-2">
-                          {v.content}
-                        </p>
-                        <div className="mt-3 flex justify-end">
+                        <div className="flex items-start gap-3">
+                          {(v.video_url || v.thumbnail_url || entry.content_type?.toLowerCase?.().includes('video')) && (
+                            <div className="w-20 h-14 bg-black/40 rounded overflow-hidden relative shrink-0 border border-border/50 flex items-center justify-center">
+                              {v.thumbnail_url ? (
+                                <img src={v.thumbnail_url} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <Video className="w-5 h-5 text-primary" />
+                              )}
+                              <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                                <Play className="w-3.5 h-3.5 text-white fill-white" />
+                              </div>
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                              Variant {i + 1}
+                              {v.title ? ` — ${v.title}` : ""}
+                            </p>
+                            <p className="text-xs text-secondary-foreground line-clamp-2">
+                              {v.content}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex justify-end gap-2">
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="text-xs gap-1 h-7"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setExpandedVariant({ ...v, fullEntry: entry });
+                            }}
+                          >
+                            <Eye className="w-3 h-3" /> View & Download
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
-                            className="text-xs"
+                            className="text-xs h-7"
                             onClick={(event) => {
                               event.stopPropagation();
                               openRefineFromHistory(entry, v);

@@ -10,6 +10,7 @@ import {
   Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/use-toast";
 import { tokenStorage } from "@/api/apiClient";
 import CaptionCharacterCounter from "./CaptionCharacterCounter";
@@ -127,6 +128,7 @@ export default function VariantCard({
   };
 
   const [showSharePopover, setShowSharePopover] = useState(false);
+  const [isInstagramModalOpen, setIsInstagramModalOpen] = useState(false);
   const [shareUrl, setShareUrl] = useState(null);
   const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
   const [captionText, setCaptionText] = useState(variant.content || variant.caption || "");
@@ -254,7 +256,15 @@ export default function VariantCard({
       }
     }
 
-    // Desktop/Fallback Flow
+    setIsInstagramModalOpen(true);
+    setShowSharePopover(false);
+  };
+
+  const handleInstagramCopyAndDownload = async () => {
+    const mediaUrl = variant.video_url || variant.image_url || (variant.image_base64 ? `data:image/png;base64,${variant.image_base64}` : null);
+    const caption = captionText || variant.content || variant.caption || "";
+    const title = variant.title || "Instagram Post";
+
     if (caption) {
       try {
         await navigator.clipboard.writeText(caption);
@@ -263,14 +273,23 @@ export default function VariantCard({
       }
     }
 
-    toast({
-      title: "Ready for Instagram! 📸",
-      description: "Caption copied to clipboard! Paste the caption when creating your post in the Instagram app.",
-      duration: 6000,
-    });
+    if (mediaUrl) {
+      const isVideo = mediaUrl.toLowerCase().match(/\.(mp4|webm|ogg|mov|m4v)$/) || mediaUrl.includes('/videos/');
+      const filename = `${String(title).replace(/[^a-z0-9]/gi, "_").toLowerCase()}_instagram.${isVideo ? 'mp4' : 'png'}`;
+      await downloadFile(resolveAssetUrl(mediaUrl), filename);
 
-    window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
-    setShowSharePopover(false);
+      toast({
+        title: "Instagram Assets Ready! 📸",
+        description: `${isVideo ? 'Video' : 'Image'} downloaded & caption copied — paste in Instagram app.`,
+        duration: 6000,
+      });
+    } else {
+      toast({
+        title: "Caption copied",
+        description: "Caption copied to clipboard.",
+        duration: 3000,
+      });
+    }
   };
 
   const handleOpenSharePopover = async () => {
@@ -295,7 +314,8 @@ export default function VariantCard({
           body: JSON.stringify({
             assetUrl: resolveAssetUrl(mediaUrl),
             caption: variant.caption || variant.text || "",
-            title: variant.title || "Check out this post"
+            title: variant.title || "Check out this post",
+            thumbnailUrl: variant.video_thumbnail || variant.thumbnail_url || null
           }),
         });
         if (!response.ok) throw new Error('Failed to create share link');
@@ -625,6 +645,56 @@ export default function VariantCard({
           </Button>
         )}
       </div>
+
+      {/* Instagram Share Modal */}
+      <Dialog open={isInstagramModalOpen} onOpenChange={setIsInstagramModalOpen}>
+        <DialogContent className="sm:max-w-md bg-card border-border text-foreground p-6 rounded-lg shadow-xl">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 pb-2 border-b border-border">
+              <span className="text-xl">📸</span>
+              <h3 className="text-lg font-semibold">Share to Instagram</h3>
+            </div>
+            
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Instagram does not support direct sharing from web browsers on desktop. Follow these steps to post:
+            </p>
+
+            <div className="bg-muted/40 rounded-lg p-3.5 border border-border/50 space-y-3 text-xs">
+              <div className="flex gap-2">
+                <span className="font-bold text-primary">1.</span>
+                <p>Click <strong>Copy & Download</strong> to get your media and copy your caption to the clipboard.</p>
+              </div>
+              <div className="flex gap-2">
+                <span className="font-bold text-primary">2.</span>
+                <p>Click <strong>Go to Instagram</strong> to open Instagram in a new tab.</p>
+              </div>
+              <div className="flex gap-2">
+                <span className="font-bold text-primary">3.</span>
+                <p>Click the <strong>Create (+)</strong> button on Instagram, upload your file, and paste your caption.</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
+              <Button
+                onClick={handleInstagramCopyAndDownload}
+                className="flex-1 text-xs gap-1.5 py-2 font-medium"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Copy & Download
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
+                }}
+                className="flex-1 text-xs gap-1.5 py-2 font-medium"
+              >
+                Go to Instagram
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

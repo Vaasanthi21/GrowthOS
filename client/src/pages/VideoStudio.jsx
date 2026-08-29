@@ -5,15 +5,18 @@ import { useGenerationJobs } from '@/contexts/GenerationJobsContext';
 import { buildCompanyPersonaPayload } from '@/utils/personaPayload';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from "@/components/ui/progress";
-import { Loader2, Sparkles, Download, Share2, RefreshCw, Video, Play, Pause, Volume2, Film, Sliders, Eye, Wand2, Maximize2, Layers, Building2, Copy } from 'lucide-react';
+import { Loader2, Sparkles, Download, Share2, RefreshCw, Video, Play, Pause, Volume2, Film, Sliders, Eye, Wand2, Maximize2, Layers, Building2, Copy, Clock } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { apiClient, tokenStorage } from '@/api/apiClient';
 import { addHistoryEntry } from '@/services/aiService';
 import ConfirmDialog from "@/components/dialogs/ConfirmDialog";
 import { persistRefineSession } from '@/utils';
+import { toast } from '@/components/ui/use-toast';
+import RealtimeVideoPipelineTracker from '@/components/generate/RealtimeVideoPipelineTracker';
 import CaptionCharacterCounter from '@/components/generate/CaptionCharacterCounter';
 
 const PLATFORMS = [
@@ -32,6 +35,14 @@ const VIDEO_STYLES = [
   { value: 'animated', label: '3D Stylized Animated' },
   { value: 'live-action', label: 'Natural Live Action' },
   { value: 'minimalist', label: 'Clean Editorial Minimalist' },
+];
+
+const VIDEO_DURATIONS = [
+  { value: '15', label: '15 seconds', description: 'Standard social short' },
+  { value: '30', label: '30 seconds', description: 'Multi-scene narrative' },
+  { value: '60', label: '60 seconds (1 min)', description: 'Extended story feature' },
+  { value: '90', label: '90 seconds (1.5 mins)', description: 'Deep-dive showcase' },
+  { value: '120', label: '120 seconds (2 mins)', description: 'Full cinematic explainer' },
 ];
 
 // Note: 1:1 (Square) intentionally excluded - Azure Sora's video API only
@@ -101,15 +112,32 @@ export default function VideoStudio() {
   const location = useLocation();
   const { getJob, setJob, clearJob } = useGenerationJobs();
   const videoJob = getJob('video');
+  const [generationMode, setGenerationMode] = useState('brand'); // 'brand' | 'custom'
   const [prompt, setPrompt] = useState(() => videoJob?.prompt || location.state?.prompt || '');
   const [platform, setPlatform] = useState('instagram');
   const [style, setStyle] = useState('cinematic');
   const [aspectRatio, setAspectRatio] = useState('9:16'); 
+  const [duration, setDuration] = useState(() => String(videoJob?.duration || '15'));
   const [logoPlacement, setLogoPlacement] = useState('top_right');
   const [selectedPersona, setSelectedPersona] = useState(''); 
   const [showSharePopover, setShowSharePopover] = useState(false);
+  const [isInstagramModalOpen, setIsInstagramModalOpen] = useState(false);
   const [shareUrl, setShareUrl] = useState(null);
   const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
+
+  // Auto-sync duration if user mentions explicit duration in prompt text
+  useEffect(() => {
+    const trimmed = String(prompt || '').trim();
+    if (!trimmed) return;
+    const minMatch = trimmed.match(/\b(1|2)\s*(?:m|min|mins|minute|minutes)\b/i);
+    const secMatch = trimmed.match(/\b(15|30|60|90|120)\s*(?:s|sec|secs|second|seconds)\b/i);
+    if (minMatch) {
+      const minVal = parseInt(minMatch[1], 10);
+      setDuration(String(minVal * 60));
+    } else if (secMatch) {
+      setDuration(secMatch[1]);
+    }
+  }, [prompt]);
   
   const [pan, setPan] = useState(0);
   const [zoom, setZoom] = useState(1);
@@ -286,16 +314,46 @@ export default function VideoStudio() {
     return () => window.clearInterval(intervalId);
   }, [isPolling, stageStartedAt]);
 
+  const estimatedTotalMs = Math.max(30000, ((Number(duration) || 15) / 10) * 12000 + 20000);
+
   const displayProgressValue = isPolling
-    ? Math.min(96, Math.max(8, Math.round((stageElapsedMs / ESTIMATED_TOTAL_MS) * 100)))
+    ? (videoJob?.progress && videoJob.progress > 0
+        ? videoJob.progress
+        : Math.min(96, Math.max(8, Math.round((stageElapsedMs / estimatedTotalMs) * 100))))
     : 0;
 
-  const displayRemainingMs = Math.max(0, ESTIMATED_TOTAL_MS - stageElapsedMs);
+  const displayRemainingMs = Math.max(0, estimatedTotalMs - stageElapsedMs);
+  const activePollIntervalRef = useRef(null);
+
+  const handleResetGeneration = useCallback(() => {
+    if (activePollIntervalRef.current) {
+      clearInterval(activePollIntervalRef.current);
+      activePollIntervalRef.current = null;
+    }
+    setJob('video', {
+      isPolling: false,
+      stageStartedAt: null,
+      pollingStatus: 'idle',
+      errorMessage: null,
+      progress: 0,
+      jobId: null,
+    });
+    toast({
+      title: "Generation Reset",
+      description: "Studio is ready for a new prompt generation.",
+    });
+  }, [setJob]);
 
   // Shared polling logic, used both for a freshly started generation and for
   // resuming a job that was already in flight when the user navigates back.
   const attachPoller = useCallback((jobId) => {
-    const pollInterval = setInterval(async () => {
+    if (activePollIntervalRef.current) {
+      clearInterval(activePollIntervalRef.current);
+    }
+
+    let consecutiveErrors = 0;
+
+    activePollIntervalRef.current = setInterval(async () => {
       try {
         const token = tokenStorage.getUserToken();
         const statusResponse = await apiClient.get(
@@ -303,11 +361,19 @@ export default function VideoStudio() {
           token
         );
 
+        consecutiveErrors = 0;
         const statusCode = statusResponse.status;
-        setJob('video', { pollingStatus: statusCode });
+        setJob('video', {
+          pollingStatus: statusCode,
+          phase: statusResponse.phase,
+          progress: statusResponse.progress,
+        });
 
         if (statusCode === 'completed') {
-          clearInterval(pollInterval);
+          if (activePollIntervalRef.current) {
+            clearInterval(activePollIntervalRef.current);
+            activePollIntervalRef.current = null;
+          }
 
           if (statusResponse.video_url) {
             const videoEntry = {
@@ -331,14 +397,19 @@ export default function VideoStudio() {
               generatedVideo: statusResponse.video_url,
               generatedThumbnail: statusResponse.thumbnail_url || null,
               errorMessage: null,
+              progress: 100,
             });
+            queryClient.invalidateQueries({ queryKey: ['contentHistory'] });
             queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
           } else {
             setJob('video', { isPolling: false, stageStartedAt: null, pollingStatus: 'failed' });
             queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
           }
         } else if (statusCode === 'failed') {
-          clearInterval(pollInterval);
+          if (activePollIntervalRef.current) {
+            clearInterval(activePollIntervalRef.current);
+            activePollIntervalRef.current = null;
+          }
           setJob('video', {
             isPolling: false,
             stageStartedAt: null,
@@ -348,9 +419,22 @@ export default function VideoStudio() {
           queryClient.invalidateQueries({ queryKey: ['user-credit-balance'] });
         }
       } catch (error) {
+        consecutiveErrors++;
         console.error('Polling error:', error);
+        if (consecutiveErrors >= 10) {
+          if (activePollIntervalRef.current) {
+            clearInterval(activePollIntervalRef.current);
+            activePollIntervalRef.current = null;
+          }
+          setJob('video', {
+            isPolling: false,
+            stageStartedAt: null,
+            pollingStatus: 'failed',
+            errorMessage: 'Connection to server timed out or session expired. Click Reset to start again.',
+          });
+        }
       }
-    }, 3000);
+    }, 1200);
   }, [prompt, platform, setJob, queryClient]);
 
   // On mount: if a job was already in flight when the user navigated away, resume
@@ -377,18 +461,24 @@ export default function VideoStudio() {
       const activeStyleLabel = VIDEO_STYLES.find(s => s.value === params.style)?.label || params.style;
       const finalBuiltPrompt = `${params.prompt}, shot in a distinct ${activeStyleLabel} style environment`;
 
-      // Resolve persona ID to the full persona object the backend expects,
-      // instead of sending a bare persona_id (which the backend ignores).
-      const companyPersonaPayload = buildCompanyPersonaPayload(params.personaObject);
+      const isBrand = params.mode === 'brand';
+      const companyPersonaPayload = isBrand && params.personaObject
+        ? buildCompanyPersonaPayload(params.personaObject)
+        : null;
 
       const response = await apiClient.post('/generate-video', {
         topic: finalBuiltPrompt,
         platform: params.platform,
         contentType: params.style,
         aspect_ratio: params.aspectRatio,     // backend strict schema expects snake_case
+        duration: Number(params.duration || 15),
+        duration_seconds: Number(params.duration || 15),
+        durationSeconds: Number(params.duration || 15),
+        mode: isBrand ? 'brand' : 'custom',
         companyPersona: companyPersonaPayload,
-        logoPlacement: params.logoPlacement,
-        logo_placement: params.logoPlacement, 
+        logoPlacement: isBrand ? (params.logoPlacement || 'none') : 'none',
+        logo_placement: isBrand ? (params.logoPlacement || 'none') : 'none', 
+        logoUrl: isBrand ? (params.logoUrl || '') : '',
         cameraPan: params.pan,
         cameraZoom: params.zoom,
         motionStrength: params.motionStrength,
@@ -428,18 +518,22 @@ export default function VideoStudio() {
   });
 
   const submitGeneration = useCallback(() => {
+    const isBrand = generationMode === 'brand';
     generateMutation.mutate({
       prompt: prompt.trim(),
       platform: platform,
       style: style,
-      aspectRatio: aspectRatio, 
-      personaObject: selectedPersonaObject, 
-      logoPlacement: logoPlacement, 
+      aspectRatio: aspectRatio,
+      duration: Number(duration || 15),
+      mode: isBrand ? 'brand' : 'custom',
+      personaObject: isBrand ? selectedPersonaObject : null, 
+      logoPlacement: isBrand ? logoPlacement : 'none',
+      logoUrl: isBrand ? (selectedPersonaObject?.logoUrl || selectedPersonaObject?.logo_url || '') : '',
       pan: pan,
       zoom: zoom,
       motionStrength: motionStrength
     });
-  }, [prompt, platform, style, aspectRatio, selectedPersonaObject, logoPlacement, pan, zoom, motionStrength, generateMutation]);
+  }, [prompt, platform, style, aspectRatio, duration, generationMode, selectedPersonaObject, logoPlacement, pan, zoom, motionStrength, generateMutation]);
 
   const handleAnimate = () => {
     if (!prompt.trim()) {
@@ -460,16 +554,16 @@ export default function VideoStudio() {
 
   const handleDownload = async () => {
     if (!generatedVideo) return;
+    const filename = `creativeos-video-${Date.now()}.mp4`;
     try {
       const token = tokenStorage.getUserToken();
-      const filename = `creativeos-video-${Date.now()}.mp4`;
       const downloadUrl = `${API_ORIGIN}/api/download-asset?url=${encodeURIComponent(generatedVideo)}&filename=${encodeURIComponent(filename)}`;
 
       const response = await fetch(downloadUrl, {
-        headers: {
+        headers: token ? {
           Authorization: `Bearer ${token}`,
           'X-Auth-Token': token,
-        },
+        } : {},
       });
       if (!response.ok) throw new Error(`Download failed: ${response.status}`);
 
@@ -482,10 +576,24 @@ export default function VideoStudio() {
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
+      toast({ title: 'Download started', description: 'Your video file is downloading.' });
     } catch (error) {
-      console.error('Download failed:', error);
-      // Fallback: open the asset in a new tab so the user can save it manually
-      window.open(generatedVideo, '_blank', 'noopener,noreferrer');
+      console.warn('Backend download proxy failed, trying direct blob fetch:', error);
+      try {
+        const directResp = await fetch(generatedVideo);
+        const directBlob = await directResp.blob();
+        const url = window.URL.createObjectURL(directBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      } catch (directErr) {
+        console.error('Direct download also failed:', directErr);
+        window.open(generatedVideo, '_blank', 'noopener,noreferrer');
+      }
     }
   };
 
@@ -565,7 +673,15 @@ export default function VideoStudio() {
       }
     }
 
-    // Desktop/Fallback Flow
+    setIsInstagramModalOpen(true);
+    setShowSharePopover(false);
+  };
+
+  const handleInstagramCopyAndDownload = async () => {
+    const mediaUrl = generatedVideo;
+    const caption = generatedCaption || prompt || "";
+    const title = `${platform.toUpperCase()} Studio Video (${aspectRatio})`;
+
     if (caption) {
       try {
         await navigator.clipboard.writeText(caption);
@@ -574,10 +690,37 @@ export default function VideoStudio() {
       }
     }
 
-    alert("Ready for Instagram! 📸\n\nCaption copied to clipboard! Paste the caption when creating your post in the Instagram app.");
+    if (mediaUrl) {
+      const filename = `${String(title).replace(/[^a-z0-9]/gi, "_").toLowerCase()}_instagram.mp4`;
+      try {
+        const token = tokenStorage.getUserToken();
+        const downloadUrl = `${API_ORIGIN}/api/download-asset?url=${encodeURIComponent(mediaUrl)}&filename=${encodeURIComponent(filename)}`;
+        const response = await fetch(downloadUrl, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Auth-Token': token,
+          },
+        });
+        if (response.ok) {
+          const blob = await response.blob();
+          const blobUrl = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+        } else {
+          window.open(mediaUrl, '_blank', 'noopener,noreferrer');
+        }
+      } catch (error) {
+        console.error('Download failed:', error);
+        window.open(mediaUrl, '_blank', 'noopener,noreferrer');
+      }
+    }
 
-    window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
-    setShowSharePopover(false);
+    alert("Instagram Assets Ready! 📸\n\nVideo downloaded & caption copied — paste in Instagram app.");
   };
 
   // Lazily creates the masked share link (via /api/create-share-link) the
@@ -674,18 +817,63 @@ export default function VideoStudio() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Left Panel - Video Configuration */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-md flex items-center gap-2">
-                <Wand2 className="w-4 h-4 text-primary" />
-                Studio Parameters
-              </CardTitle>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-md flex items-center gap-2">
+                  <Wand2 className="w-4 h-4 text-primary" />
+                  Studio Parameters
+                </CardTitle>
+              </div>
+
+              {/* Mode Switcher Tabs */}
+              <div className="flex rounded-lg bg-muted/70 p-1 border border-border mt-3">
+                <button
+                  type="button"
+                  onClick={() => setGenerationMode('brand')}
+                  disabled={generateMutation.isPending || isPolling}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-xs font-semibold transition-all ${
+                    generationMode === 'brand'
+                      ? 'bg-background text-primary shadow-sm border border-border/80'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Building2 className="w-3.5 h-3.5" />
+                  Brand Persona Mode
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGenerationMode('custom')}
+                  disabled={generateMutation.isPending || isPolling}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-xs font-semibold transition-all ${
+                    generationMode === 'custom'
+                      ? 'bg-background text-primary shadow-sm border border-border/80'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Wand2 className="w-3.5 h-3.5" />
+                  Custom / Freeform Mode
+                </button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-5">
+              {/* Mode Explainer Sub-Banner */}
+              {generationMode === 'brand' ? (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/20 text-primary text-[11px]">
+                  <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                  <span><strong>Brand Persona Mode:</strong> Applies company brand colors, persona tone guidelines, and watermark overlay.</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/40 border border-border text-muted-foreground text-[11px]">
+                  <Wand2 className="w-3.5 h-3.5 shrink-0 text-foreground" />
+                  <span><strong>Custom / Freeform Mode:</strong> Unconstrained visual creation driven directly by prompt directives with 4.5/5 realism enhancement.</span>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label htmlFor="prompt">Prompt Brief Scenario</Label>
                 <Textarea
                   id="prompt"
-                  placeholder="Describe your scene trajectory, subjects, and lighting environment details..."
+                  placeholder={generationMode === 'brand' ? "Describe your brand campaign scene, commercial showcase, or company product story..." : "Describe anything you want to create (e.g., A beautiful golden sunset over ocean waves, a sports car drifting on mountain pass, a cute kitten playing in a flower garden...)"}
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   className="min-h-[140px] resize-none"
@@ -741,23 +929,17 @@ export default function VideoStudio() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="companyPersona" className="flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-muted-foreground" /> Active Brand Persona Profile
+                <Label htmlFor="duration" className="flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-muted-foreground" /> Target Video Duration
                 </Label>
-                <Select value={selectedPersona} onValueChange={setSelectedPersona} disabled={generateMutation.isPending || isPolling || loadingPersonas}>
-                  <SelectTrigger id="companyPersona">
-                    <SelectValue placeholder={loadingPersonas ? "Syncing brand elements..." : "Select targeted profile context"} />
-                  </SelectTrigger>
+                <Select value={duration} onValueChange={setDuration} disabled={generateMutation.isPending || isPolling}>
+                  <SelectTrigger id="duration"><SelectValue placeholder="Select video length" /></SelectTrigger>
                   <SelectContent>
-                    {personasList?.map((persona) => (
-                      <SelectItem key={persona.id || persona._id} value={persona.id || persona._id}>
-                        <div className="flex items-center gap-2">
-                          {persona.logoUrl || persona.logo_url ? (
-                            <img src={persona.logoUrl || persona.logo_url} alt="" className="h-4 w-4 object-contain rounded" />
-                          ) : (
-                            <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                          )}
-                          <span>{persona.name || persona.personaName || persona.persona_name || "Unnamed Persona"}</span>
+                    {VIDEO_DURATIONS.map((d) => (
+                      <SelectItem key={d.value} value={d.value}>
+                        <div className="flex flex-col text-left">
+                          <span className="font-medium text-sm">{d.label}</span>
+                          <span className="text-[11px] text-muted-foreground">{d.description}</span>
                         </div>
                       </SelectItem>
                     ))}
@@ -765,19 +947,50 @@ export default function VideoStudio() {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="logoPlacement" className="flex items-center gap-1.5">
-                  <Layers className="w-3.5 h-3.5 text-muted-foreground" /> Watermark Overlay Placement
-                </Label>
-                <Select value={logoPlacement} onValueChange={setLogoPlacement} disabled={generateMutation.isPending || isPolling}>
-                  <SelectTrigger id="logoPlacement"><SelectValue placeholder="Select logo placement" /></SelectTrigger>
-                  <SelectContent>
-                    {LOGO_PLACEMENTS.map((lp) => (
-                      <SelectItem key={lp.value} value={lp.value}>{lp.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* Brand Persona Profile Dropdown (Only in Brand Mode) */}
+              {generationMode === 'brand' && (
+                <div className="space-y-2">
+                  <Label htmlFor="companyPersona" className="flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-muted-foreground" /> Active Brand Persona Profile
+                  </Label>
+                  <Select value={selectedPersona} onValueChange={setSelectedPersona} disabled={generateMutation.isPending || isPolling || loadingPersonas}>
+                    <SelectTrigger id="companyPersona">
+                      <SelectValue placeholder={loadingPersonas ? "Syncing brand elements..." : "Select targeted profile context"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {personasList?.map((persona) => (
+                        <SelectItem key={persona.id || persona._id} value={persona.id || persona._id}>
+                          <div className="flex items-center gap-2">
+                            {persona.logoUrl || persona.logo_url ? (
+                              <img src={persona.logoUrl || persona.logo_url} alt="" className="h-4 w-4 object-contain rounded" />
+                            ) : (
+                              <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                            )}
+                            <span>{persona.name || persona.personaName || persona.persona_name || "Unnamed Persona"}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Watermark Placement (Only in Brand Mode) */}
+              {generationMode === 'brand' && (
+                <div className="space-y-2">
+                  <Label htmlFor="logoPlacement" className="flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-muted-foreground" /> Brand Watermark Logo Placement
+                  </Label>
+                  <Select value={logoPlacement} onValueChange={setLogoPlacement} disabled={generateMutation.isPending || isPolling}>
+                    <SelectTrigger id="logoPlacement"><SelectValue placeholder="Select logo placement" /></SelectTrigger>
+                    <SelectContent>
+                      {LOGO_PLACEMENTS.map((lp) => (
+                        <SelectItem key={lp.value} value={lp.value}>{lp.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="style">Artistic Direction Style</Label>
@@ -788,8 +1001,6 @@ export default function VideoStudio() {
                   </SelectContent>
                 </Select>
               </div>
-
-
 
               <div className="pt-2 flex flex-col gap-2.5 w-full">
                 <Button onClick={handleAnimate} disabled={!prompt.trim() || generateMutation.isPending || isPolling} className="w-full gap-2" variant="outline">
@@ -833,64 +1044,42 @@ export default function VideoStudio() {
             </CardHeader>
             <CardContent className="flex-1 flex flex-col items-center justify-center p-6 min-h-[400px]">
               {pollingStatus === 'preparing' || pollingStatus === 'queued' || pollingStatus === 'processing' || isPolling ? (
-                <div className="w-full space-y-6">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-3">
-                      <div className="rounded-full bg-primary/10 p-2 text-primary mt-0.5 relative">
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        <span className="absolute inset-0 flex items-center justify-center animate-pulse text-[9px] font-bold">✨</span>
-                      </div>
-                      <div className="text-left">
-                        <p className="text-sm font-semibold text-foreground">Generating video</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {pollingStatus === 'queued' 
-                            ? 'Allocating compute nodes. Initializing layout engine models...' 
-                            : 'This is an estimate based on recent video generation time. The video will appear automatically when the provider finishes.'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-primary tracking-tight">{displayProgressValue}%</p>
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Estimated progress</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Progress value={displayProgressValue} className="h-2.5" />
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Elapsed: {formatRemainingTime(stageElapsedMs)}</span>
-                      <span>{displayRemainingMs > 0 ? `About ${formatRemainingTime(displayRemainingMs)} remaining` : 'Finalizing result...'}</span>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 rounded-2xl border border-border/70 bg-muted/20 p-4 grid-cols-3 mt-2 text-center">
-                    <div className={`rounded-xl border px-3 py-3 ${pollingStatus === 'preparing' ? 'border-primary/50 bg-primary/5' : 'border-border/70 bg-background/60'}`}>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Step 1</p>
-                      <p className="mt-1 text-xs font-medium text-foreground">Prepare Prompt</p>
-                    </div>
-                    <div className={`rounded-xl border px-3 py-3 ${pollingStatus === 'queued' || pollingStatus === 'processing' || isPolling ? 'border-primary/50 bg-primary/5' : 'border-border/70 bg-background/60'}`}>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Step 2</p>
-                      <p className="mt-1 text-xs font-medium text-foreground">Render Video</p>
-                    </div>
-                    <div className={`rounded-xl border px-3 py-3 ${displayProgressValue >= 92 ? 'border-primary/50 bg-primary/5' : 'border-border/70 bg-background/60'}`}>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Step 3</p>
-                      <p className="mt-1 text-xs font-medium text-foreground">Finalize Result</p>
-                    </div>
+                <div className="w-full space-y-4">
+                  <RealtimeVideoPipelineTracker
+                    status={pollingStatus || (isPolling ? 'processing' : 'queued')}
+                    phase={videoJob?.phase || (pollingStatus === 'queued' ? 'Allocating compute nodes & scene planner...' : 'Rendering video pipeline...')}
+                    progress={displayProgressValue}
+                    error={errorMessage}
+                  />
+                  <div className="flex justify-center pt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleResetGeneration}
+                      className="text-xs text-muted-foreground hover:text-foreground gap-1.5"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Cancel & Reset Studio
+                    </Button>
                   </div>
                 </div>
               ) : generatedVideo ? (
-                <div className="w-full space-y-4">
+                <div className="w-full space-y-5">
+                  {/* Clean player visible directly at the top with no tall tracker above it */}
                   <div className="relative rounded-xl overflow-hidden border bg-black shadow-lg">
-                    <video ref={videoRef} src={generatedVideo} controls className="w-full h-auto" style={{ minHeight: '300px', maxHeight: '500px' }} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
-                    <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex items-center gap-3 opacity-0 hover:opacity-100 transition-opacity duration-200">
-                      <Button onClick={togglePlay} size="sm" variant="ghost" className="text-white hover:bg-white/20">
-                        {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
-                      </Button>
-                      <div className="flex items-center gap-2">
-                        <Volume2 className="w-4 h-4 text-white" />
-                        <input type="range" min="0" max="1" step="0.1" value={volume} onChange={(e) => handleVolumeChange(parseFloat(e.target.value))} className="w-20 h-1 bg-white/30 rounded-lg accent-primary" />
-                      </div>
-                    </div>
+                    <video
+                      key={generatedVideo}
+                      ref={videoRef}
+                      src={generatedVideo}
+                      controls
+                      autoPlay
+                      playsInline
+                      preload="auto"
+                      className="w-full h-auto rounded-xl"
+                      style={{ minHeight: '300px', maxHeight: '500px' }}
+                      onPlay={() => setIsPlaying(true)}
+                      onPause={() => setIsPlaying(false)}
+                    />
                   </div>
 
                   {includeCaption && (
@@ -1089,6 +1278,56 @@ export default function VideoStudio() {
         description="Complex camera projection trajectories and high-fidelity video processing models can take up to 5-10 minutes to compile. Please leave this studio viewport session active."
         confirmLabel="Generate Video"
       />
+
+      {/* Instagram Share Modal */}
+      <Dialog open={isInstagramModalOpen} onOpenChange={setIsInstagramModalOpen}>
+        <DialogContent className="sm:max-w-md bg-card border-border text-foreground p-6 rounded-lg shadow-xl">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 pb-2 border-b border-border">
+              <span className="text-xl">📸</span>
+              <h3 className="text-lg font-semibold">Share to Instagram</h3>
+            </div>
+            
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Instagram does not support direct sharing from web browsers on desktop. Follow these steps to post:
+            </p>
+
+            <div className="bg-muted/40 rounded-lg p-3.5 border border-border/50 space-y-3 text-xs">
+              <div className="flex gap-2">
+                <span className="font-bold text-primary">1.</span>
+                <p>Click <strong>Copy & Download</strong> to get your media and copy your caption to the clipboard.</p>
+              </div>
+              <div className="flex gap-2">
+                <span className="font-bold text-primary">2.</span>
+                <p>Click <strong>Go to Instagram</strong> to open Instagram in a new tab.</p>
+              </div>
+              <div className="flex gap-2">
+                <span className="font-bold text-primary">3.</span>
+                <p>Click the <strong>Create (+)</strong> button on Instagram, upload your file, and paste your caption.</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
+              <Button
+                onClick={handleInstagramCopyAndDownload}
+                className="flex-1 text-xs gap-1.5 py-2 font-medium"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Copy & Download
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
+                }}
+                className="flex-1 text-xs gap-1.5 py-2 font-medium"
+              >
+                Go to Instagram
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -5,6 +5,8 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { createGenerationPoller } from "@/services/generationPollingService";
 
+import RealtimeVideoPipelineTracker from "./RealtimeVideoPipelineTracker";
+
 const STAGE_LABELS = {
   queued: "Queued for processing",
   processing: "Generating content",
@@ -30,6 +32,7 @@ export default function GenerationStatus({ jobId, contentType, onComplete }) {
     totalStages: 3,
     progress: 0,
     message: STAGE_LABELS.queued,
+    phase: "",
   });
   const [variants, setVariants] = useState([]);
   const [error, setError] = useState(null);
@@ -44,7 +47,8 @@ export default function GenerationStatus({ jobId, contentType, onComplete }) {
         stage: newStatus.stage || 0,
         totalStages: newStatus.totalStages || 3,
         progress: newStatus.progress || 0,
-        message: STAGE_LABELS[newStatus.status] || STAGE_LABELS.processing,
+        message: newStatus.phase || STAGE_LABELS[newStatus.status] || STAGE_LABELS.processing,
+        phase: newStatus.phase || "",
       });
 
       if (newStatus.variants && Array.isArray(newStatus.variants)) {
@@ -58,7 +62,8 @@ export default function GenerationStatus({ jobId, contentType, onComplete }) {
         stage: finalStatus.stage || 3,
         totalStages: 3,
         progress: finalStatus.status === "completed" ? 100 : 0,
-        message: STAGE_LABELS[finalStatus.status] || STAGE_LABELS.completed,
+        message: finalStatus.phase || STAGE_LABELS[finalStatus.status] || STAGE_LABELS.completed,
+        phase: finalStatus.phase || "Completed",
       });
 
       if (finalStatus.variants && Array.isArray(finalStatus.variants)) {
@@ -83,6 +88,17 @@ export default function GenerationStatus({ jobId, contentType, onComplete }) {
   }, [jobId, onComplete]);
 
   const progressPercentage = status.progress || (status.status === "completed" ? 100 : 0);
+
+  if (contentType === "video" || contentType === "video-only" || contentType === "text-video") {
+    return (
+      <RealtimeVideoPipelineTracker
+        status={status.status}
+        phase={status.phase || status.message}
+        progress={progressPercentage}
+        error={error}
+      />
+    );
+  }
 
   return (
     <Card className="rounded-3xl border-border/70 bg-card/95 p-6 shadow-[0_24px_80px_-48px_rgba(0,0,0,0.85)]">

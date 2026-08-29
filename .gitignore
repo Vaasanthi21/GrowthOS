@@ -5,3 +5,16 @@ node_modules/
 server/data/store.json
 .env*
 *.bak-*
+
+tmp/
+temp/
+scratch/
+uploads/
+server/temp/
+server/uploads/
+*.mp4
+*.m4a
+*.wav
+*.mp3
+*.tar.gz
+dist/

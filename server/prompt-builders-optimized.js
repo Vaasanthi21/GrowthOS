@@ -55,21 +55,21 @@ const IMAGE_PLATFORM_STYLE = {
 
 const VIDEO_PLATFORM_STYLE = {
   linkedin:
-    'LinkedIn: professional B2B editorial, measured pacing, clean transitions, 4:5/square, silent-autoplay optimized. Open on business outcome or pain point; close on credible CTA.',
+    'LinkedIn: professional B2B editorial, measured pacing, clean transitions, silent-autoplay optimized. Open on business outcome or pain point; close on credible CTA.',
   instagram:
-    'Instagram: thumb-stopping, stylish rhythm, visually rich scenes, 4:5 portrait, high retention. Open on the most arresting visual moment; close on branded payoff.',
+    'Instagram: thumb-stopping, stylish rhythm, visually rich scenes, high retention. Open on the most arresting visual moment; close on branded payoff.',
   facebook:
-    'Facebook: relatable story-forward pacing, warm emotionally accessible beats, 4:5 or 1.91:1. Open on a recognizable human situation; close on community-friendly invite.',
+    'Facebook: relatable story-forward pacing, warm emotionally accessible beats. Open on a recognizable human situation; close on community-friendly invite.',
   youtube:
-    'YouTube: cinematic 16:9, hook-first curiosity-driven, strong escalation, thumbnail-worthy hero frames. Open on a bold curiosity gap; close on memorable payoff.',
+    'YouTube: cinematic, hook-first curiosity-driven, strong escalation, thumbnail-worthy hero frames. Open on a bold curiosity gap; close on memorable payoff.',
   github:
-    'GitHub: product/interface-led clarity, precise developer aesthetic, 16:9 or square. Open on the technical problem; close on workflow proof.',
+    'GitHub: product/interface-led clarity, precise developer aesthetic. Open on the technical problem; close on workflow proof.',
   x:
-    'X: fast hook, compressed storytelling, high-contrast motion, 16:9 or square. Open immediately on the sharpest claim; close on the single strongest takeaway.',
+    'X: fast hook, compressed storytelling, high-contrast motion. Open immediately on the sharpest claim; close on the single strongest takeaway.',
   'x / twitter':
-    'X: fast hook, compressed storytelling, high-contrast motion, 16:9 or square. Open immediately on the sharpest claim; close on the single strongest takeaway.',
+    'X: fast hook, compressed storytelling, high-contrast motion. Open immediately on the sharpest claim; close on the single strongest takeaway.',
   threads:
-    'Threads: conversational, expressive, culturally current, 4:5 or square. Open on a human relatable moment; close on a socially resonant beat.',
+    'Threads: conversational, expressive, culturally current. Open on a human relatable moment; close on a socially resonant beat.',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -339,6 +339,7 @@ export const buildImagePrompt = ({
 
 export const buildVideoPrompt = ({
   platform,
+  aspectRatio,
   topic,
   companyPersona,
   contentType,
@@ -376,6 +377,7 @@ export const buildVideoPrompt = ({
     // ── Task ──────────────────────────────────────────────────────────────
     'Social media video prompt:',
     platform?.label ? `Platform: ${platform.label}.` : null,
+    aspectRatio ? `Aspect ratio: ${aspectRatio}.` : null,
     platformStyle,
     contentType ? `Format: ${contentType}.` : null,
 
