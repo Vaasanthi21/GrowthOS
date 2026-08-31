@@ -7,30 +7,47 @@
 
 export class LLMProvider {
   constructor(config = {}) {
-    this.apiKey = config.apiKey || process.env.AZURE_OPENAI_API_KEY;
-    this.endpoint = config.endpoint || process.env.AZURE_OPENAI_ENDPOINT || 'https://gpt5-azureai.openai.azure.com';
-    this.deployment = config.deployment || process.env.AZURE_OPENAI_DEPLOYMENT_NAME || process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-5.4';
-    this.apiVersion = config.apiVersion || '2024-02-15-preview';
+    this.config = config;
+  }
+
+  getApiKey() {
+    return this.config.apiKey || process.env.AZURE_OPENAI_API_KEY || process.env.VITE_AI_API_KEY || '';
+  }
+
+  getEndpoint() {
+    return (this.config.endpoint || process.env.AZURE_OPENAI_ENDPOINT || process.env.VITE_AI_API_URL || 'https://gpt5-azureai.openai.azure.com').replace(/\/+$/, '');
+  }
+
+  getDeployment() {
+    return this.config.deployment || process.env.AZURE_OPENAI_DEPLOYMENT_NAME || process.env.AZURE_OPENAI_DEPLOYMENT || process.env.VITE_AI_MODEL || 'gpt-5.4';
+  }
+
+  getApiVersion() {
+    return this.config.apiVersion || process.env.VITE_AI_API_VERSION || '2024-02-15-preview';
   }
 
   /**
    * Complete prompt request expecting JSON output.
    */
   async generateJSON({ systemPrompt, userPrompt, temperature = 0.4 }) {
-    if (!this.apiKey || !this.endpoint) {
+    const apiKey = this.getApiKey();
+    const endpoint = this.getEndpoint();
+    const deployment = this.getDeployment();
+    const apiVersion = this.getApiVersion();
+
+    if (!apiKey || !endpoint) {
       throw new Error('LLM Provider credentials missing (AZURE_OPENAI_API_KEY / AZURE_OPENAI_ENDPOINT)');
     }
 
-    const cleanEndpoint = this.endpoint.replace(/\/+$/, '');
-    const url = `${cleanEndpoint}/openai/deployments/${this.deployment}/chat/completions?api-version=${this.apiVersion}`;
+    const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
 
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'api-key': this.apiKey,
+        'api-key': apiKey,
       },
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(30000),
       body: JSON.stringify({
         messages: [
           { role: 'system', content: systemPrompt },
@@ -60,7 +77,7 @@ export class LLMProvider {
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0]);
       }
-      throw new Error(`Failed to parse LLM JSON response: ${err.message}`);
+      throw new Error(`Failed to parse LLM JSON payload: ${err.message}`);
     }
   }
 }

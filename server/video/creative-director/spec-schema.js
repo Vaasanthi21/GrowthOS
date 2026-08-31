@@ -88,7 +88,9 @@ export function validateSceneCard(scene, index = 0) {
   const normalized = {
     sceneId: String(scene.sceneId || `scene_${String(index + 1).padStart(2, '0')}`).trim(),
     order: Number(scene.order) || index + 1,
-    duration: Number(scene.duration) || 4,
+    duration: Number(scene.requestedTimelineDuration || scene.duration || 4),
+    requestedTimelineDuration: Number(scene.requestedTimelineDuration || scene.duration || 4),
+    providerGenerationDuration: Number(scene.providerGenerationDuration || (Number(scene.duration) <= 4 ? 4 : Number(scene.duration) <= 8 ? 8 : 12)),
     purpose: String(scene.purpose || 'hook').trim(),
     shotType: String(scene.shotType || 'MEDIUM_CINEMATIC').trim(),
     visualDescription: String(scene.visualDescription || scene.visual || '').trim(),

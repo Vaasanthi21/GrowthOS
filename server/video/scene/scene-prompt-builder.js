@@ -49,47 +49,77 @@ export class ScenePromptBuilder {
   }
 
   /**
-   * Builds an enriched, high-continuity prompt for generating an individual scene clip.
-   * Employs a 4-tier structure to guarantee character consistency and prompt preservation.
+   * Builds an authoritative, high-continuity prompt for generating an individual scene clip.
+   * Employs a strict 5-tier architecture prioritizing user-critical directives,
+   * continuity bibles, scene-specific action, cinematic optics, and sequence continuity.
    */
   buildSceneGenerationPrompt(sceneCard = {}, videoSpec = {}, sceneIndex = 0, totalScenes = 1) {
     const continuity = videoSpec.continuityContext || {};
+    const userDirectives = continuity.userDirectives || {};
     const characterBible = continuity.characterBible || {};
-    
-    // Tier 1: Character Bible Anchor (Subject identity, face, hairstyle, exact wardrobe)
-    const characterAnchor = characterBible.anchorToken || sceneCard.characters?.[0] || continuity.characterIdentity?.appearance || '';
-    
-    // Tier 2: Scene-Specific Action & Shot Dynamics
-    const visualDesc = String(sceneCard.visualDescription || sceneCard.visual || videoSpec.objective || 'Cinematic scene').trim();
-    const actionDesc = sceneCard.action ? `Action: ${sceneCard.action}.` : '';
-    const cameraMotion = sceneCard.camera ? `Camera motion: ${sceneCard.camera}.` : 'Camera: smooth cinematic push-in.';
-    const shotType = sceneCard.shotType ? `Shot framing: ${sceneCard.shotType}.` : '';
+    const environmentBible = continuity.environment || continuity.environmentBible || {};
+    const visualStyleBible = continuity.visualStyle || continuity.visualStyleBible || {};
+    const isSceneryOnly = continuity.isSceneryOnly;
 
-    // Tier 3: Environment Setting & Lighting Atmosphere
-    const environmentAnchor = sceneCard.environment || continuity.environment?.setting || '';
-    const lightingAnchor = sceneCard.lighting || continuity.environment?.lighting || 'Consistent commercial studio lighting';
-    const colors = videoSpec.brandContext?.colors?.length
-      ? videoSpec.brandContext.colors.join(', ')
-      : (continuity.environment?.colorPalette || []).join(', ');
-
-    // Tier 4: Cinematography Spec & Sequence Continuity Directive
-    const visualStyle = videoSpec.visualStyle || 'Cinematic Hyper-Realism';
-    const cinematography = continuity.visualStyle?.cinematography || 'Photorealistic optical depth, 35mm lens, shallow depth of field, commercial grade';
-    const continuityDirective = totalScenes > 1
-      ? `Sequence continuity: Continuous shot ${sceneIndex + 1} of ${totalScenes}. Maintain exact wardrobe, facial appearance, lighting, and background consistency.`
+    // --- TIER 1: User-Critical Global Directives ---
+    // Primary subject and immutable user keywords (e.g. misty pine forest, morning dew, emerald moss, mountain stream)
+    const primarySubject = userDirectives.primarySubject || videoSpec.objective || '';
+    const naturalElementsStr = Array.isArray(userDirectives.naturalElements) && userDirectives.naturalElements.length > 0
+      ? userDirectives.naturalElements.join(', ')
       : '';
+    const tier1Directives = [
+      primarySubject ? `[PRIMARY SUBJECT]: ${primarySubject}` : null,
+      naturalElementsStr ? `[CORE ELEMENTS]: ${naturalElementsStr}` : null,
+    ].filter(Boolean).join('. ');
+
+    // --- TIER 2: Character / Environment Continuity Context ---
+    let tier2Continuity = '';
+    if (!isSceneryOnly && characterBible.anchorToken) {
+      tier2Continuity = characterBible.anchorToken;
+    } else {
+      const envSetting = sceneCard.environment || environmentBible.setting || userDirectives.environment || '';
+      tier2Continuity = envSetting ? `[ENVIRONMENT]: ${envSetting}` : '';
+    }
+
+    // --- TIER 3: Scene-Specific Action & Narrative Purpose ---
+    const shotType = sceneCard.shotType ? `[FRAMING: ${sceneCard.shotType}]` : '';
+    const visualDesc = String(sceneCard.visualDescription || sceneCard.visual || primarySubject).trim();
+    const actionDesc = sceneCard.action ? `Action: ${sceneCard.action}` : '';
+    const tier3Action = `${shotType} ${visualDesc}. ${actionDesc}`.trim();
+
+    // --- TIER 4: Camera, Lighting & Cinematic Instructions ---
+    const cameraMotion = sceneCard.camera ? `Camera motion: ${sceneCard.camera}` : (userDirectives.cameraMovement ? `Camera: ${userDirectives.cameraMovement}` : 'Camera: smooth cinematic push-in');
+    const lightingAnchor = sceneCard.lighting || environmentBible.lighting || userDirectives.lighting || 'Cinematic natural lighting';
+    const visualStyle = visualStyleBible.aesthetic || videoSpec.visualStyle || 'Cinematic Hyper-Realism';
+    const cinematography = visualStyleBible.cinematography || 'Photorealistic optical depth, 35mm anamorphic lens';
+    const colors = videoSpec.brandContext?.colors?.length
+      ? `Color palette: ${videoSpec.brandContext.colors.join(', ')}`
+      : (environmentBible.colorPalette?.length ? `Color palette: ${environmentBible.colorPalette.join(', ')}` : null);
+
+    const tier4Cinematics = [
+      cameraMotion,
+      `Lighting: ${lightingAnchor}`,
+      colors,
+      `Cinematic aesthetic: ${visualStyle}, ${cinematography}`,
+    ].filter(Boolean).join('. ');
+
+    // --- TIER 5: Scene Transition & Sequence Continuity Instructions ---
+    let tier5Continuity = '';
+    if (totalScenes > 1) {
+      tier5Continuity = isSceneryOnly
+        ? `[SEQUENCE CONTINUITY]: Shot ${sceneIndex + 1} of ${totalScenes}. Maintain exact environmental lighting, atmosphere, color grade, and landscape coordinates.`
+        : `[SEQUENCE CONTINUITY]: Shot ${sceneIndex + 1} of ${totalScenes}. Maintain exact character facial bone structure, hairstyle, wardrobe, lighting, and background consistency.`;
+    }
 
     const promptTiers = [
-      characterAnchor ? `${characterAnchor}` : null,
-      `${shotType} ${visualDesc} ${actionDesc} ${cameraMotion}`.trim(),
-      environmentAnchor ? `Setting: ${environmentAnchor}.` : null,
-      lightingAnchor ? `Lighting atmosphere: ${lightingAnchor}.` : null,
-      colors ? `Color palette: ${colors}.` : null,
-      `Cinematic aesthetic: ${visualStyle}, ${cinematography}.`,
-      continuityDirective || null,
+      tier1Directives || null,
+      tier2Continuity || null,
+      tier3Action || null,
+      tier4Cinematics || null,
+      tier5Continuity || null,
     ];
 
-    return promptTiers.filter(Boolean).join(' ');
+    return promptTiers.filter(Boolean).join('\n');
   }
 }
 

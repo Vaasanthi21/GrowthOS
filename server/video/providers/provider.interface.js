@@ -31,6 +31,10 @@ export function createProviderCapabilities(custom = {}) {
 }
 
 export function normalizeProviderResponse(raw = {}) {
+  const reqTimeDur = Number(raw.requestedTimelineDuration || raw.requestedDuration || raw.duration || 5);
+  const provGenDur = Number(raw.providerGenerationDuration || raw.providerDuration || raw.duration || 4);
+  const actAssetDur = (raw.actualAssetDuration !== undefined && raw.actualAssetDuration !== null) ? Number(raw.actualAssetDuration) : null;
+
   return {
     provider: String(raw.provider || 'unknown').toLowerCase(),
     model: String(raw.model || 'unknown'),
@@ -39,10 +43,16 @@ export function normalizeProviderResponse(raw = {}) {
     sceneId: String(raw.sceneId || 'scene_01'),
     status: String(raw.status || 'completed').toLowerCase(),
     assetUrl: raw.assetUrl || raw.video_url || null,
+    localPath: raw.localPath || raw.rawResponse?.localPath || null,
     thumbnailUrl: raw.thumbnailUrl || raw.thumbnail_url || null,
     assetClassification: String(raw.assetClassification || 'GENERATED_ASSET'),
     providerStatus: String(raw.providerStatus || 'AVAILABLE'),
-    duration: Number(raw.duration) || 5,
+    requestedTimelineDuration: reqTimeDur,
+    providerGenerationDuration: provGenDur,
+    actualAssetDuration: actAssetDur,
+    requestedDuration: reqTimeDur,
+    providerDuration: provGenDur,
+    duration: Number(raw.duration) || provGenDur,
     aspectRatio: String(raw.aspectRatio || '9:16'),
     generationTimeMs: Number(raw.generationTimeMs) || 0,
     rawResponse: raw.rawResponse || null,

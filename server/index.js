@@ -1135,29 +1135,40 @@ export const generateVideoWithAzure = async ({
   }
 
   const startedAt = Date.now();
+  let consecutivePollErrors = 0;
   while (Date.now() - startedAt < azureVideoPollTimeoutMs) {
     await sleep(azureVideoPollIntervalMs);
-    const statusPayload = await fetchAzureVideoStatus({ statusUrl: normalized.status_url });
-    normalized = await normalizeAzureVideoResult({
-      payload: statusPayload,
-      statusUrl: normalized.status_url,
-      logoUrl,
-      logoPlacement,
-    });
+    try {
+      const statusPayload = await fetchAzureVideoStatus({ statusUrl: normalized.status_url });
+      consecutivePollErrors = 0;
+      normalized = await normalizeAzureVideoResult({
+        payload: statusPayload,
+        statusUrl: normalized.status_url,
+        logoUrl,
+        logoPlacement,
+      });
 
-    onStatus?.({
-      status: normalized.video_url ? 'completed' : normalized.status,
-      phase: normalized.video_url
-        ? 'Video generated'
-        : normalized.status === 'failed'
-          ? 'Azure video generation failed'
-          : 'Azure is rendering the video',
-      progress: normalized.video_url ? 100 : normalized.status === 'failed' ? 95 : 60,
-      videoId: normalized.video_id,
-    });
+      onStatus?.({
+        status: normalized.video_url ? 'completed' : normalized.status,
+        phase: normalized.video_url
+          ? 'Video generated'
+          : normalized.status === 'failed'
+            ? 'Azure video generation failed'
+            : 'Azure is rendering the video',
+        progress: normalized.video_url ? 100 : normalized.status === 'failed' ? 95 : 60,
+        videoId: normalized.video_id,
+      });
 
-    if (normalized.video_url || normalized.status === 'completed' || normalized.status === 'failed') {
-      return normalized;
+      if (normalized.video_url || normalized.status === 'completed' || normalized.status === 'failed') {
+        return normalized;
+      }
+    } catch (pollErr) {
+      consecutivePollErrors++;
+      console.warn(`[AZURE VIDEO POLL WARN] Polling status check error (${consecutivePollErrors}/5):`, pollErr?.message || pollErr);
+      if (consecutivePollErrors >= 5) {
+        throw pollErr;
+      }
+      await sleep(2000);
     }
   }
 

@@ -1,173 +1,258 @@
 /**
  * server/video/context/scene-continuity.context.js
  *
- * Global Character Bible and Continuity Context attached to VideoSpec.
- * Preserves user-provided prompt directives (wardrobe, environment, lighting, lenses)
- * with the highest priority and propagates unified identity anchors across all scenes.
+ * Global Continuity Context and Directives Extraction attached to VideoSpec.
+ * Preserves user-provided prompt directives (subject, environment, wardrobe, lighting, lenses)
+ * as authoritative sources of truth and classifies content into specialized narrative archetypes.
  */
 
-function extractUserDirectives(promptText = '') {
+export const CONTENT_ARCHETYPES = {
+  CINEMATIC_NATURE_JOURNEY: 'CINEMATIC_NATURE_JOURNEY',
+  PROMOTIONAL_VIDEO: 'PROMOTIONAL_VIDEO',
+  PRODUCT_ADVERTISEMENT: 'PRODUCT_ADVERTISEMENT',
+  EDUCATIONAL_MASTERCLASS: 'EDUCATIONAL_MASTERCLASS',
+  CORPORATE_VIDEO: 'CORPORATE_VIDEO',
+  EXPLAINER: 'EXPLAINER',
+  STORYTELLING: 'STORYTELLING',
+  SOCIAL_MEDIA_CONTENT: 'SOCIAL_MEDIA_CONTENT',
+};
+
+/**
+ * Classifies prompt into one of 8 distinct content archetypes.
+ */
+export function classifyContentType(promptText = '', mode = 'custom') {
+  const text = String(promptText || '').toLowerCase();
+
+  // 1. Nature & Environmental Journeys
+  const natureKeywords = /\b(misty|pine forest|forest|trees|evergreen|woods|mountain|mountains|stream|river|waterfall|lake|ocean|sea|beach|waves|sunrise|sunset|golden hour|dew|moss|jungle|rainforest|glacier|canyon|valley|wildlife|birds|animals|clouds|storm|underwater|coral|aurora|landscape|scenic journey|nature)\b/i;
+  const humanTechKeywords = /\b(presenter|speaker|founder|architect|interview|recruit|talent|hr|software|dashboard|student|hiring|company|business|app|saas|pricing|discount|sale)\b/i;
+
+  if (natureKeywords.test(text) && !humanTechKeywords.test(text) && mode !== 'brand') {
+    return CONTENT_ARCHETYPES.CINEMATIC_NATURE_JOURNEY;
+  }
+
+  // 2. Product Advertisement / Showcase
+  if (/\b(product|perfume|sneaker|shoes|watch|bottle|beverage|drink|coffee|skincare|cosmetics|gadget|hardware|smartphone|phone|device|car commercial|automobile|unboxing|showcase|feature highlight)\b/i.test(text)) {
+    return CONTENT_ARCHETYPES.PRODUCT_ADVERTISEMENT;
+  }
+
+  // 3. Educational Masterclass / Technical Tutorial
+  if (/\b(masterclass|tutorial|course|lecture|system design|deep dive|step by step|how to build|guide|explaining architecture|lesson|curriculum|learn)\b/i.test(text)) {
+    return CONTENT_ARCHETYPES.EDUCATIONAL_MASTERCLASS;
+  }
+
+  // 4. Promotional Video / Commercial Launch
+  if (/\b(promotional|promo|launch|special offer|discount|sale|campaign|join now|get started|announcing|introducing|unlock your|accelerate your|elevate your|transform your)\b/i.test(text)) {
+    return CONTENT_ARCHETYPES.PROMOTIONAL_VIDEO;
+  }
+
+  // 5. Corporate Video / Company Vision
+  if (/\b(corporate|company culture|investor|quarterly|enterprise vision|our mission|our team|global leadership|annual review)\b/i.test(text)) {
+    return CONTENT_ARCHETYPES.CORPORATE_VIDEO;
+  }
+
+  // 6. Explainer / Problem-Solution Breakdown
+  if (/\b(explainer|how it works|problem and solution|breakdown|mechanism of action|overview|walkthrough)\b/i.test(text)) {
+    return CONTENT_ARCHETYPES.EXPLAINER;
+  }
+
+  // 7. Storytelling / Cinematic Narrative
+  if (/\b(story|tale|journey of|epic narrative|drama|cinematic sequence|chronicle|legend)\b/i.test(text)) {
+    return CONTENT_ARCHETYPES.STORYTELLING;
+  }
+
+  // Default: Brand mode defaults to Promotional, Custom defaults to Social Media Content
+  return mode === 'brand' ? CONTENT_ARCHETYPES.PROMOTIONAL_VIDEO : CONTENT_ARCHETYPES.SOCIAL_MEDIA_CONTENT;
+}
+
+/**
+ * Checks if the prompt describes scenery, nature, architecture, objects, or vehicles without a human presenter.
+ */
+export function isSceneryOrSubjectWithoutPresenter(text = '') {
+  const lower = String(text || '').toLowerCase();
+  const humanKeywords = /\b(person|man|woman|guy|girl|actor|presenter|speaker|host|narrator|expert|founder|architect|engineer|developer|executive|student|chef|doctor|astronaut|model|individual|team|recruiter|leader)\b/i;
+  if (humanKeywords.test(lower)) return false;
+
+  const sceneryKeywords = /\b(forest|pine|mist|misty|trees|sunrise|sunset|golden hour|sunlight|sun rays|dew|moss|stream|river|mountain|mountains|landscape|ocean|sea|beach|waterfall|clouds|sky|drone|aerial|timelapse|nature|jungle|space|galaxy|nebula|cityscape|architecture|building|car|vehicle|abstract|product|watch|perfume|bottle)\b/i;
+  return sceneryKeywords.test(lower);
+}
+
+/**
+ * Extracts structured user directives directly from the prompt text.
+ */
+export function extractUserDirectives(promptText = '', mode = 'custom', brandContext = {}) {
   const text = String(promptText || '').trim();
   const lower = text.toLowerCase();
 
-  // 1. Extract wardrobe directives
+  const classification = classifyContentType(text, mode);
+  const isSceneryOnly = isSceneryOrSubjectWithoutPresenter(text) && mode !== 'brand';
+
+  // 1. Primary Subject Extraction
+  let primarySubject = text;
+  const subjectIntroMatch = text.match(/(?:a|an)\s+([0-9]+-second\s+)?(?:cinematic\s+journey\s+through\s+|cinematic\s+video\s+of\s+|video\s+about\s+|commercial\s+for\s+|story\s+about\s+|video\s+showing\s+)?([^,.]+)/i);
+  if (subjectIntroMatch && subjectIntroMatch[2]) {
+    primarySubject = subjectIntroMatch[2].trim();
+  }
+
+  // 2. Wardrobe Extraction
   let wardrobe = '';
   const wardrobePatterns = [
-    /(?:wearing|in)\s+(?:a\s+|an\s+)?([a-z\s-]*?(?:crewneck\s+sweater|crewneck|hoodie|sweater|blazer|suit|turtleneck|jacket|shirt|t-shirt|cardigan|coat))/i,
-    /([a-z\s-]*?(?:navy\s+crewneck\s+sweater|crewneck|hoodie|sweater|blazer|suit|turtleneck|jacket|shirt))/i,
+    /(?:wearing|dressed in|in)\s+(?:a\s+|an\s+)?([a-z\s-]*?(?:crewneck\s+sweater|crewneck|hoodie|sweater|blazer|suit|turtleneck|jacket|coat|t-shirt|shirt|dress|robe|uniform|raincoat|cardigan|apparel|vest))/i,
+    /([a-z\s-]*?(?:navy\s+crewneck\s+sweater|black\s+turtleneck|tailored\s+blazer|charcoal\s+suit|leather\s+jacket))/i,
   ];
-
   for (const pat of wardrobePatterns) {
     const match = text.match(pat);
     if (match && match[1] && match[1].trim().length > 3) {
-      wardrobe = match[1].trim().replace(/\s+(presenting|speaking|standing|talking|building|working|walking).*/i, '');
+      wardrobe = match[1].trim().replace(/\s+(presenting|speaking|standing|talking|building|working|walking|looking|moving).*/i, '');
       break;
     }
   }
 
-  // 2. Extract subject role / identity
+  // 3. Subject Role / Character
   let subjectRole = '';
-  const roleMatch = text.match(/(?:a|an)\s+([a-z\s-]*?(?:architect|founder|engineer|developer|presenter|creator|leader|executive|student|specialist|analyst|designer|athlete|expert|director|consultant))/i);
+  const roleMatch = text.match(/(?:a|an)\s+([a-z\s-]*?(?:presenter|architect|founder|engineer|developer|creator|leader|executive|student|specialist|analyst|designer|athlete|expert|director|consultant|guide|hiker|explorer|traveler|artisan|scientist))/i);
   if (roleMatch && roleMatch[1]) {
-    subjectRole = roleMatch[1].trim().replace(/\s+(wearing|in|with|presenting).*/i, '');
+    subjectRole = roleMatch[1].trim().replace(/\s+(wearing|in|with|presenting|walking|standing).*/i, '');
   }
 
-  // 3. Extract environment / setting
+  // 4. Environment / Setting Extraction
   let environment = '';
-  const envMatch = text.match(/(?:across|inside|in|within)\s+(?:a\s+|an\s+)?((?:(?:modern|sunlit|collaborative|innovation|high-tech|architectural|glass|urban|outdoor|open|clean|spacious)\s+)*\b(?:workspace|studio|laboratory|lab|office|room|landscape|environment|datacenter|stage|center|building|campus|interior)\b[^,.]*)/i);
-  if (envMatch && envMatch[1]) {
-    environment = envMatch[1].trim().replace(/,\s*with\s+.*/i, '');
+  if (classification === CONTENT_ARCHETYPES.CINEMATIC_NATURE_JOURNEY) {
+    // Extract nature environment directly from prompt
+    const natureEnvMatch = text.match(/(?:through|in|across|of)\s+(?:a\s+|an\s+)?([^,.]*(?:forest|mountain|mountains|valley|stream|river|lake|ocean|sea|beach|canyon|glacier|jungle|woods|landscape|meadow|desert|plateau)[^,.]*)/i);
+    if (natureEnvMatch && natureEnvMatch[1]) {
+      environment = natureEnvMatch[1].trim();
+    } else {
+      environment = primarySubject;
+    }
+  } else {
+    const envMatch = text.match(/(?:across|inside|in|within|at)\s+(?:a\s+|an\s+)?((?:(?:modern|sunlit|collaborative|innovation|high-tech|architectural|glass|urban|outdoor|open|clean|spacious|studio|natural)\s+)*\b(?:workspace|studio|laboratory|lab|office|room|landscape|environment|datacenter|stage|center|building|campus|interior|forest|setting)\b[^,.]*)/i);
+    if (envMatch && envMatch[1]) {
+      environment = envMatch[1].trim().replace(/,\s*with\s+.*/i, '');
+    }
   }
 
-  // 4. Extract lighting & camera directives
-  const hasShallowDof = /shallow\s+depth\s+of\s+field|bokeh|cinematic\s+depth/i.test(text);
-  const hasCommercialLighting = /commercial\s+lighting|volumetric|studio\s+lighting|key\s+light|soft\s+light/i.test(text);
+  // 5. Natural Elements & Key Objects Extraction
+  const naturalElements = [];
+  if (/mist|misty/i.test(text)) naturalElements.push('Soft atmospheric morning mist');
+  if (/pine|evergreen|tall trees|forest/i.test(text)) naturalElements.push('Tall evergreen pine trees');
+  if (/sunrise|dawn|golden rays|sun rays/i.test(text)) naturalElements.push('Golden morning sunbeams piercing through foliage');
+  if (/dew|morning dew|glistening/i.test(text)) naturalElements.push('Glistening morning dew droplets');
+  if (/moss|emerald moss/i.test(text)) naturalElements.push('Vibrant emerald moss textures');
+  if (/stream|mountain stream|creek|river|water/i.test(text)) naturalElements.push('Crystal-clear flowing mountain stream');
+  if (/mountains|peaks/i.test(text)) naturalElements.push('Majestic alpine mountain peaks');
+
+  // 6. Lighting Directives
+  let lighting = '';
+  if (/sunrise|dawn|golden rays|golden hour/i.test(text)) {
+    lighting = 'Radiant cinematic golden hour illumination with soft volumetric sunbeams and atmospheric morning glow';
+  } else if (/sunset|dusk/i.test(text)) {
+    lighting = 'Warm dramatic sunset illumination with amber and violet twilight horizon gradients';
+  } else if (/commercial lighting|volumetric|studio lighting|soft light/i.test(text)) {
+    lighting = 'High-end commercial studio lighting with soft diffused key light and clean rim separation';
+  } else if (/cyber|neon|night/i.test(text)) {
+    lighting = 'High-contrast nocturnal illumination with vibrant neon accents and moody cinematic shadows';
+  } else {
+    lighting = 'Natural cinematic lighting with rich contrast, volumetric atmospheric depth, and lifelike shadow roll-off';
+  }
+
+  // 7. Camera Movement & Cinematography
+  let cameraMovement = '';
+  if (/aerial tracking|aerial|drone/i.test(text)) {
+    cameraMovement = 'Smooth gentle aerial drone tracking gliding gracefully above the scene';
+  } else if (/tracking|push-in|push in/i.test(text)) {
+    cameraMovement = 'Fluid forward tracking push-in with optical stabilization';
+  } else if (/orbit|360|pan/i.test(text)) {
+    cameraMovement = 'Cinematic orbital camera motion arcing smoothly around the central subject';
+  } else if (/macro|close-up|closeup/i.test(text)) {
+    cameraMovement = 'Intimate macro slider movement capturing fine glistening textures';
+  } else {
+    cameraMovement = 'Smooth cinematic camera movement with fluid motion vectors and graceful framing';
+  }
+
+  // 8. Mood & Tone
+  let mood = '';
+  if (/serene|peaceful|calm|tranquil|meditative/i.test(text) || classification === CONTENT_ARCHETYPES.CINEMATIC_NATURE_JOURNEY) {
+    mood = 'Serene, breathtaking, tranquil, and awe-inspiring';
+  } else if (/energetic|dynamic|fast|high impact/i.test(text) || classification === CONTENT_ARCHETYPES.PROMOTIONAL_VIDEO) {
+    mood = 'High-energy, confident, compelling, and commercially impactful';
+  } else if (classification === CONTENT_ARCHETYPES.EDUCATIONAL_MASTERCLASS) {
+    mood = 'Authoritative, clear, intellectually engaging, and insightful';
+  } else {
+    mood = 'Inspiring, polished, cinematic, and modern';
+  }
 
   return {
-    wardrobe,
+    rawText: text,
+    classification,
+    isSceneryOnly,
+    primarySubject,
     subjectRole,
+    wardrobe,
     environment,
-    hasShallowDof,
-    hasCommercialLighting,
+    naturalElements,
+    lighting,
+    cameraMovement,
+    mood,
+    hasShallowDof: /shallow\s+depth\s+of\s+field|bokeh|cinematic\s+depth/i.test(text),
   };
 }
 
-function isSceneryOrSubjectWithoutPresenter(text = '') {
-  const lower = String(text || '').toLowerCase();
-  const hasHumanKeywords = /\b(person|man|woman|guy|girl|actor|presenter|character|people|architect|engineer|developer|founder|executive|speaker|student|chef|doctor|astronaut|pianist|model|teacher|host|narrator|expert|leader|individual|team)\b/i.test(lower);
-  if (hasHumanKeywords) return false;
-
-  const sceneryKeywords = /\b(sunset|sunrise|nature|landscape|mountain|mountains|ocean|sea|beach|forest|jungle|sky|clouds|drone|cinematic shot|cinematic view|timelapse|waterfall|city|cityscape|street|highway|car|vehicle|animal|dog|cat|bird|space|galaxy|nebula|abstract|weather|rain|snow|underwater)\b/i.test(lower);
-  return sceneryKeywords;
-}
-
+/**
+ * Builds the complete unified Continuity Context containing Character, Environment, and Visual Style Bibles.
+ */
 export function createSceneContinuityContext(videoSpec = {}, rawTopic = '') {
   const mode = videoSpec.mode || 'custom';
   const brandContext = videoSpec.brandContext || {};
   const isBrand = mode === 'brand' || Boolean(brandContext.brandName);
-  const visualStyle = videoSpec.visualStyle || 'Cinematic Hyper-Real';
+  const visualStyle = videoSpec.visualStyle || 'Cinematic Hyper-Realism';
+
+  const fullPromptText = `${rawTopic} ${videoSpec.objective || ''}`.trim();
+  const directives = extractUserDirectives(fullPromptText, mode, brandContext);
+  const classification = directives.classification;
+  const isSceneryOnly = directives.isSceneryOnly;
 
   const primaryColor = brandContext.primaryColor || brandContext.colors?.[0] || '#1A365D';
   const secondaryColor = brandContext.secondaryColor || brandContext.colors?.[1] || '#2B6CB0';
   const accentColor = brandContext.accentColor || brandContext.colors?.[2] || '#ED8936';
   const colorsList = brandContext.colors?.length ? brandContext.colors : [primaryColor, secondaryColor, accentColor].filter(Boolean);
 
-  const fullPromptText = `${rawTopic} ${videoSpec.objective || ''}`.trim();
-  const directives = extractUserDirectives(fullPromptText);
-  const topicText = fullPromptText.toLowerCase();
-  const isSceneryOnly = !isBrand && isSceneryOrSubjectWithoutPresenter(fullPromptText);
-
-  // --- 1. CHARACTER BIBLE & FACE CONTINUITY ---
-  let characterRole = '';
-  let wardrobeDescription = '';
-  let physicalIdentity = '';
-  let characterAnchorToken = '';
+  // --- 1. CHARACTER BIBLE ---
+  let characterBible = null;
+  let characterIdentity = null;
 
   if (!isSceneryOnly) {
-    characterRole = directives.subjectRole;
+    let characterRole = directives.subjectRole;
     const brandName = brandContext.brandName || '';
     const brandPurpose = brandContext.purpose || brandContext.productDescription || brandContext.tagline || '';
-    const isUdenOrHR = brandName.toLowerCase().includes('uden') || brandPurpose.toLowerCase().includes('hr') || brandPurpose.toLowerCase().includes('recruit') || brandPurpose.toLowerCase().includes('talent') || topicText.includes('hr') || topicText.includes('recruitment') || topicText.includes('career') || topicText.includes('student');
 
     if (!characterRole) {
-      if (isUdenOrHR) {
+      if (isBrand && (brandName.toLowerCase().includes('uden') || brandPurpose.toLowerCase().includes('talent') || brandPurpose.toLowerCase().includes('career'))) {
         characterRole = `Lead Talent Innovation Strategist at ${brandName || 'UDEN'}`;
-      } else if (topicText.includes('architect') || topicText.includes('cloud')) {
+      } else if (classification === CONTENT_ARCHETYPES.EDUCATIONAL_MASTERCLASS) {
+        characterRole = 'Masterclass Instructor and Industry Expert';
+      } else if (classification === CONTENT_ARCHETYPES.PROMOTIONAL_VIDEO && isBrand) {
+        characterRole = `${brandName || 'Brand'} Strategic Ambassador`;
+      } else if (directives.rawText.toLowerCase().includes('architect') || directives.rawText.toLowerCase().includes('engineer')) {
         characterRole = 'Visionary Software Architect';
-      } else if (topicText.includes('developer') || topicText.includes('engineer') || topicText.includes('coder')) {
-        characterRole = 'Lead Software Engineer';
-      } else if (topicText.includes('founder') || topicText.includes('executive') || topicText.includes('ceo')) {
-        characterRole = 'Tech Founder and Executive';
-      } else if (topicText.includes('student') || topicText.includes('graduate') || topicText.includes('career')) {
-        characterRole = 'Aspirational Career Professional';
       } else {
-        characterRole = isBrand ? `${brandName || 'Brand'} Global Platform Strategist` : 'Lead Presenter';
+        characterRole = isBrand ? `${brandName || 'Brand'} Global Host` : 'Lead Presenter';
       }
     }
 
-    // Exact wardrobe (User prompt directive takes highest precedence)
-    wardrobeDescription = directives.wardrobe;
+    let wardrobeDescription = directives.wardrobe;
     if (!wardrobeDescription) {
       if (isBrand) {
-        wardrobeDescription = `Clean tailored modern smart-casual attire in dark tones with subtle ${primaryColor} accent`;
-      } else if (topicText.includes('architect') || topicText.includes('engineer')) {
-        wardrobeDescription = 'Dark navy-blue crewneck knit sweater with white under-collar and dark tailored trousers';
+        wardrobeDescription = `Clean tailored modern smart-casual attire with refined aesthetic and subtle ${primaryColor} accent`;
       } else {
-        wardrobeDescription = 'Minimalist modern crewneck knit sweater in dark navy, slim charcoal trousers';
+        wardrobeDescription = 'Minimalist modern crewneck knit sweater in dark navy with slim charcoal trousers';
       }
     }
 
-    // Physical attributes & facial consistency anchor (locked identical person across all cuts)
-    physicalIdentity = '35-year-old professional with neatly groomed dark hair, subtle light stubble, sharp attentive eyes, natural skin texture, and athletic confident posture';
+    const physicalIdentity = '35-year-old articulate professional with neatly groomed hair, attentive expressive eyes, natural skin texture, and confident posture';
+    const characterAnchorToken = `[MAIN CHARACTER - IDENTITY LOCKED]: ${characterRole}, ${physicalIdentity}, wearing ${wardrobeDescription}. (Preserve identical facial structure, hair, and wardrobe across all cuts).`;
 
-    // Master immutable Character Bible Anchor Token
-    characterAnchorToken = `[MAIN SUBJECT - IDENTITY LOCKED]: ${characterRole}, ${physicalIdentity}, wearing ${wardrobeDescription}. (Same identical individual across all scenes, preserve identical facial bone structure, skin complexion, hair, and clothing).`;
-  }
-
-  // --- 2. ENVIRONMENT BIBLE ---
-  let environmentSetting = directives.environment;
-  if (!environmentSetting) {
-    if (isSceneryOnly) {
-      environmentSetting = `Expansive scenic atmosphere: ${rawTopic || 'Vibrant natural landscape with photorealistic depth'}`;
-    } else {
-      const brandName = brandContext.brandName || '';
-      const brandPurpose = brandContext.purpose || brandContext.productDescription || brandContext.tagline || '';
-      const isUdenOrHR = brandName.toLowerCase().includes('uden') || brandPurpose.toLowerCase().includes('hr') || brandPurpose.toLowerCase().includes('recruit') || brandPurpose.toLowerCase().includes('talent') || topicText.includes('hr');
-
-      if (isUdenOrHR) {
-        environmentSetting = `Modern sunlit ${brandName || 'UDEN'} talent innovation hub with sleek glass architectural partitions, transparent candidate telemetry displays, and open collaborative workstations`;
-      } else if (topicText.includes('cloud') || topicText.includes('architecture') || topicText.includes('workspace') || topicText.includes('collaborative')) {
-        environmentSetting = 'Sunlit modern collaborative innovation workspace with glass partitions, wood architectural slats, and clean open tech layout';
-      } else if (topicText.includes('nature') || topicText.includes('outdoor')) {
-        environmentSetting = 'Expansive natural outdoor architectural setting with clean horizon and organic textures';
-      } else if (isBrand) {
-        environmentSetting = `High-end modern ${brandName} innovation studio with architectural glass displays, clean lighting, and brand design elements`;
-      } else {
-        environmentSetting = 'Contemporary architectural innovation space with floor-to-ceiling windows and refined interior design';
-      }
-    }
-  }
-
-  // Lighting & atmosphere (User directives prioritized)
-  let lightingSetting = 'Consistent commercial studio lighting with soft diffused key light, subtle rim separation, and natural warm ambient fill';
-  if (directives.hasCommercialLighting || topicText.includes('commercial lighting')) {
-    lightingSetting = 'High-end commercial studio lighting grade, soft volumetric key light with balanced fill and warm rim light';
-  } else if (isSceneryOnly && (topicText.includes('sunset') || topicText.includes('sunrise') || topicText.includes('golden'))) {
-    lightingSetting = 'Natural cinematic golden hour illumination with radiant volumetric glow, warm atmospheric rim light, and soft dusk shadows';
-  }
-
-  // --- 3. CINEMATOGRAPHY SPEC ---
-  const cinematography = [
-    'Photorealistic optical depth',
-    directives.hasShallowDof || topicText.includes('shallow depth of field') ? '35mm prime lens with shallow depth of field and soft background bokeh' : '35mm cinematic lens with optical depth',
-    'Natural lifelike textures',
-    'Rich commercial color grade with balanced contrast',
-    'Smooth fluid camera motion vectors',
-  ].join(', ');
-
-  return {
-    isSceneryOnly,
-    characterBible: isSceneryOnly ? null : {
+    characterBible = {
       name: characterRole,
       role: characterRole,
       physicalIdentity,
@@ -175,36 +260,82 @@ export function createSceneContinuityContext(videoSpec = {}, rawTopic = '') {
       anchorToken: characterAnchorToken,
       demeanor: 'Articulate, confident, intellectually commanding, engaging presence',
       referenceImages: brandContext.logoUrl ? [brandContext.logoUrl] : [],
-    },
-    characterIdentity: isSceneryOnly ? null : {
+    };
+
+    characterIdentity = {
       role: characterRole,
       appearance: characterAnchorToken,
       wardrobe: wardrobeDescription,
       continuityStrict: true,
-    },
-    environment: {
-      setting: environmentSetting,
-      lighting: lightingSetting,
-      colorPalette: colorsList,
-      spatialContinuity: 'Persistent unified architectural coordinates across multi-shot sequence',
-    },
+    };
+  }
+
+  // --- 2. ENVIRONMENT BIBLE ---
+  let environmentSetting = directives.environment;
+  if (!environmentSetting) {
+    if (classification === CONTENT_ARCHETYPES.CINEMATIC_NATURE_JOURNEY) {
+      environmentSetting = directives.primarySubject || 'Pristine scenic natural landscape with photorealistic atmospheric depth';
+    } else if (isBrand) {
+      environmentSetting = `High-end modern ${brandContext.brandName || 'Brand'} innovation studio with sleek architectural glass and ambient branding`;
+    } else {
+      environmentSetting = 'Contemporary architectural innovation space with floor-to-ceiling windows and refined interior design';
+    }
+  }
+
+  const environmentBible = {
+    setting: environmentSetting,
+    naturalElements: directives.naturalElements,
+    lighting: directives.lighting,
+    colorPalette: colorsList,
+    spatialContinuity: 'Persistent unified environment coordinates and lighting across multi-shot sequence',
+  };
+
+  // --- 3. VISUAL STYLE BIBLE ---
+  const cinematography = [
+    'Photorealistic optical depth',
+    directives.hasShallowDof ? '35mm prime lens with shallow depth of field and soft background bokeh' : '35mm anamorphic cinematic lens with natural depth',
+    'Lifelike organic textures',
+    'Rich commercial color grade with balanced dynamic range',
+    directives.cameraMovement,
+  ].filter(Boolean).join(', ');
+
+  const visualStyleBible = {
+    aesthetic: visualStyle,
+    cinematography,
+    logoUrl: brandContext.logoUrl || null,
+    logoPlacement: brandContext.logoPlacement || 'none',
+    typography: 'Clean, high-impact modern typography',
+  };
+
+  // --- 4. AUDIO CONTINUITY ---
+  let voiceActor = 'Aria (Natural Cinematic Narrator)';
+  if (classification === CONTENT_ARCHETYPES.CINEMATIC_NATURE_JOURNEY) {
+    voiceActor = 'David (Deep Cinematic Documentary Voice)';
+  } else if (isBrand) {
+    voiceActor = `${brandContext.brandName || 'Brand'} Host (Warm Authoritative Voice)`;
+  }
+
+  return {
+    contentClassification: classification,
+    userDirectives: directives,
+    isSceneryOnly,
+    characterBible,
+    characterIdentity,
+    environment: environmentBible,
+    environmentBible,
+    visualStyle: visualStyleBible,
+    visualStyleBible,
     audioContinuity: {
-      voiceActor: isBrand ? 'Brand Host (Warm Authoritative Voice)' : 'Aria (Natural Cinematic Narrator)',
-      voiceTimbre: 'Warm, resonant, natural human speech with consistent acoustic resonance across all cuts',
+      voiceActor,
+      voiceTimbre: 'Warm, resonant, natural human narration with consistent acoustic resonance across all cuts',
       speakingCadence: 'Natural deliberate pacing (0.95x) with smooth narrative continuity',
     },
-    visualStyle: {
-      aesthetic: visualStyle,
-      cinematography,
-      logoUrl: brandContext.logoUrl || null,
-      logoPlacement: brandContext.logoPlacement || 'top-right',
-      typography: 'Clean, high-impact modern sans-serif typography',
-    },
     continuityRules: [
-      'Maintain exact character physical features, haircut, and wardrobe identically across all generated scenes',
-      'Never alter the character clothing or facial appearance between consecutive scene cuts',
-      'Preserve identical physical setting, glass architecture, and lighting grade from first frame to final frame',
-      'Preserve user-specified wardrobe and environment keywords as immutable priorities in every scene prompt',
+      isSceneryOnly
+        ? 'STRICT NATURE MANDATE: Strictly forbid human presenters, talking heads, or UI telemetry screens. Focus exclusively on natural scenery, landscape discovery, and lighting transitions.'
+        : 'CHARACTER MANDATE: Maintain exact character physical features, haircut, and wardrobe identically across all generated scenes.',
+      'Preserve user-specified environment, natural elements, and lighting keywords as immutable priorities in every scene prompt.',
+      'Preserve identical physical setting, color grade, and atmosphere from first frame to final frame.',
     ],
   };
 }

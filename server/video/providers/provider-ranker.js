@@ -90,9 +90,17 @@ export class ProviderRanker {
       }
     }
 
-    // Resilient fallback: If no candidate matched the strict strategy, fallback to available visual engine
+    // Resilient fallback: If no candidate matched the strict strategy, fallback to a compatible visual engine matching the generation strategy
     if (eligibleCandidates.length === 0) {
-      const fallback = registry.getProvider('graphics') || registry.getProvider('sora') || registry.getProvider('simulation');
+      let fallback = null;
+      if (strategy === 'GENERATIVE_VIDEO') {
+        fallback = registry.getProvider('sora') || registry.getProvider('veo') || (featureFlags.SIMULATION_MODE_ENABLED ? registry.getProvider('simulation') : null);
+      } else if (strategy === 'PROGRAMMATIC_GRAPHICS') {
+        fallback = registry.getProvider('graphics') || registry.getProvider('hyperframes');
+      } else {
+        fallback = registry.getProvider('sora') || registry.getProvider('graphics') || (featureFlags.SIMULATION_MODE_ENABLED ? registry.getProvider('simulation') : null);
+      }
+
       if (fallback && fallback.isAvailable()) {
         const caps = fallback.getCapabilities();
         eligibleCandidates.push({

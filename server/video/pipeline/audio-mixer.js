@@ -81,17 +81,19 @@ $synth.Dispose();
     return new Promise((resolve, reject) => {
       const ffmpeg = spawn('ffmpeg', [
         '-y',
-        '-f', 'lavfi', '-i', `sine=f=${f1}:d=${dur}`,
-        '-f', 'lavfi', '-i', `sine=f=${f2}:d=${dur}`,
-        '-f', 'lavfi', '-i', `sine=f=${f3}:d=${dur}`,
-        '-f', 'lavfi', '-i', `sine=f=${f4}:d=${dur}`,
-        '-f', 'lavfi', '-i', `anoisesrc=d=${dur}:c=pink:r=44100:a=0.012`,
-        '-filter_complex', `[0:a]volume=0.20[a0];[1:a]volume=0.15[a1];[2:a]volume=0.12[a2];[3:a]volume=0.10[a3];[4:a]${noiseFilter},volume=0.06[a4];[a0][a1][a2][a3][a4]amix=inputs=5:duration=first:dropout_transition=2,afade=t=in:st=0:d=1.5,afade=t=out:st=${Math.max(1, dur - 2)}:d=2[out]`,
+        '-t', `${dur}`,
+        '-f', 'lavfi', '-i', `sine=f=${f1}`,
+        '-f', 'lavfi', '-i', `sine=f=${f2}`,
+        '-f', 'lavfi', '-i', `sine=f=${f3}`,
+        '-f', 'lavfi', '-i', `sine=f=${f4}`,
+        '-f', 'lavfi', '-i', `anoisesrc=c=pink:r=44100:a=0.012`,
+        '-filter_complex', `[0:a]volume=0.20[a0];[1:a]volume=0.15[a1];[2:a]volume=0.12[a2];[3:a]volume=0.10[a3];[4:a]${noiseFilter},volume=0.06[a4];[a0][a1][a2][a3][a4]amix=inputs=5:duration=longest:dropout_transition=2,afade=t=in:st=0:d=1.5,afade=t=out:st=${Math.max(1, dur - 2)}:d=2[out]`,
         '-map', '[out]',
         '-c:a', 'aac',
         '-b:a', '192k',
         '-ar', '44100',
         '-ac', '2',
+        '-t', `${dur}`,
         outAacPath
       ]);
 
@@ -128,13 +130,15 @@ $synth.Dispose();
     const voiceWavPath = path.join(tempDir, `${sessionPrefix}_voiceover.wav`);
     const bedAacPath = path.join(tempDir, `${sessionPrefix}_ambient_bed.aac`);
     const masterAacPath = path.join(tempDir, `${sessionPrefix}_master_audio.aac`);
-
     let hasVoice = false;
-    try {
-      await this.generateVoiceoverAudio({ text: scriptText, outWavPath: voiceWavPath });
-      hasVoice = true;
-    } catch (voiceErr) {
-      console.warn('[AUDIO MIXER] Voiceover generation warning (will use ambient music):', voiceErr.message);
+    const shouldVoiceover = Boolean(videoSpec.audioPlan?.voiceover);
+    if (shouldVoiceover && scriptText) {
+      try {
+        await this.generateVoiceoverAudio({ text: scriptText, outWavPath: voiceWavPath });
+        hasVoice = true;
+      } catch (voiceErr) {
+        console.warn('[AUDIO MIXER] Voiceover generation warning (will use ambient music):', voiceErr.message);
+      }
     }
 
     try {

@@ -7,15 +7,26 @@
 
 import path from 'path';
 import fs from 'fs';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { spawn } from 'child_process';
 import { defaultAudioMixer } from './audio-mixer.js';
+import { probeAssetDurationSync } from './scene-asset-normalizer.js';
 
 if (typeof process !== 'undefined') {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 }
 
-const execAsync = promisify(exec);
+function spawnFfmpeg(args = []) {
+  return new Promise((resolve, reject) => {
+    const p = spawn('ffmpeg', args);
+    let stderr = '';
+    p.stderr.on('data', d => stderr += d.toString());
+    p.on('close', code => {
+      if (code === 0) resolve();
+      else reject(new Error(stderr || `FFmpeg process exited with code ${code}`));
+    });
+    p.on('error', reject);
+  });
+}
 
 export class CompositionEngine {
   constructor(audioMixer = defaultAudioMixer) {
@@ -43,9 +54,8 @@ export class CompositionEngine {
     }
 
     const audioMix = this.audioMixer.prepareAudioTracks(sceneAssets, videoSpec);
-    const targetTotalDuration = Number(videoSpec.duration) || sceneAssets.reduce((acc, s) => acc + (Number(s.duration) || 0), 0);
-
-    const tempDir = path.resolve('./temp');
+    const targetTotalDuration = Number(videoSpec.duration || 15);
+    const tempDir = path.resolve('server/temp/composition');
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
@@ -64,7 +74,7 @@ export class CompositionEngine {
     try {
       // Step 1: Process and normalize each scene asset clip in PARALLEL
       const clipTasks = sceneAssets.map(async (scene, i) => {
-        const sceneDuration = Number(scene.duration || scene.requestedDuration || 10);
+        const sceneDuration = Number(scene.requestedTimelineDuration || scene.duration || scene.requestedDuration || 10);
         const sceneAssetUrl = scene.assetUrl || scene.video_url || null;
         const rawScenePath = path.join(tempDir, `${sessionPrefix}_scene_${i}_raw.mp4`);
         const normScenePath = path.join(tempDir, `${sessionPrefix}_scene_${i}_norm.mp4`);
@@ -94,14 +104,55 @@ export class CompositionEngine {
         }
 
         if (inputPathToNormalize && fs.existsSync(inputPathToNormalize)) {
-          // Normalize real downloaded scene clip: scale, pad, 30fps, synced AAC audio, exact duration, and faststart
-          const normCmd = `ffmpeg -y -threads 2 -stream_loop -1 -i "${inputPathToNormalize}" -f lavfi -i anullsrc=r=44100:cl=stereo -filter_complex "[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,setsar=1,trim=duration=${sceneDuration},setpts=PTS-STARTPTS[v];[1:a]atrim=duration=${sceneDuration},asetpts=PTS-STARTPTS[a]" -map "[v]" -map "[a]" -c:v libx264 -preset ultrafast -tune fastdecode -pix_fmt yuv420p -c:a aac -b:a 128k -ar 44100 -ac 2 -t ${sceneDuration} -movflags +faststart "${normScenePath}"`;
+          // Normalize real downloaded scene clip: scale, pad, 30fps, synced AAC audio, exact requestedTimelineDuration, and faststart
+          const normArgs = [
+            '-y',
+            '-threads', '2',
+            '-i', inputPathToNormalize,
+            '-f', 'lavfi',
+            '-i', 'anullsrc=r=44100:cl=stereo',
+            '-filter_complex', `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,setsar=1,trim=duration=${sceneDuration},setpts=PTS-STARTPTS[v];[1:a]atrim=duration=${sceneDuration},asetpts=PTS-STARTPTS[a]`,
+            '-map', '[v]',
+            '-map', '[a]',
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast',
+            '-tune', 'fastdecode',
+            '-pix_fmt', 'yuv420p',
+            '-c:a', 'aac',
+            '-b:a', '128k',
+            '-ar', '44100',
+            '-ac', '2',
+            '-t', `${sceneDuration}`,
+            '-movflags', '+faststart',
+            normScenePath,
+          ];
+
           try {
-            await execAsync(normCmd);
+            await spawnFfmpeg(normArgs);
           } catch (normErr) {
             console.warn(`[COMPOSITION ENGINE] Primary normalization warning for scene ${i}, applying safe baseline pad:`, normErr.message);
-            const normFallbackCmd = `ffmpeg -y -threads 2 -stream_loop -1 -i "${inputPathToNormalize}" -f lavfi -i anullsrc=r=44100:cl=stereo -filter_complex "[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,setsar=1[v]" -map "[v]" -map 1:a -c:v libx264 -preset ultrafast -tune fastdecode -pix_fmt yuv420p -c:a aac -b:a 128k -ar 44100 -ac 2 -t ${sceneDuration} -movflags +faststart "${normScenePath}"`;
-            await execAsync(normFallbackCmd);
+            const fallbackArgs = [
+              '-y',
+              '-threads', '2',
+              '-i', inputPathToNormalize,
+              '-f', 'lavfi',
+              '-i', 'anullsrc=r=44100:cl=stereo',
+              '-filter_complex', `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,setsar=1[v]`,
+              '-map', '[v]',
+              '-map', '1:a',
+              '-c:v', 'libx264',
+              '-preset', 'ultrafast',
+              '-tune', 'fastdecode',
+              '-pix_fmt', 'yuv420p',
+              '-c:a', 'aac',
+              '-b:a', '128k',
+              '-ar', '44100',
+              '-ac', '2',
+              '-t', `${sceneDuration}`,
+              '-movflags', '+faststart',
+              normScenePath,
+            ];
+            await spawnFfmpeg(fallbackArgs);
           }
         } else {
           // Production pipeline forbids placeholder clips: throw error to trigger proper retry or job failure
@@ -123,11 +174,30 @@ export class CompositionEngine {
       if (normalizedClipPaths.length === 1) {
         fs.copyFileSync(normalizedClipPaths[0], unwatermarkedPath);
       } else {
-        const concatInputs = normalizedClipPaths.map(p => `-i "${p}"`).join(' ');
+        const concatInputs = [];
+        for (const p of normalizedClipPaths) {
+          concatInputs.push('-i', p);
+        }
         const filterStreams = normalizedClipPaths.map((_, idx) => `[${idx}:v][${idx}:a]`).join('');
-        const concatFilter = `"${filterStreams}concat=n=${normalizedClipPaths.length}:v=1:a=1[v][a]"`;
-        const concatCmd = `ffmpeg -y ${concatInputs} -filter_complex ${concatFilter} -map "[v]" -map "[a]" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac -b:a 128k -ar 44100 -ac 2 -movflags +faststart "${unwatermarkedPath}"`;
-        await execAsync(concatCmd);
+        const concatFilter = `${filterStreams}concat=n=${normalizedClipPaths.length}:v=1:a=1[v][a]`;
+
+        const concatArgs = [
+          '-y',
+          ...concatInputs,
+          '-filter_complex', concatFilter,
+          '-map', '[v]',
+          '-map', '[a]',
+          '-c:v', 'libx264',
+          '-preset', 'ultrafast',
+          '-pix_fmt', 'yuv420p',
+          '-c:a', 'aac',
+          '-b:a', '128k',
+          '-ar', '44100',
+          '-ac', '2',
+          '-movflags', '+faststart',
+          unwatermarkedPath,
+        ];
+        await spawnFfmpeg(concatArgs);
       }
 
       // Step 2.5: Generate & Multiplex Master Soundtrack (Voiceover narration + Cinematic Ambient Bed)
@@ -146,8 +216,22 @@ export class CompositionEngine {
           const multiplexedPath = path.join(tempDir, `${sessionPrefix}_with_sound.mp4`);
           intermediateFiles.push(multiplexedPath);
           console.log(`[COMPOSITION ENGINE] Multiplexing master soundtrack onto final video...`);
-          const soundCmd = `ffmpeg -y -i "${unwatermarkedPath}" -i "${masterAudioPath}" -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -ar 44100 -ac 2 -t ${actualComposedDuration} -movflags +faststart "${multiplexedPath}"`;
-          await execAsync(soundCmd);
+          const soundArgs = [
+            '-y',
+            '-i', unwatermarkedPath,
+            '-i', masterAudioPath,
+            '-map', '0:v',
+            '-map', '1:a',
+            '-c:v', 'copy',
+            '-c:a', 'aac',
+            '-b:a', '192k',
+            '-ar', '44100',
+            '-ac', '2',
+            '-t', `${actualComposedDuration}`,
+            '-movflags', '+faststart',
+            multiplexedPath,
+          ];
+          await spawnFfmpeg(soundArgs);
           videoWithSoundPath = multiplexedPath;
         }
       } catch (soundErr) {
@@ -222,15 +306,42 @@ export class CompositionEngine {
             intermediateFiles.push(dualWatermarkedPath);
 
             console.log(`[COMPOSITION ENGINE] Embedding Brand Logo (${brandPosKey}) + UDEN Watermark (bottom-right)...`);
-            const dualCmd = `ffmpeg -y -i "${videoWithSoundPath}" -i "${resolvedBrandLogoPath}" -i "${resolvedWatermarkPath}" -filter_complex "[1:v]scale=150:-1[brand];[2:v]scale=160:-1,format=rgba,colorchannelmixer=aa=0.92[wm];[0:v][brand]overlay=${brandPos}:format=auto[v1];[v1][wm]overlay=${watermarkPos}:format=auto[v]" -map "[v]" -map 0:a? -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a copy -movflags +faststart "${dualWatermarkedPath}"`;
-            await execAsync(dualCmd);
+            const dualArgs = [
+              '-y',
+              '-i', videoWithSoundPath,
+              '-i', resolvedBrandLogoPath,
+              '-i', resolvedWatermarkPath,
+              '-filter_complex', `[1:v]scale=150:-1[brand];[2:v]scale=160:-1,format=rgba,colorchannelmixer=aa=0.92[wm];[0:v][brand]overlay=${brandPos}:format=auto[v1];[v1][wm]overlay=${watermarkPos}:format=auto[v]`,
+              '-map', '[v]',
+              '-map', '0:a?',
+              '-c:v', 'libx264',
+              '-preset', 'ultrafast',
+              '-pix_fmt', 'yuv420p',
+              '-c:a', 'copy',
+              '-movflags', '+faststart',
+              dualWatermarkedPath,
+            ];
+            await spawnFfmpeg(dualArgs);
             videoToFinalizePath = dualWatermarkedPath;
           } else {
             // Brand Logo only fallback
             const brandOnlyPath = path.join(tempDir, `${sessionPrefix}_brand_only.mp4`);
             intermediateFiles.push(brandOnlyPath);
-            const brandCmd = `ffmpeg -y -i "${videoWithSoundPath}" -i "${resolvedBrandLogoPath}" -filter_complex "[1:v]scale=150:-1[brand];[0:v][brand]overlay=${brandPos}:format=auto[v]" -map "[v]" -map 0:a? -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a copy -movflags +faststart "${brandOnlyPath}"`;
-            await execAsync(brandCmd);
+            const brandArgs = [
+              '-y',
+              '-i', videoWithSoundPath,
+              '-i', resolvedBrandLogoPath,
+              '-filter_complex', `[1:v]scale=150:-1[brand];[0:v][brand]overlay=${brandPos}:format=auto[v]`,
+              '-map', '[v]',
+              '-map', '0:a?',
+              '-c:v', 'libx264',
+              '-preset', 'ultrafast',
+              '-pix_fmt', 'yuv420p',
+              '-c:a', 'copy',
+              '-movflags', '+faststart',
+              brandOnlyPath,
+            ];
+            await spawnFfmpeg(brandArgs);
             videoToFinalizePath = brandOnlyPath;
           }
         } else if (resolvedWatermarkPath) {
@@ -239,8 +350,21 @@ export class CompositionEngine {
           intermediateFiles.push(singleWatermarkedPath);
 
           console.log(`[COMPOSITION ENGINE] Embedding UDEN bottom-right watermark on final video (${videoSpec.mode || 'custom'} mode)...`);
-          const singleCmd = `ffmpeg -y -i "${videoWithSoundPath}" -i "${resolvedWatermarkPath}" -filter_complex "[1:v]scale=160:-1,format=rgba,colorchannelmixer=aa=0.92[logo];[0:v][logo]overlay=${watermarkPos}:format=auto[v]" -map "[v]" -map 0:a? -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a copy -movflags +faststart "${singleWatermarkedPath}"`;
-          await execAsync(singleCmd);
+          const singleArgs = [
+            '-y',
+            '-i', videoWithSoundPath,
+            '-i', resolvedWatermarkPath,
+            '-filter_complex', `[1:v]scale=160:-1,format=rgba,colorchannelmixer=aa=0.92[logo];[0:v][logo]overlay=${watermarkPos}:format=auto[v]`,
+            '-map', '[v]',
+            '-map', '0:a?',
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast',
+            '-pix_fmt', 'yuv420p',
+            '-c:a', 'copy',
+            '-movflags', '+faststart',
+            singleWatermarkedPath,
+          ];
+          await spawnFfmpeg(singleArgs);
           videoToFinalizePath = singleWatermarkedPath;
         }
       } catch (watermarkErr) {
@@ -253,9 +377,15 @@ export class CompositionEngine {
       // Step 4: Render thumbnail image via FFmpeg
       const thumbFileName = outputFileName.replace('.mp4', '.png');
       const thumbPath = path.join(tempDir, thumbFileName);
-      const thumbCmd = `ffmpeg -y -ss 00:00:01 -i "${outputPath}" -vframes 1 "${thumbPath}"`;
+      const thumbArgs = [
+        '-y',
+        '-ss', '00:00:01',
+        '-i', outputPath,
+        '-vframes', '1',
+        thumbPath,
+      ];
       try {
-        await execAsync(thumbCmd);
+        await spawnFfmpeg(thumbArgs);
       } catch (thumbErr) {
         console.warn('[COMPOSITION ENGINE] Thumbnail extraction warning:', thumbErr.message);
       }
@@ -268,36 +398,52 @@ export class CompositionEngine {
         finalVideoUrl = options.mockUrl;
         thumbnailUrl = options.mockThumb || `https://creative-os-assets.s3.ap-south-1.amazonaws.com/thumbnails/${outputFileName.replace('.mp4', '.png')}`;
       } else if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_BUCKET_NAME) {
-        const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
-        const s3 = new S3Client({
-          region: process.env.AWS_REGION || 'ap-south-1',
-          credentials: {
-            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-          },
-        });
+        try {
+          const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
+          const s3 = new S3Client({
+            region: process.env.AWS_REGION || 'ap-south-1',
+            credentials: {
+              accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+              secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+            },
+          });
 
-        await s3.send(new PutObjectCommand({
-          Bucket: process.env.AWS_BUCKET_NAME,
-          Key: s3Key,
-          Body: buffer,
-          ContentType: 'video/mp4',
-        }));
-        finalVideoUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com/${s3Key}`;
-
-        if (fs.existsSync(thumbPath)) {
-          const thumbBuffer = fs.readFileSync(thumbPath);
-          const thumbS3Key = `thumbnails/${thumbFileName}`;
           await s3.send(new PutObjectCommand({
             Bucket: process.env.AWS_BUCKET_NAME,
-            Key: thumbS3Key,
-            Body: thumbBuffer,
-            ContentType: 'image/png',
+            Key: s3Key,
+            Body: buffer,
+            ContentType: 'video/mp4',
           }));
-          thumbnailUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com/${thumbS3Key}`;
-          fs.unlinkSync(thumbPath);
-        } else {
-          thumbnailUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com/thumbnails/${thumbFileName}`;
+          finalVideoUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com/${s3Key}`;
+
+          if (fs.existsSync(thumbPath)) {
+            const thumbBuffer = fs.readFileSync(thumbPath);
+            const thumbS3Key = `thumbnails/${thumbFileName}`;
+            await s3.send(new PutObjectCommand({
+              Bucket: process.env.AWS_BUCKET_NAME,
+              Key: thumbS3Key,
+              Body: thumbBuffer,
+              ContentType: 'image/png',
+            }));
+            thumbnailUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com/${thumbS3Key}`;
+            fs.unlinkSync(thumbPath);
+          } else {
+            thumbnailUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com/thumbnails/${thumbFileName}`;
+          }
+        } catch (s3Err) {
+          console.warn('[COMPOSITION ENGINE] S3 upload error, saving locally to /uploads:', s3Err.message);
+          const uploadsDir = path.resolve('./uploads');
+          if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+          const localUploadPath = path.join(uploadsDir, outputFileName);
+          fs.writeFileSync(localUploadPath, buffer);
+          finalVideoUrl = `/uploads/${outputFileName}`;
+
+          if (fs.existsSync(thumbPath)) {
+            const localThumbPath = path.join(uploadsDir, thumbFileName);
+            fs.copyFileSync(thumbPath, localThumbPath);
+            thumbnailUrl = `/uploads/${thumbFileName}`;
+            fs.unlinkSync(thumbPath);
+          }
         }
       } else {
         // Local upload directory fallback
@@ -315,11 +461,14 @@ export class CompositionEngine {
         }
       }
 
-      fs.unlinkSync(outputPath);
     } catch (ffmpegErr) {
-      console.warn('[COMPOSITION ENGINE] FFmpeg render warning, using fallback asset composition:', ffmpegErr.message);
-      finalVideoUrl = options.mockUrl || `https://creative-os-assets.s3.ap-south-1.amazonaws.com/videos/${outputFileName}`;
-      thumbnailUrl = options.mockThumb || `https://creative-os-assets.s3.ap-south-1.amazonaws.com/thumbnails/${outputFileName.replace('.mp4', '.png')}`;
+      console.warn('[COMPOSITION ENGINE] FFmpeg render error:', ffmpegErr.message);
+      if (options.mockUrl) {
+        finalVideoUrl = options.mockUrl;
+        thumbnailUrl = options.mockThumb || `https://creative-os-assets.s3.ap-south-1.amazonaws.com/thumbnails/${outputFileName.replace('.mp4', '.png')}`;
+      } else {
+        throw new Error(`COMPOSITION_FAILED: ${ffmpegErr.message}`);
+      }
     } finally {
       // Clean up intermediate temp files
       for (const tempFile of intermediateFiles) {
@@ -331,11 +480,15 @@ export class CompositionEngine {
       }
     }
 
+    const probedOutputDuration = (outputPath && fs.existsSync(outputPath)) ? probeAssetDurationSync(outputPath) : null;
+    const finalComposedDuration = probedOutputDuration || actualComposedDuration || targetTotalDuration;
+
     return {
       status: 'completed',
       clipsCount: sceneAssets.length,
       audioStatus: audioMix.status,
-      outputDuration: actualComposedDuration || targetTotalDuration,
+      outputDuration: finalComposedDuration,
+      probedOutputDuration,
       outputResolution: `${width}x${height}`,
       outputAspectRatio: aspectRatio,
       finalVideoUrl,

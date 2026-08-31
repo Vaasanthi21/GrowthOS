@@ -171,10 +171,10 @@ ${isBrandMode ? `BRAND PROFILE:\nBrand Name: ${resolvedBrandContext.brandName}\n
       version: '1.0',
       objective: isBrand
         ? `Showcase ${brandName}'s core mission: ${brandPurpose.slice(0, 120)}`
-        : `Drive engagement for "${prompt.slice(0, 80)}"`,
+        : prompt,
       audience: brandContext?.audience || 'Target professional and social audience',
       tone: brandContext?.voice || 'Inspiring, authoritative, and forward-looking',
-      visualStyle: brandContext?.visualStyle || 'High-contrast modern cinematic editorial with rich volumetric lighting',
+      visualStyle: brandContext?.visualStyle || 'Cinematic Hyper-Realism',
       duration: dur,
       requestedDuration: dur,
       effectiveDuration: dur,

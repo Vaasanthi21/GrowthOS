@@ -8,6 +8,7 @@
 
 import { validateSceneCard } from '../creative-director/spec-schema.js';
 import { defaultLLMProvider } from '../creative-director/llm-provider.js';
+import { CONTENT_ARCHETYPES } from '../context/scene-continuity.context.js';
 
 export class StoryboardService {
   constructor(llmProvider = defaultLLMProvider) {
@@ -15,73 +16,204 @@ export class StoryboardService {
   }
 
   /**
-   * Calculates target scene count and duration breakdown dynamically based on total video duration.
-   * Ensures every scene clip duration is strictly <= 12s (Sora 2 clip limit) while scaling
-   * seamlessly from 15s to 120s.
+   * Calculates target scene count, requested timeline durations, and provider-supported generation durations (4, 8, 12s)
+   * dynamically based on total video duration and content archetype pacing.
    */
-  calculateSceneBudget(totalDurationSeconds = 15) {
+  calculateSceneBudget(totalDurationSeconds = 15, classification = null) {
     const total = Math.min(120, Math.max(4, Number(totalDurationSeconds) || 15));
-    const maxClipSec = 12;
+    
+    // Map discrete target video durations to compatible provider generation durations (4, 8, 12)
+    // and exact requested timeline durations summing to totalDurationSeconds
+    let budget = [];
 
     if (total <= 6) {
-      return { targetSceneCount: 1, sceneDurations: [total] };
-    }
-    if (total <= 12) {
-      return { targetSceneCount: total <= 8 ? 1 : 2, sceneDurations: total <= 8 ? [total] : [Math.floor(total / 2), Math.ceil(total / 2)] };
-    }
-    if (total <= 18) {
-      // 15s -> 3 scenes [5, 5, 5]
+      budget = [
+        { requestedTimelineDuration: total, providerGenerationDuration: 4 }
+      ];
+    } else if (total <= 10) {
+      budget = [
+        { requestedTimelineDuration: total, providerGenerationDuration: 8 }
+      ];
+    } else if (total <= 12) {
+      budget = [
+        { requestedTimelineDuration: total, providerGenerationDuration: 12 }
+      ];
+    } else if (total <= 18) {
+      // 15s video: 2 scenes [8s, 7s] timeline, generated as 8s + 8s = 16s
+      const count = 2;
+      const baseSec = Math.floor(total / count);
+      let rem = total - baseSec * count;
+      budget = Array(count).fill(0).map((_, i) => {
+        const tDur = baseSec + (i < rem ? 1 : 0);
+        return {
+          requestedTimelineDuration: tDur,
+          providerGenerationDuration: 8,
+        };
+      });
+    } else if (total <= 35) {
+      // 30s video: 3 scenes [10s, 10s, 10s] timeline, generated as 12s + 12s + 12s = 36s
       const count = 3;
       const baseSec = Math.floor(total / count);
       let rem = total - baseSec * count;
-      const durations = Array(count).fill(baseSec);
-      for (let i = count - 1; i >= 0 && rem > 0; i--) { durations[i]++; rem--; }
-      return { targetSceneCount: count, sceneDurations: durations };
+      budget = Array(count).fill(0).map((_, i) => {
+        const tDur = baseSec + (i < rem ? 1 : 0);
+        return {
+          requestedTimelineDuration: tDur,
+          providerGenerationDuration: 12,
+        };
+      });
+    } else if (total <= 65) {
+      // 60s video: 6 scenes [10s each] timeline, generated as 6 x 12s = 72s
+      const count = 6;
+      const baseSec = Math.floor(total / count);
+      let rem = total - baseSec * count;
+      budget = Array(count).fill(0).map((_, i) => {
+        const tDur = baseSec + (i < rem ? 1 : 0);
+        return {
+          requestedTimelineDuration: tDur,
+          providerGenerationDuration: 12,
+        };
+      });
+    } else {
+      // 120s video: 12 scenes [10s each] timeline, generated as 12 x 12s = 144s
+      const count = Math.min(12, Math.max(2, Math.round(total / 10)));
+      const baseSec = Math.floor(total / count);
+      let rem = total - baseSec * count;
+      budget = Array(count).fill(0).map((_, i) => {
+        const tDur = baseSec + (i < rem ? 1 : 0);
+        return {
+          requestedTimelineDuration: tDur,
+          providerGenerationDuration: 12,
+        };
+      });
     }
 
-    // For >18s: Target ~10s per scene (e.g. 30s -> 3 scenes, 60s -> 6 scenes, 90s -> 9 scenes, 120s -> 12 scenes)
-    const count = Math.min(12, Math.max(2, Math.round(total / 10)));
-    const baseSec = Math.floor(total / count);
-    let remainder = total - (baseSec * count);
-    const durations = Array(count).fill(baseSec);
-    for (let i = count - 1; i >= 0 && remainder > 0; i--) {
-      durations[i]++;
-      remainder--;
-    }
-    // Guarantee no single clip exceeds maxClipSec (12s)
-    const safeDurations = durations.map(d => Math.min(d, maxClipSec));
-    return { targetSceneCount: count, sceneDurations: safeDurations };
+    const targetSceneCount = budget.length;
+    const sceneDurations = budget.map(b => b.requestedTimelineDuration);
+    const generationDurations = budget.map(b => b.providerGenerationDuration);
+
+    return {
+      targetSceneCount,
+      sceneDurations,
+      generationDurations,
+      budget,
+    };
   }
 
   /**
    * Generates a shot-by-shot Storyboard from a validated VideoSpec with shot variety
-   * and structured narrative progression.
+   * and structured narrative progression tailored to the prompt's content archetype.
    */
   async generateStoryboard(videoSpec, originalPrompt = '') {
     const totalDuration = videoSpec.duration || 15;
-    const { targetSceneCount, sceneDurations } = this.calculateSceneBudget(totalDuration);
     const continuity = videoSpec.continuityContext || {};
-    const characterDesc = continuity.characterBible?.anchorToken || continuity.characterIdentity?.appearance || 'Lead subject';
-    const wardrobeDesc = continuity.characterBible?.wardrobe || 'Clean modern attire';
-    const envDesc = continuity.environment?.setting || 'Modern studio space';
-    const lightingDesc = continuity.environment?.lighting || 'Cinematic commercial studio lighting';
+    const classification = continuity.contentClassification || CONTENT_ARCHETYPES.SOCIAL_MEDIA_CONTENT;
+    const isSceneryOnly = continuity.isSceneryOnly;
+    const userDirectives = continuity.userDirectives || {};
 
-    const systemPrompt = `You are an elite film director, masterclass producer, and storyboard cinematographer.
-Decompose the provided VideoSpec into an ordered array of ${targetSceneCount} distinct cinematic scene cards totaling ${totalDuration} seconds.
+    const { targetSceneCount, sceneDurations, generationDurations, budget } = this.calculateSceneBudget(totalDuration, classification);
+
+    const characterDesc = continuity.characterBible?.anchorToken || continuity.characterIdentity?.appearance || '';
+    const wardrobeDesc = continuity.characterBible?.wardrobe || '';
+    const envDesc = continuity.environment?.setting || userDirectives.environment || userDirectives.primarySubject || 'Scenic environment';
+    const lightingDesc = continuity.environment?.lighting || userDirectives.lighting || 'Cinematic lighting with rich contrast';
+
+    // Build archetype-specific system prompt guidelines
+    let archetypeDirectives = '';
+    let shotTypeOptions = '';
+
+    switch (classification) {
+      case CONTENT_ARCHETYPES.CINEMATIC_NATURE_JOURNEY:
+        archetypeDirectives = `
+CONTENT ARCHETYPE: CINEMATIC NATURE JOURNEY
+NARRATIVE BLUEPRINT:
+- Scene 1: Grand Environmental Establishing Shot introducing the majesty and atmosphere of the landscape
+- Middle Scenes: Progressive visual discovery exploring micro-textures (morning dew, glistening moss, foliage, clear streams) and fluid aerial exploration
+- Climactic Scenes: Radiant sunlight / golden hour illumination transformation and sweeping aerial panoramic payoff
+STRICT MANDATE: Forbid human presenters, corporate actors, and technical UI screens. Focus 100% on natural scenery, landscape discovery, atmospheric lighting, and organic motion.`;
+        shotTypeOptions = 'AERIAL_PANORAMA | MACRO_FLORA_DETAIL | STREAM_TRACKING_GLIDE | LOW_ANGLE_FOREST | SUNBEAM_ORBIT | SWEEPING_MOUNTAIN_PAYOFF';
+        break;
+
+      case CONTENT_ARCHETYPES.PROMOTIONAL_VIDEO:
+        archetypeDirectives = `
+CONTENT ARCHETYPE: PROMOTIONAL VIDEO
+NARRATIVE BLUEPRINT:
+- Scene 1: High-Impact Attention Hook introducing the core proposition with dynamic energy
+- Middle Scenes: Feature / Service Value Highlight demonstrating tangible benefit and social proof
+- Final Scene: Strong, compelling Call-to-Action with confident brand lockup`;
+        shotTypeOptions = 'DYNAMIC_HERO_HOOK | MEDIUM_ACTION | VALUE_HIGHLIGHT | ORBITAL_REVEAL | HIGH_ENERGY_CTA';
+        break;
+
+      case CONTENT_ARCHETYPES.PRODUCT_ADVERTISEMENT:
+        archetypeDirectives = `
+CONTENT ARCHETYPE: PRODUCT ADVERTISEMENT
+NARRATIVE BLUEPRINT:
+- Scene 1: Hero Product Reveal with dramatic lighting and optical depth
+- Middle Scenes: Precision Macro Details, Materials, and Active Product In-Use Demonstrations
+- Final Scene: Ultimate Product Showcase & Commercial Brand Lockup`;
+        shotTypeOptions = 'HERO_PRODUCT_REVEAL | MACRO_MATERIAL_DETAIL | DYNAMIC_LIFESTYLE_USE | ORBITAL_PRODUCT_GLIDE | PRODUCT_LOCKUP_CTA';
+        break;
+
+      case CONTENT_ARCHETYPES.EDUCATIONAL_MASTERCLASS:
+        archetypeDirectives = `
+CONTENT ARCHETYPE: EDUCATIONAL MASTERCLASS
+NARRATIVE BLUEPRINT:
+- Scene 1: Hook & Core Problem Introduction
+- Middle Scenes: Structured Technical Breakdown, Methodologies, and Practical Demonstrations
+- Final Scene: Key Strategic Takeaways & Summary Wrap`;
+        shotTypeOptions = 'MEDIUM_PRESENTER | OVER_SHOULDER_DETAIL | COLLABORATIVE_DEMO | CONCEPT_BREAKDOWN | SUMMARY_WRAP';
+        break;
+
+      case CONTENT_ARCHETYPES.CORPORATE_VIDEO:
+        archetypeDirectives = `
+CONTENT ARCHETYPE: CORPORATE VIDEO
+NARRATIVE BLUEPRINT:
+- Scene 1: Inspiring Vision Statement & Brand Mission
+- Middle Scenes: Collaborative Team Dynamics, Innovation Hub, and Global Impact
+- Final Scene: Future Outlook and Empowering Closing Statement`;
+        shotTypeOptions = 'VISIONARY_LEADERSHIP | COLLABORATIVE_TEAM | INNOVATION_HUB | GLOBAL_REACH | FUTURE_OUTLOOK';
+        break;
+
+      case CONTENT_ARCHETYPES.EXPLAINER:
+        archetypeDirectives = `
+CONTENT ARCHETYPE: EXPLAINER VIDEO
+NARRATIVE BLUEPRINT:
+- Scene 1: The Challenge / Question Hook
+- Middle Scenes: The Mechanism of Action, How It Works, and Real-World Application
+- Final Scene: Clear Tangible Results & Next Steps`;
+        shotTypeOptions = 'PROBLEM_HOOK | MECHANISM_DEMO | STEP_BY_STEP_ACTION | REAL_WORLD_RESULTS | CONCLUSION';
+        break;
+
+      case CONTENT_ARCHETYPES.STORYTELLING:
+        archetypeDirectives = `
+CONTENT ARCHETYPE: STORYTELLING / CINEMATIC NARRATIVE
+NARRATIVE BLUEPRINT:
+- Scene 1: Inciting Incident & World Atmosphere
+- Middle Scenes: Rising Action, Dynamic Exploration, and Climax Shift
+- Final Scene: Meaningful Resolution & New Horizon`;
+        shotTypeOptions = 'INCITING_MOMENT | RISING_JOURNEY | DRAMATIC_TURNING_POINT | CLIMACTIC_ACTION | POETIC_RESOLUTION';
+        break;
+
+      default:
+        archetypeDirectives = `
+CONTENT ARCHETYPE: SOCIAL MEDIA CONTENT
+NARRATIVE BLUEPRINT:
+- Scene 1: Viral Visual Hook
+- Middle Scenes: Dynamic Action & Aesthetic Progression
+- Final Scene: Engaging Payoff`;
+        shotTypeOptions = 'VIRAL_HOOK | DYNAMIC_ACTION | AESTHETIC_DETAIL | ENGAGING_PAYOFF';
+    }
+
+    const systemPrompt = `You are an elite film director, cinematographer, and visual storyteller.
+Decompose the provided VideoSpec and User Brief into an ordered array of ${targetSceneCount} distinct cinematic scene cards totaling ${totalDuration} seconds.
+
+${archetypeDirectives}
 
 CRITICAL CONTINUITY MANDATE:
-1. Main Character Consistency: Keep the EXACT SAME character identity and wardrobe (${wardrobeDesc}) in every scene where a person appears.
-2. Setting Consistency: Keep the EXACT SAME environment setting (${envDesc}), lighting (${lightingDesc}), and color grade from Scene 1 to Scene ${targetSceneCount}.
-3. Visual Shot Diversity: Do NOT use repetitive talking-head monologue shots. Alternate between:
-   - Dynamic wide-angle tracking shots
-   - Medium interactive shots (interacting with transparent architecture whiteboards / holographic diagrams)
-   - Over-the-shoulder technical perspectives (cloud system diagrams, data telemetry screens)
-   - Cinematic 360-degree orbital camera movements
-   - Inspiring walking and collaborative workspace shots
-4. Structured Narrative Progression:
-   - Scene 1: Hook & Topic introduction
-   - Middle Scenes: Systematic technical/educational progression (Problem -> Architecture -> Scaling -> Microservices -> Data Flow -> Benchmarks)
-   - Final Scenes: Strategic takeaways & high-impact conclusion
+1. User Brief Adherence: Every scene must strictly expand upon the user's brief ("${originalPrompt || videoSpec.objective}"). NEVER substitute with unrelated topics.
+2. Setting & Environment Consistency: Maintain the exact environment setting (${envDesc}), lighting atmosphere (${lightingDesc}), and color grade across all scenes.
+3. Character Consistency (where applicable): ${isSceneryOnly ? 'Strictly scenery/nature/objects only. Do NOT introduce human presenters.' : `Keep the exact same character identity (${characterDesc}) and wardrobe (${wardrobeDesc}).`}
+4. Visual Shot Diversity: Ensure each scene uses a distinct, context-appropriate camera perspective from [${shotTypeOptions}].
 5. All scenes MUST use "generationStrategy": "GENERATIVE_VIDEO".
 
 Output strictly a JSON object with this schema:
@@ -92,17 +224,17 @@ Output strictly a JSON object with this schema:
       "order": 1,
       "duration": 10,
       "purpose": "hook",
-      "shotType": "WIDE_TRACKING | MEDIUM_INTERACTIVE | OVER_SHOULDER_TECH | CINEMATIC_ORBIT | COLLABORATIVE_WALK",
-      "visualDescription": "Detailed visual framing, subject action in ${wardrobeDesc}, tech elements, environment",
-      "action": "Specific kinetic action and body movement in frame",
+      "shotType": "${shotTypeOptions.split(' | ')[0]}",
+      "visualDescription": "Detailed visual description strictly describing the scene action, subject, and environment",
+      "action": "Specific kinetic action and movement in frame",
       "camera": "Smooth cinematic camera motion vector",
       "lighting": "${lightingDesc}",
       "environment": "${envDesc}",
-      "characters": ["${characterDesc}"],
-      "objects": ["Interactive architecture screen", "Cloud diagram"],
+      "characters": ${isSceneryOnly ? '[]' : `["${characterDesc}"]`},
+      "objects": ["Key visual element 1", "Key visual element 2"],
       "dialogue": "",
-      "voiceover": "Narrative speech audio for this scene",
-      "soundEffects": ["ambient_tech"],
+      "voiceover": "Natural cinematic narration for this scene",
+      "soundEffects": ["ambient_sound_bed"],
       "transition": "Cut",
       "references": [],
       "brandRequirements": [],
@@ -112,19 +244,12 @@ Output strictly a JSON object with this schema:
 }`;
 
     const userPrompt = `ORIGINAL BRIEF: "${originalPrompt || videoSpec.objective}"
-VIDEOSPEC:
-Objective: ${videoSpec.objective}
-Audience: ${videoSpec.audience}
-Tone: ${videoSpec.tone}
-Visual Style: ${videoSpec.visualStyle}
-Platform: ${videoSpec.platform}
-Mode: ${videoSpec.mode}
-Brand Name: ${videoSpec.brandContext?.brandName || 'N/A'}
-Character Continuity Anchor: ${characterDesc}
-Wardrobe Anchor: ${wardrobeDesc}
-Environment Continuity Anchor: ${envDesc}
-Lighting Anchor: ${lightingDesc}
-Target Scenes: ${targetSceneCount} scenes with durations [${sceneDurations.join(', ')}] seconds totaling ${totalDuration}s.`;
+CONTENT CLASSIFICATION: ${classification}
+IS SCENERY ONLY: ${isSceneryOnly}
+ENVIRONMENT ANCHOR: ${envDesc}
+LIGHTING ANCHOR: ${lightingDesc}
+${!isSceneryOnly && characterDesc ? `CHARACTER ANCHOR: ${characterDesc}\nWARDROBE ANCHOR: ${wardrobeDesc}` : ''}
+TARGET SCENES: ${targetSceneCount} scenes with durations [${sceneDurations.join(', ')}] seconds totaling ${totalDuration}s.`;
 
     try {
       const llmResult = await this.llmProvider.generateJSON({
@@ -140,12 +265,18 @@ Target Scenes: ${targetSceneCount} scenes with durations [${sceneDurations.join(
 
       const validatedScenes = rawScenes.map((scene, idx) => {
         const { normalizedScene } = validateSceneCard(scene, idx);
-        if (sceneDurations[idx]) {
-          normalizedScene.duration = sceneDurations[idx];
-        }
+        const sceneBudget = budget[idx] || {
+          requestedTimelineDuration: sceneDurations[idx] || 10,
+          providerGenerationDuration: generationDurations[idx] || 12,
+        };
+        normalizedScene.requestedTimelineDuration = sceneBudget.requestedTimelineDuration;
+        normalizedScene.providerGenerationDuration = sceneBudget.providerGenerationDuration;
+        normalizedScene.duration = sceneBudget.requestedTimelineDuration;
         if (!normalizedScene.environment && envDesc) normalizedScene.environment = envDesc;
         if (!normalizedScene.lighting && lightingDesc) normalizedScene.lighting = lightingDesc;
-        if ((!normalizedScene.characters || normalizedScene.characters.length === 0) && characterDesc) {
+        if (isSceneryOnly) {
+          normalizedScene.characters = [];
+        } else if ((!normalizedScene.characters || normalizedScene.characters.length === 0) && characterDesc) {
           normalizedScene.characters = [characterDesc];
         }
         // Ensure all cinematic scenes use GENERATIVE_VIDEO
@@ -156,402 +287,326 @@ Target Scenes: ${targetSceneCount} scenes with durations [${sceneDurations.join(
       return validatedScenes;
     } catch (err) {
       console.error('[STORYBOARD SERVICE ERROR] Failed to generate storyboard via LLM:', err.message);
-      // Fallback deterministic storyboard with full narrative arc & shot variety
+      // Fallback deterministic storyboard tailored to the content classification & prompt directives
       return this.createFallbackStoryboard(videoSpec, originalPrompt);
     }
   }
 
   /**
    * Deterministic duration-aware fallback storyboard with rich narrative progression
-   * and diverse shot archetypes supporting ANY prompt and ANY duration (15s to 120s).
+   * and diverse shot archetypes supporting ANY prompt, ANY archetype, and ANY duration (15s to 120s).
    */
   createFallbackStoryboard(videoSpec, originalPrompt = '') {
     const totalDuration = videoSpec.duration || 15;
-    const { targetSceneCount, sceneDurations } = this.calculateSceneBudget(totalDuration);
     const continuity = videoSpec.continuityContext || {};
-    const characterDesc = continuity.characterBible?.anchorToken || continuity.characterIdentity?.appearance || 'Lead presenter';
-    const wardrobeDesc = continuity.characterBible?.wardrobe || 'navy crewneck sweater';
-    const envDesc = continuity.environment?.setting || 'Modern collaborative innovation workspace';
-    const lightingDesc = continuity.environment?.lighting || 'Consistent commercial studio lighting with soft volumetric fill';
+    const classification = continuity.contentClassification || CONTENT_ARCHETYPES.SOCIAL_MEDIA_CONTENT;
+    const isSceneryOnly = continuity.isSceneryOnly;
+    const userDirectives = continuity.userDirectives || {};
+
+    const { targetSceneCount, sceneDurations, generationDurations, budget } = this.calculateSceneBudget(totalDuration, classification);
+
+    const characterDesc = continuity.characterBible?.anchorToken || continuity.characterIdentity?.appearance || '';
+    const wardrobeDesc = continuity.characterBible?.wardrobe || '';
+    const envDesc = continuity.environment?.setting || userDirectives.environment || userDirectives.primarySubject || 'Scenic landscape';
+    const lightingDesc = continuity.environment?.lighting || userDirectives.lighting || 'Cinematic natural lighting with rich contrast';
 
     const isBrand = videoSpec.mode === 'brand' && Boolean(videoSpec.brandContext?.brandName);
     const brandName = isBrand ? (videoSpec.brandContext?.brandName || 'Brand') : '';
-    const brandPurpose = isBrand ? (videoSpec.brandContext?.purpose || videoSpec.brandContext?.productDescription || videoSpec.brandContext?.tagline || '') : '';
-    const brandLower = `${brandName} ${brandPurpose}`.toLowerCase();
-    const isUdenOrHR = isBrand && (brandLower.includes('uden') || brandLower.includes('hr') || brandLower.includes('recruit') || brandLower.includes('talent') || brandLower.includes('career') || brandLower.includes('student'));
+    const topicClean = String(originalPrompt || videoSpec.objective || userDirectives.primarySubject || 'Cinematic Journey').trim();
 
-    const topicClean = String(originalPrompt || videoSpec.objective || 'Cinematic Story').trim();
+    let milestonePool = [];
 
-    let milestonePool;
-
-    if (isBrand && isUdenOrHR) {
+    if (classification === CONTENT_ARCHETYPES.CINEMATIC_NATURE_JOURNEY) {
       milestonePool = [
         {
-          purpose: 'hook_introduction',
-          shotType: 'DYNAMIC_WIDE_TRACKING',
-          title: `${brandName} Talent Transformation & Platform Vision`,
-          camera: 'Fluid forward tracking shot pushing smoothly past modern glass architectural elements',
-          action: `${characterDesc} walks confidently through the innovation hub, engaging the camera with visionary focus on future careers and talent innovation.`,
-          visual: `Dynamic opening wide tracking shot in ${envDesc}: ${characterDesc} introduces ${brandName}'s intelligent talent solutions and career ecosystems.`,
-          objects: ['AI Talent Dashboard', 'Interactive glass metrics display'],
-          voiceover: `Empowering global talent acquisition and career acceleration with ${brandName}.`,
+          purpose: 'hook_environmental_establishing',
+          shotType: 'AERIAL_PANORAMA',
+          title: `Establishing Grandeur of ${topicClean}`,
+          camera: 'Gentle forward aerial tracking glide soaring smoothly over the expansive landscape',
+          action: `The scene opens with a breathtaking wide panoramic establishing view of ${envDesc}, revealing dramatic natural scale and morning atmosphere under ${lightingDesc}.`,
+          visual: `Expansive aerial wide establishing shot of ${envDesc} under ${lightingDesc}, with soft morning mist drifting through the valley.`,
+          objects: ['Expansive mountain ridges', 'Tall evergreen canopy', 'Morning mist'],
+          voiceover: `A breathtaking cinematic journey through ${topicClean}.`,
         },
         {
-          purpose: 'problem_and_challenge',
-          shotType: 'MEDIUM_INTERACTIVE',
-          title: 'Solving Modern Recruitment Bottlenecks',
-          camera: 'Medium tracking glide with shallow depth of field focusing on subject expressions',
-          action: 'Presenter gestures toward an illuminated glass collaborative board, breaking down traditional hiring friction and campus placement gaps.',
-          visual: `Medium cinematic shot in ${envDesc}: ${characterDesc} analyzing traditional recruitment delays and skill-matching challenges.`,
-          objects: ['Hiring pipeline analytics', 'Talent bottleneck matrix'],
-          voiceover: `Eliminating hiring friction with intelligent automated candidate discovery.`,
+          purpose: 'progressive_visual_discovery',
+          shotType: 'LOW_ANGLE_FOREST',
+          title: 'Evergreen Forest & Morning Mist',
+          camera: 'Smooth low-to-ground tracking glide moving fluidly past tall tree trunks',
+          action: `The camera glides smoothly beneath the evergreen canopy, capturing the quiet serenity of the forest as soft mist weaves between ancient trees.`,
+          visual: `Low-angle cinematic tracking shot through ${envDesc}, with morning mist curling around tall evergreen pine trunks under ${lightingDesc}.`,
+          objects: ['Evergreen pine trunks', 'Atmospheric mist layers', 'Woodland floor'],
+          voiceover: `Discovering the tranquil majesty of pristine nature at dawn.`,
         },
         {
-          purpose: 'core_architecture',
-          shotType: 'OVER_SHOULDER_TECH',
-          title: 'AI Candidate Discovery & Skill Matching',
-          camera: 'Over-the-shoulder perspective with soft optical bokeh and sharp foreground clarity',
-          action: 'Subject manipulates glowing candidate skill graphs and verified talent profiles on high-definition interfaces.',
-          visual: `Over-the-shoulder perspective in ${envDesc}: ${characterDesc} demonstrating ${brandName}'s automated talent discovery and verified candidate graphs.`,
-          objects: ['Skill verification engine', 'Predictive match scorecard'],
-          voiceover: `Real-time skill graph verification matching the right talent to top roles.`,
+          purpose: 'macro_flora_dew',
+          shotType: 'MACRO_FLORA_DETAIL',
+          title: 'Glistening Dew on Emerald Moss',
+          camera: 'Intimate macro slider movement with shallow 35mm optical depth of field',
+          action: `Intricate morning dew droplets glisten with crystalline clarity on vibrant emerald moss and delicate pine needles in the soft morning light.`,
+          visual: `Cinematic macro shot of glistening morning dew droplets resting on vibrant emerald green moss under ${lightingDesc}.`,
+          objects: ['Glistening dew droplets', 'Vibrant emerald moss', 'Pine needles'],
+          voiceover: `Every glistening dewdrop reflects the quiet beauty of the morning light.`,
         },
         {
-          purpose: 'data_ingestion_layer',
-          shotType: 'CINEMATIC_ORBIT',
-          title: 'Seamless Campus-to-Career Pipeline',
-          camera: 'Smooth 180-degree orbital camera arc with natural lens flare and atmospheric depth',
-          action: 'Presenter showcases student career portals and seamless university recruitment pipelines glowing on modern interfaces.',
-          visual: `Cinematic orbital shot in ${envDesc}: ${characterDesc} presenting unified campus recruitment and student career opportunities.`,
-          objects: ['Campus recruitment interface', 'University partnership map'],
-          voiceover: `Bridging academic talent directly into enterprise career opportunities.`,
+          purpose: 'mountain_stream_glide',
+          shotType: 'STREAM_TRACKING_GLIDE',
+          title: 'Crystal-Clear Mountain Stream',
+          camera: 'Gentle low-altitude camera track skimming gracefully along flowing water currents',
+          action: `The camera tracks smoothly along a crystal-clear mountain stream, catching shimmering light reflections as pure water flows over smooth river stones.`,
+          visual: `Fluid tracking shot over a crystal-clear mountain stream flowing gracefully through ${envDesc} under ${lightingDesc}.`,
+          objects: ['Crystal-clear flowing water', 'Smooth river stones', 'Shimmering water reflections'],
+          voiceover: `Pure mountain waters flowing with effortless grace through the wilderness.`,
         },
         {
-          purpose: 'horizontal_scaling',
-          shotType: 'COLLABORATIVE_WALK',
-          title: 'Global Enterprise Recruitment Scale',
-          camera: 'Smooth side-panning tracking shot capturing dynamic architectural movement',
-          action: 'Presenter walks past glass architectural partitions as hiring teams and candidates connect seamlessly in background.',
-          visual: `Dynamic tracking shot in ${envDesc}: ${characterDesc} demonstrating enterprise-grade hiring scaling across global organizations.`,
-          objects: ['Global hiring topology', 'Multi-region talent network'],
-          voiceover: `Scaling recruitment seamlessly from growing startups to Fortune 500 enterprises.`,
+          purpose: 'atmospheric_sunbeam_orbit',
+          shotType: 'SUNBEAM_ORBIT',
+          title: 'Golden Sunbeams Through Canopy',
+          camera: 'Smooth 180-degree orbital camera arc tilting gently upward toward the canopy',
+          action: `Radiant golden sunbeams pierce through the evergreen tree crowns, creating dramatic volumetric light rays that illuminate the drifting morning mist.`,
+          visual: `Cinematic orbital tracking shot capturing soft golden rays piercing through tall evergreen branches under ${lightingDesc}.`,
+          objects: ['Volumetric golden sunbeams', 'Evergreen tree crowns', 'Illuminated mist particles'],
+          voiceover: `Golden rays of morning sun pierce through the canopy, awakening the forest.`,
         },
         {
-          purpose: 'workflow_implementation',
-          shotType: 'COLLABORATIVE_WORKSPACE',
-          title: 'Collaborative HR & Recruiter Dashboard',
-          camera: 'Cinematic slider shot across a modern collaborative engineering table',
-          action: 'Subject collaborates with HR leaders around an interactive digital talent dashboard, reviewing rapid hire metrics.',
-          visual: `Collaborative workspace shot in ${envDesc}: ${characterDesc} reviewing automated interview screening workflows and candidate feedback loops.`,
-          objects: ['Collaborative recruiter dashboard', 'Automated interview scheduler'],
-          voiceover: `Empowering HR teams with automated screening and collaborative decision tools.`,
+          purpose: 'forest_depth_exploration',
+          shotType: 'FORWARD_GLIDE',
+          title: 'Tranquil Woodland Canopy',
+          camera: 'Slow continuous forward camera glide with natural optical depth',
+          action: `The journey progresses deeper into the untouched forest, where verdant fern fronds, rich bark textures, and tranquil woodland ambience surround the view.`,
+          visual: `Continuous forward tracking shot through lush woodland flora and tranquil natural landscape in ${envDesc}.`,
+          objects: ['Verdant fern foliage', 'Ancient tree bark', 'Natural woodland textures'],
+          voiceover: `Immersed in the timeless rhythm and stillness of the ancient woods.`,
         },
         {
-          purpose: 'fault_tolerance_resilience',
-          shotType: 'MEDIUM_INTERACTIVE',
-          title: 'Verified Competency & Bias-Free Evaluation',
-          camera: 'Direct medium push-in camera vector highlighting high reliability',
-          action: 'Subject highlights verified assessment scores and bias-free candidate evaluation scorecards.',
-          visual: `Focused medium shot in ${envDesc}: ${characterDesc} showcasing secure, verified skill assessments and high-retention hiring metrics.`,
-          objects: ['Verified assessment telemetry', 'Diversity hiring scorecard'],
-          voiceover: `Objective, data-driven candidate evaluations with verifiable skill metrics.`,
+          purpose: 'canopy_sunburst_reveal',
+          shotType: 'UPWARD_TILT_REVEAL',
+          title: 'Canopy Sunburst & Emerald Foliage',
+          camera: 'Slow upward-tilting vertical glide into the towering treetops',
+          action: `The camera tilts upward toward the towering evergreen crowns as a brilliant morning sunburst radiates through the emerald foliage.`,
+          visual: `Upward-tilting cinematic shot gazing through tall evergreen pine trees into radiant sunrise sky under ${lightingDesc}.`,
+          objects: ['Towering evergreen crowns', 'Brilliant morning sunburst', 'Azure sky'],
+          voiceover: `Reaching toward the open sky as the morning sun crests the horizon.`,
         },
         {
-          purpose: 'analytics_telemetry',
-          shotType: 'OVER_SHOULDER_TECH',
-          title: 'Predictive Hiring Analytics & ROI Insights',
-          camera: 'Close gliding camera track across illuminated predictive hiring charts',
-          action: 'Presenter points to real-time hiring velocity analytics and retention projections.',
-          visual: `Over-the-shoulder tracking shot in ${envDesc}: ${characterDesc} analyzing predictive retention metrics and hiring speed improvements.`,
-          objects: ['Predictive hiring engine', 'ROI analytics dashboard'],
-          voiceover: `Actionable hiring intelligence delivering measurable performance and ROI.`,
+          purpose: 'cascading_water_reflections',
+          shotType: 'RIVER_CASCADE',
+          title: 'Cascading Mountain Rapids',
+          camera: 'Low-angle gliding perspective following cascading water currents',
+          action: `The stream flows into gentle cascading rapids, sending delicate spray that catches the golden morning glow against dark mossy boulders.`,
+          visual: `Dynamic low-angle tracking shot over cascading mountain rapids surrounded by emerald moss in ${envDesc}.`,
+          objects: ['Cascading water rapids', 'Mossy river boulders', 'Luminous water spray'],
+          voiceover: `Gentle mountain cascades singing with the vibrant energy of life.`,
         },
         {
-          purpose: 'enterprise_security',
-          shotType: 'COLLABORATIVE_WALK',
-          title: 'Enterprise Compliance & Talent Security',
-          camera: 'Smooth tracking motion along contemporary glass corridors',
-          action: 'Subject walks alongside enterprise talent directors, reviewing privacy-first candidate protection protocols.',
-          visual: `Dynamic corridor tracking shot in ${envDesc}: ${characterDesc} demonstrating enterprise-grade security and compliant data workflows.`,
-          objects: ['Security certification matrix', 'Privacy shield protocol'],
-          voiceover: `Enterprise-grade data security ensuring compliant, ethical talent pipelines.`,
+          purpose: 'aerial_ridge_sweep',
+          shotType: 'AERIAL_RIDGE_SWEEP',
+          title: 'Aerial Sweep Over Evergreen Ridge',
+          camera: 'Expansive high-altitude aerial tracking sweeping over alpine tree lines',
+          action: `The viewpoint elevates across an alpine ridge, revealing endless miles of pristine evergreen forest rolling across mountain foothills.`,
+          visual: `High-altitude aerial tracking shot sweeping across pine forest ridges toward distant mountain peaks under ${lightingDesc}.`,
+          objects: ['Endless pine tree ridges', 'Mountain foothills', 'Panoramic vistas'],
+          voiceover: `Endless vistas of untamed wilderness stretching toward the horizon.`,
         },
         {
-          purpose: 'ecosystem_synergy',
-          shotType: 'CINEMATIC_ORBIT',
-          title: 'Unified University & Corporate Ecosystem',
-          camera: 'Sweeping 360-degree orbital rotation highlighting interconnected ecosystem nodes',
-          action: 'Presenter highlights interconnected corporate partnerships and university networks glowing on digital visualizers.',
-          visual: `Cinematic orbital sweep in ${envDesc}: ${characterDesc} revealing the expansive nationwide partner ecosystem.`,
-          objects: ['Partner network visualization', 'Global university map'],
-          voiceover: `Connecting universities, enterprises, and talent in a unified ecosystem.`,
+          purpose: 'golden_hour_transformation',
+          shotType: 'ATMOSPHERIC_TRANSFORMATION',
+          title: 'Warm Golden Hour Illumination',
+          camera: 'Slow panoramic orbit capturing shifting light gradients across the terrain',
+          action: `The full warmth of the sunrise envelops the landscape, transforming emerald moss, mist, and mountain streams with rich amber and gold highlights.`,
+          visual: `Atmospheric orbital shot capturing the landscape bathed in rich golden hour illumination under ${lightingDesc}.`,
+          objects: ['Rich golden light gradients', 'Illuminated emerald moss', 'Glistening water surfaces'],
+          voiceover: `Bathed in the warm embrace of golden morning light.`,
         },
         {
-          purpose: 'visionary_momentum',
-          shotType: 'DYNAMIC_WIDE_TRACKING',
-          title: 'Accelerating the Future of Work',
-          camera: 'High-angle wide push-in capturing dynamic team energy and visionary focus',
-          action: 'Subject moves toward the main observation floor as teams celebrate breakthrough hiring milestones.',
-          visual: `Elevated wide shot in ${envDesc}: ${characterDesc} leading future-of-work innovation with visionary momentum.`,
-          objects: ['Milestone celebratory visuals', 'Dynamic workforce hub'],
-          voiceover: `Pioneering the next era of intelligent workforce transformation.`,
+          purpose: 'elevated_vista_horizon',
+          shotType: 'ELEVATED_VISTA',
+          title: 'Rising Mountain Sunrise Panorama',
+          camera: 'Sweeping crane elevation rising smoothly above the treetops',
+          action: `The camera rises majestically into open mountain air, revealing the full grandeur of alpine peaks glowing under the rising sun.`,
+          visual: `Sweeping elevated wide shot revealing glowing mountain peaks and expansive valleys in ${envDesc}.`,
+          objects: ['Glowing alpine peaks', 'Expansive valley panorama', 'Golden dawn horizon'],
+          voiceover: `A breathtaking spectacle of nature in its purest, most majestic form.`,
         },
         {
-          purpose: 'grand_payoff_conclusion',
+          purpose: 'grand_nature_payoff',
           shotType: 'SWEEPING_PAYOFF',
-          title: `Empowering Careers & Growth with ${brandName}`,
-          camera: 'Sweeping cinematic wide pull-back shot with ambient architectural illumination',
-          action: `Presenter delivers an inspiring final payoff gesture as the entire ${brandName} innovation hub glows with warm volumetric light.`,
-          visual: `Grand cinematic payoff shot in ${envDesc}: ${characterDesc} concluding the showcase under ${lightingDesc}, celebrating ${brandName}'s transformative impact.`,
-          objects: ['Glowing brand insignia', 'Global career network'],
-          voiceover: `Discover the future of talent innovation at ${brandName}.`,
+          title: 'Grand Cinematic Sunrise Resolution',
+          camera: 'Grand pull-back aerial panorama with gentle fade and ambient atmospheric glow',
+          action: `The cinematic journey culminates in an awe-inspiring wide panorama as golden morning rays illuminate the entire pine forest and mountain stream in timeless peace.`,
+          visual: `Grand cinematic pull-back panorama of ${envDesc} bathed in glorious sunrise light under ${lightingDesc}.`,
+          objects: ['Majestic panorama', 'Radiant sunrise glow', 'Peaceful natural expanse'],
+          voiceover: `An unforgettable journey through the serene majesty of nature.`,
         },
       ];
-    } else if (isBrand) {
+    } else if (classification === CONTENT_ARCHETYPES.PROMOTIONAL_VIDEO || isBrand) {
       milestonePool = [
         {
           purpose: 'hook_introduction',
-          shotType: 'DYNAMIC_WIDE_TRACKING',
-          title: `${brandName} Innovation & Brand Vision`,
-          camera: 'Fluid forward tracking shot pushing smoothly past modern glass architectural elements',
-          action: `${characterDesc} walks confidently through the innovation workspace, introducing ${brandName}'s core mission with visionary focus.`,
-          visual: `Dynamic opening wide tracking shot in ${envDesc}: ${characterDesc} introduces ${brandName} and its mission with commanding presence.`,
-          objects: ['Interactive brand interface', 'Holographic system display'],
-          voiceover: `Welcome to ${brandName} — pioneering intelligent solutions for the modern world.`,
+          shotType: 'DYNAMIC_HERO_HOOK',
+          title: `${brandName || 'Brand'} Hero Hook`,
+          camera: 'Dynamic forward tracking push-in with optical stabilization',
+          action: `${characterDesc ? `${characterDesc} introduces ` : 'Dynamic opening reveals '}${topicClean} with visionary focus and commanding energy.`,
+          visual: `High-impact opening shot in ${envDesc}: introducing ${topicClean} under ${lightingDesc}.`,
+          objects: ['Brand flagship interface', 'Visual focal elements'],
+          voiceover: `Welcome to ${brandName || topicClean} — elevating performance and driving real growth.`,
         },
         {
           purpose: 'problem_and_challenge',
-          shotType: 'MEDIUM_INTERACTIVE',
-          title: 'Industry Bottlenecks & Strategic Need',
-          camera: 'Medium tracking glide with shallow depth of field focusing on subject expressions',
-          action: 'Presenter gestures toward an illuminated glass collaborative board, analyzing core industry challenges.',
-          visual: `Medium cinematic shot in ${envDesc}: ${characterDesc} breaking down industry pain points and the need for innovation.`,
-          objects: ['Market analytics chart', 'Bottleneck breakdown'],
-          voiceover: `Transforming legacy complexity into seamless operational advantage.`,
+          shotType: 'MEDIUM_ACTION',
+          title: 'Core Value Proposition',
+          camera: 'Medium tracking glide with shallow depth of field',
+          action: `Breaking down core industry challenges and showcasing immediate strategic advantage.`,
+          visual: `Focused medium shot in ${envDesc}: highlighting key benefits of ${topicClean}.`,
+          objects: ['Performance analytics', 'Solution matrix'],
+          voiceover: `Transforming complexity into effortless competitive advantage.`,
         },
         {
           purpose: 'core_architecture',
-          shotType: 'OVER_SHOULDER_TECH',
-          title: 'Flagship Platform Capabilities',
-          camera: 'Over-the-shoulder perspective with soft optical bokeh and sharp foreground clarity',
-          action: 'Subject manipulates glowing 3D system interfaces displaying platform features and workflows.',
-          visual: `Over-the-shoulder perspective in ${envDesc}: ${characterDesc} demonstrating ${brandName}'s flagship platform capabilities.`,
-          objects: ['Core solution architecture', 'Interactive control console'],
-          voiceover: `Next-generation technology engineered for speed, accuracy, and reliability.`,
+          shotType: 'ORBITAL_REVEAL',
+          title: 'Flagship Features & Precision',
+          camera: 'Smooth 180-degree orbital camera arc with optical depth',
+          action: `Demonstrating flagship capabilities, intelligent workflows, and measurable speed.`,
+          visual: `Cinematic orbital shot in ${envDesc}: demonstrating flagship features of ${topicClean}.`,
+          objects: ['Core feature showcase', 'Interactive controls'],
+          voiceover: `Engineered for precision, speed, and uncompromising reliability.`,
         },
         {
-          purpose: 'data_ingestion_layer',
-          shotType: 'CINEMATIC_ORBIT',
-          title: 'Real-Time Impact & Telemetry',
-          camera: 'Smooth 180-degree orbital camera arc with natural lens flare and atmospheric depth',
-          action: 'Presenter showcases real-time performance telemetry and high-impact user results.',
-          visual: `Cinematic orbital shot in ${envDesc}: ${characterDesc} presenting measurable value delivery and operational efficiency.`,
-          objects: ['Real-time telemetry streams', 'Outcome metrics'],
-          voiceover: `Delivering measurable outcomes and immediate competitive advantage.`,
+          purpose: 'tangible_results',
+          shotType: 'VALUE_HIGHLIGHT',
+          title: 'Measurable Outcomes & Impact',
+          camera: 'Fluid forward slider shot capturing high momentum',
+          action: `Showcasing tangible performance metrics and real-world outcomes.`,
+          visual: `Dynamic slider shot in ${envDesc}: highlighting measurable impact and results.`,
+          objects: ['Impact metrics', 'Outcome visualizer'],
+          voiceover: `Delivering measurable outcomes that accelerate your trajectory.`,
         },
         {
-          purpose: 'workflow_implementation',
-          shotType: 'COLLABORATIVE_WORKSPACE',
-          title: 'Collaborative Adoption & Enterprise Scale',
-          camera: 'Cinematic slider shot across a modern collaborative engineering table',
-          action: 'Subject coordinates with cross-functional teams, celebrating seamless rollout and user adoption.',
-          visual: `Collaborative workspace shot in ${envDesc}: ${characterDesc} showcasing modern teamwork and community collaboration.`,
-          objects: ['Collaborative workspace dashboard', 'Team roadmap'],
-          voiceover: `Built for modern teams and frictionless enterprise scaling.`,
+          purpose: 'enterprise_scale',
+          shotType: 'COLLABORATIVE_ACTION',
+          title: 'Seamless Collaboration & Scale',
+          camera: 'Smooth tracking motion along contemporary architectural space',
+          action: `Demonstrating effortless teamwork, integration, and enterprise scaling.`,
+          visual: `Dynamic tracking shot in ${envDesc}: showcasing seamless team collaboration.`,
+          objects: ['Collaborative workspace', 'Team momentum'],
+          voiceover: `Built for ambitious teams ready to scale without limits.`,
         },
         {
-          purpose: 'scalability_layer',
-          shotType: 'COLLABORATIVE_WALK',
-          title: 'Global Performance & Scalability',
-          camera: 'Smooth side-panning tracking shot capturing dynamic architectural movement',
-          action: 'Presenter demonstrates continuous scalability and global infrastructure reliability.',
-          visual: `Dynamic tracking shot in ${envDesc}: ${characterDesc} showcasing resilient global scale and performance.`,
-          objects: ['Global topology map', 'Scale visualizer'],
-          voiceover: `Engineered to perform effortlessly under global demand.`,
+          purpose: 'closing_cta_payoff',
+          shotType: 'HIGH_ENERGY_CTA',
+          title: 'High-Impact Call to Action',
+          camera: 'Sweeping wide pull-back shot with ambient illumination',
+          action: `Delivering a confident closing call-to-action as the scene culminates in inspiring illumination.`,
+          visual: `Grand closing payoff shot in ${envDesc}: celebrating ${brandName || topicClean} under ${lightingDesc}.`,
+          objects: ['Brand lockup insignia', 'Inspiring focal horizon'],
+          voiceover: `Take the next step with ${brandName || topicClean} today.`,
+        },
+      ];
+    } else if (classification === CONTENT_ARCHETYPES.EDUCATIONAL_MASTERCLASS) {
+      milestonePool = [
+        {
+          purpose: 'hook_introduction',
+          shotType: 'MEDIUM_PRESENTER',
+          title: 'Masterclass Topic Introduction',
+          camera: 'Authoritative medium push-in camera vector',
+          action: `${characterDesc} introduces the core masterclass agenda on ${topicClean}.`,
+          visual: `Engaging medium shot in ${envDesc}: ${characterDesc} introducing key insights on ${topicClean}.`,
+          objects: ['Educational concept display', 'Interactive whiteboard'],
+          voiceover: `Welcome to this comprehensive masterclass on ${topicClean}.`,
         },
         {
-          purpose: 'precision_execution',
-          shotType: 'OVER_SHOULDER_TECH',
-          title: 'Precision Tools & Intelligent Automation',
-          camera: 'Focused macro perspective with sharp foreground detail and optical depth',
-          action: 'Subject inspects high-precision workflow automation triggers and telemetry graphs.',
-          visual: `Over-the-shoulder precision shot in ${envDesc}: ${characterDesc} demonstrating intelligent automated workflows.`,
-          objects: ['Automation triggers', 'Precision controls'],
-          voiceover: `Intelligent automation designed for uncompromising accuracy.`,
+          purpose: 'foundational_breakdown',
+          shotType: 'OVER_SHOULDER_DETAIL',
+          title: 'Core Principles & Architecture',
+          camera: 'Over-the-shoulder perspective with sharp foreground clarity',
+          action: `Breaking down foundational concepts and architectural building blocks.`,
+          visual: `Over-the-shoulder perspective in ${envDesc}: demonstrating fundamental principles of ${topicClean}.`,
+          objects: ['System architecture diagram', 'Step-by-step framework'],
+          voiceover: `Understanding the fundamental principles and architectural building blocks.`,
         },
         {
-          purpose: 'ecosystem_integration',
-          shotType: 'CINEMATIC_ORBIT',
-          title: 'Seamless Ecosystem Integration',
-          camera: '180-degree orbital tracking shot with soft volumetric lighting',
-          action: 'Presenter connects external API services and unified ecosystem components.',
-          visual: `Cinematic orbital perspective in ${envDesc}: ${characterDesc} presenting unified platform connectivity.`,
-          objects: ['API integration mesh', 'Cloud connectivity nodes'],
-          voiceover: `Seamlessly integrating into your existing technical ecosystem.`,
+          purpose: 'deep_dive_demo',
+          shotType: 'COLLABORATIVE_DEMO',
+          title: 'In-Depth Demonstration',
+          camera: 'Cinematic slider shot across interactive workspace',
+          action: `Executing practical deep dive demonstrations and real-world workflows.`,
+          visual: `Focused demonstration shot in ${envDesc}: analyzing hands-on implementation of ${topicClean}.`,
+          objects: ['Practical code/demo console', 'Telemetry feedback'],
+          voiceover: `Applying these concepts directly in real-world scenarios.`,
         },
         {
-          purpose: 'strategic_insights',
-          shotType: 'MEDIUM_INTERACTIVE',
-          title: 'Strategic Insights & Intelligence',
-          camera: 'Medium push-in highlighting authoritative subject focus',
-          action: 'Subject reviews high-level strategic intelligence metrics and predictive forecasts.',
-          visual: `Focused medium shot in ${envDesc}: ${characterDesc} reviewing strategic intelligence and executive insights.`,
-          objects: ['Executive insight matrix', 'Predictive forecast chart'],
-          voiceover: `Powering smarter decisions with deep predictive intelligence.`,
-        },
-        {
-          purpose: 'transformative_impact',
-          shotType: 'COLLABORATIVE_WORKSPACE',
-          title: 'Transformative Customer Impact',
-          camera: 'Cinematic glide across a collaborative strategy lounge',
-          action: 'Presenter highlights breakthrough customer success stories and business transformations.',
-          visual: `Collaborative workspace shot in ${envDesc}: ${characterDesc} showcasing customer impact and rapid value realization.`,
-          objects: ['Impact scorecard', 'Customer journey board'],
-          voiceover: `Accelerating growth and delivering lasting transformation.`,
-        },
-        {
-          purpose: 'future_horizons',
-          shotType: 'DYNAMIC_WIDE_TRACKING',
-          title: 'Pioneering Future Horizons',
-          camera: 'Expansive wide-angle camera push across modern architectural spaces',
-          action: 'Subject looks ahead toward the luminous horizon as ambient light illuminates the space.',
-          visual: `Elevated wide shot in ${envDesc}: ${characterDesc} looking forward into the future of the industry.`,
-          objects: ['Futuristic architectural horizon', 'Volumetric illumination'],
-          voiceover: `Pioneering the innovations that will shape tomorrow.`,
-        },
-        {
-          purpose: 'grand_payoff_conclusion',
-          shotType: 'SWEEPING_PAYOFF',
-          title: `The Future with ${brandName}`,
-          camera: 'Sweeping cinematic wide pull-back shot with ambient architectural illumination',
-          action: `Presenter delivers an inspiring final payoff gesture as the entire ${envDesc} glows with volumetric light.`,
-          visual: `Grand cinematic payoff shot in ${envDesc}: ${characterDesc} concluding the showcase under ${lightingDesc}, celebrating ${brandName}'s future vision.`,
-          objects: ['Luminous brand insignia', 'Global network visualizer'],
-          voiceover: `Build the future today with ${brandName}.`,
+          purpose: 'strategic_summary',
+          shotType: 'SUMMARY_WRAP',
+          title: 'Key Takeaways & Conclusion',
+          camera: 'Sweeping medium pull-back shot with warm lighting',
+          action: `${characterDesc} summarizes the critical takeaways and strategic lessons learned.`,
+          visual: `Inspiring summary shot in ${envDesc}: ${characterDesc} concluding the masterclass under ${lightingDesc}.`,
+          objects: ['Key takeaways summary', 'Resource links'],
+          voiceover: `Master these core strategies to achieve lasting excellence in ${topicClean}.`,
         },
       ];
     } else {
-      // Universal Diverse Prompt Milestones (Custom Mode: Supercars, Nature, Culinary, Cyberpunk, Space, Action, Fitness, Sci-Fi, Storytelling)
+      // Universal Diverse Prompt Milestones (Custom Mode: Supercars, Sci-Fi, Storytelling, etc.)
       milestonePool = [
         {
           purpose: 'hook_introduction',
           shotType: 'DYNAMIC_WIDE_TRACKING',
           title: 'Opening Establishing Shot',
-          camera: 'Dynamic forward tracking shot sweeping smoothly past foreground atmospheric elements',
-          action: `The scene opens with an expansive establishing view of ${topicClean}, showcasing dramatic scale, rich atmosphere, and visual grandeur.`,
+          camera: 'Dynamic forward tracking shot sweeping smoothly past foreground elements',
+          action: `The scene opens with an expansive establishing view of ${topicClean}, showcasing scale and atmosphere under ${lightingDesc}.`,
           visual: `Dynamic opening wide tracking shot of ${topicClean}, set in ${envDesc} under ${lightingDesc}.`,
           objects: ['Atmospheric foreground depth', 'Panoramic horizon'],
           voiceover: `A cinematic journey into ${topicClean}.`,
         },
         {
           purpose: 'environmental_exploration',
-          shotType: 'MEDIUM_INTERACTIVE',
+          shotType: 'MEDIUM_TRACKING',
           title: 'Core Subject Presence & Motion',
-          camera: 'Smooth tracking glide with shallow depth of field focusing on central motion and subject presence',
-          action: `The camera glides into the heart of ${topicClean}, capturing natural motion, environmental interplay, and captivating energy.`,
+          camera: 'Smooth tracking glide with shallow depth of field',
+          action: `The camera glides into the heart of ${topicClean}, capturing natural motion and visual energy.`,
           visual: `Medium cinematic tracking shot capturing core movement and dynamic presence in ${topicClean} in ${envDesc}.`,
           objects: ['Central subject motion', 'Environmental textures'],
           voiceover: `Exploring the vibrant details and active momentum of the scene.`,
         },
         {
           purpose: 'macro_detail_depth',
-          shotType: 'OVER_SHOULDER_TECH',
-          title: 'Atmospheric Micro-Textures & Reflections',
+          shotType: 'MACRO_DETAIL',
+          title: 'Micro-Textures & Reflections',
           camera: 'Low-angle gliding macro perspective with 35mm optical depth of field',
-          action: `Intricate surface textures, optical reflections, and subtle atmospheric nuances of ${topicClean} come into sharp focus with lifelike fidelity.`,
-          visual: `Close atmospheric cinematic glide highlighting intricate details, reflections, and rich textures of ${topicClean} in ${envDesc}.`,
+          action: `Intricate surface textures and reflections of ${topicClean} come into sharp focus with lifelike fidelity.`,
+          visual: `Close atmospheric cinematic glide highlighting intricate details and textures of ${topicClean} in ${envDesc}.`,
           objects: ['Tactile micro-textures', 'Luminous light reflections'],
-          voiceover: `Every intricate texture and reflection captured with stunning clarity.`,
+          voiceover: `Every intricate texture captured with stunning clarity.`,
         },
         {
           purpose: 'velocity_acceleration',
           shotType: 'DYNAMIC_WIDE_TRACKING',
-          title: 'Dynamic Momentum & Velocity',
-          camera: 'Fast dynamic tracking vector with kinetic energy and fluid motion vectors',
-          action: `Action accelerates across ${topicClean}, showcasing powerful rhythm, speed, and continuous fluid progression.`,
+          title: 'Dynamic Momentum & Energy',
+          camera: 'Fast dynamic tracking vector with kinetic energy',
+          action: `Action accelerates across ${topicClean}, showcasing powerful rhythm and fluid progression.`,
           visual: `Kinetic wide tracking shot following rapid movement and dynamic energy across ${topicClean} in ${envDesc}.`,
           objects: ['High-speed motion lines', 'Dynamic spatial vectors'],
           voiceover: `Accelerating momentum and powerful visual flow through the environment.`,
         },
         {
-          purpose: 'focal_engagement',
-          shotType: 'MEDIUM_INTERACTIVE',
-          title: 'Central Focus & In-Depth Action',
-          camera: 'Engaging medium push-in camera vector with optical bokeh and sharp foreground clarity',
-          action: `The core action of ${topicClean} unfolds with deliberate mastery, highlighting pivotal moments and focal interactions.`,
-          visual: `Focused medium shot capturing key moments and focal actions of ${topicClean} under ${lightingDesc}.`,
-          objects: ['Core focal elements', 'Balanced foreground framing'],
-          voiceover: `Deep dive into the heart of the action with captivating focus.`,
-        },
-        {
           purpose: 'midpoint_transformation',
           shotType: 'CINEMATIC_ORBIT',
-          title: 'Atmospheric Shift & Light Transformation',
-          camera: 'Smooth 180-degree orbital camera arc with natural lens flare and volumetric depth',
-          action: `A dramatic shift in lighting and perspective transforms the mood of ${topicClean}, revealing new visual dimensions and rich tonal contrast.`,
-          visual: `Cinematic orbital tracking shot capturing changing natural light patterns and rich tonal contrast in ${topicClean}.`,
+          title: 'Atmospheric Shift & Lighting',
+          camera: 'Smooth 180-degree orbital camera arc with volumetric depth',
+          action: `A dramatic shift in lighting transforms the mood of ${topicClean}, revealing new visual dimensions.`,
+          visual: `Cinematic orbital tracking shot capturing changing natural light patterns in ${topicClean}.`,
           objects: ['Volumetric light rays', 'Dynamic ambient atmosphere'],
-          voiceover: `A dramatic shift in light and atmosphere reveals new dimensions and depth.`,
-        },
-        {
-          purpose: 'spatial_expansion',
-          shotType: 'COLLABORATIVE_WALK',
-          title: 'Expansive World & Surrounding Scale',
-          camera: 'Smooth side-panning tracking shot capturing dynamic spatial movement',
-          action: `The camera sweeps across a broader perspective of ${topicClean}, connecting the central subject with the surrounding expanse.`,
-          visual: `Dynamic spatial tracking shot revealing the broader world and environmental scale of ${topicClean} in ${envDesc}.`,
-          objects: ['Expansive world architecture', 'Surrounding atmospheric layers'],
-          voiceover: `Expanding the horizon across a breathtaking landscape of possibilities.`,
-        },
-        {
-          purpose: 'intricate_craftsmanship',
-          shotType: 'OVER_SHOULDER_TECH',
-          title: 'Nuance, Fluidity & Mastery',
-          camera: 'Over-the-shoulder perspective with soft optical bokeh and sharp focus',
-          action: `Intricate nuances and masterful fluidity of ${topicClean} are demonstrated with effortless grace and precision.`,
-          visual: `Intimate over-the-shoulder perspective highlighting nuance, mastery, and fluid execution in ${topicClean}.`,
-          objects: ['Nuanced micro-details', 'Precision focal elements'],
-          voiceover: `Uncompromising craft and effortless execution in every single frame.`,
-        },
-        {
-          purpose: 'rhythmic_crescendo',
-          shotType: 'COLLABORATIVE_WORKSPACE',
-          title: 'Climax Buildup & Rhythmic Energy',
-          camera: 'Cinematic slider shot sweeping dynamically across foreground focal points',
-          action: `Energy and visual rhythm build toward a high-impact peak across ${topicClean}, seamlessly harmonizing motion and composition.`,
-          visual: `High-impact collaborative shot capturing synchronized motion and rhythmic buildup across ${topicClean}.`,
-          objects: ['Synchronized dynamic movement', 'Luminous focal points'],
-          voiceover: `Building toward an unforgettable crescendo of energy and momentum.`,
-        },
-        {
-          purpose: 'peak_illumination',
-          shotType: 'MEDIUM_INTERACTIVE',
-          title: 'Peak Atmospheric Glow & Contrast',
-          camera: 'Direct medium push-in camera vector capturing heightened dramatic illumination',
-          action: `The visual journey reaches its peak brilliance, illuminated by radiant highlights and dramatic depth in ${topicClean}.`,
-          visual: `Focused medium shot capturing the emotional peak and heightened visual contrast of ${topicClean} under ${lightingDesc}.`,
-          objects: ['Radiant peak highlights', 'Dramatic contrast layers'],
-          voiceover: `The pinnacle of the journey, glowing with vibrant, unforgettable energy.`,
-        },
-        {
-          purpose: 'elevated_perspective',
-          shotType: 'DYNAMIC_WIDE_TRACKING',
-          title: 'Rising Aerial Elevation & Scope',
-          camera: 'Sweeping crane tracking shot elevating slowly above the scene',
-          action: `The perspective rises smoothly into the open air, revealing the full breathtaking scale of ${topicClean}.`,
-          visual: `Sweeping elevated wide shot capturing the majestic grandeur and expansive scope of ${topicClean} in ${envDesc}.`,
-          objects: ['Expansive vista', 'Majestic open sky'],
-          voiceover: `A breathtaking perspective, rising above and transcending the ordinary.`,
+          voiceover: `A dramatic shift in light reveals new dimensions and depth.`,
         },
         {
           purpose: 'grand_payoff_conclusion',
           shotType: 'SWEEPING_PAYOFF',
-          title: 'Grand Cinematic Resolution & Climax',
-          camera: 'Grand cinematic pull-back panorama with ambient illumination and slow gentle fade',
-          action: `The journey of ${topicClean} culminates in a magnificent final payoff as radiant ambient light envelops the entire composition.`,
-          visual: `Grand cinematic pull-back panorama of ${topicClean} under ${lightingDesc}, concluding in peaceful, majestic resolution.`,
+          title: 'Grand Cinematic Resolution',
+          camera: 'Grand cinematic pull-back panorama with ambient illumination',
+          action: `The journey of ${topicClean} culminates in a magnificent final payoff as ambient light envelops the composition.`,
+          visual: `Grand cinematic pull-back panorama of ${topicClean} under ${lightingDesc}, concluding in peaceful resolution.`,
           objects: ['Vibrant concluding vista', 'Luminous ambient glow'],
-          voiceover: `An extraordinary experience, leaving a lasting and indelible impression.`,
+          voiceover: `An extraordinary visual experience, leaving a lasting impression.`,
         },
       ];
     }
@@ -566,7 +621,6 @@ Target Scenes: ${targetSceneCount} scenes with durations [${sceneDurations.join(
       for (let i = 0; i < targetSceneCount; i++) {
         let idx = Math.round(i * step);
         if (usedIndices.has(idx)) {
-          // Find closest unused index to guarantee 100% distinct scene archetypes
           for (let offset = 1; offset < poolSize; offset++) {
             if (idx + offset < poolSize && !usedIndices.has(idx + offset)) {
               idx = idx + offset;
@@ -587,16 +641,22 @@ Target Scenes: ${targetSceneCount} scenes with durations [${sceneDurations.join(
     }
 
     return selectedTemplates.map((template, idx) => {
-      const duration = sceneDurations[idx] || 10;
+      const sceneBudget = budget[idx] || {
+        requestedTimelineDuration: sceneDurations[idx] || 10,
+        providerGenerationDuration: generationDurations[idx] || 12,
+      };
+      const duration = sceneBudget.requestedTimelineDuration;
       const isFirst = idx === 0;
       const isLast = idx === targetSceneCount - 1;
 
-      const charactersList = continuity.isSceneryOnly ? [] : [characterDesc];
+      const charactersList = isSceneryOnly ? [] : (characterDesc ? [characterDesc] : []);
 
       const { normalizedScene } = validateSceneCard({
         sceneId: `scene_${String(idx + 1).padStart(2, '0')}`,
         order: idx + 1,
         duration,
+        requestedTimelineDuration: sceneBudget.requestedTimelineDuration,
+        providerGenerationDuration: sceneBudget.providerGenerationDuration,
         purpose: template.purpose,
         shotType: template.shotType,
         visualDescription: template.visual,
@@ -605,9 +665,9 @@ Target Scenes: ${targetSceneCount} scenes with durations [${sceneDurations.join(
         lighting: lightingDesc,
         environment: envDesc,
         characters: charactersList,
-        objects: template.objects || ['Atmospheric elements', 'Scenic landscape'],
+        objects: template.objects || ['Atmospheric elements', 'Scenic textures'],
         dialogue: '',
-        voiceover: template.voiceover || (isFirst ? `Welcome to ${topicClean}.` : isLast ? `Discover the future today.` : `Exploring ${template.title}.`),
+        voiceover: template.voiceover || (isFirst ? `Welcome to ${topicClean}.` : isLast ? `An extraordinary experience.` : `Exploring ${template.title}.`),
         soundEffects: ['ambient_sound_bed'],
         transition: isLast ? 'Fade out' : 'Cut',
         references: [],
@@ -615,6 +675,8 @@ Target Scenes: ${targetSceneCount} scenes with durations [${sceneDurations.join(
         generationStrategy: 'GENERATIVE_VIDEO',
       }, idx);
 
+      normalizedScene.requestedTimelineDuration = sceneBudget.requestedTimelineDuration;
+      normalizedScene.providerGenerationDuration = sceneBudget.providerGenerationDuration;
       return normalizedScene;
     });
   }

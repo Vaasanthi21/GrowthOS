@@ -110,7 +110,14 @@ export class JobOrchestratorService {
             console.log(`[VEO_SUBMIT] ${sceneId} provider=veo model=veo-2.0-generate-001 prompt="${(scene.visualDescription || '').slice(0, 60)}..."`);
           }
 
-          rawResult = await providerInstance.generateScene(scene, videoSpec);
+          const enrichedSpec = {
+            ...videoSpec,
+            storyboard,
+            scenes: storyboard,
+            targetSceneCount: storyboard.length,
+          };
+
+          rawResult = await providerInstance.generateScene(scene, enrichedSpec);
 
           if (decision.selectedProvider === 'sora') {
             console.log(`[SORA_COMPLETE] ${sceneId} providerJobId=${rawResult.providerJobId || rawResult.jobId}`);
@@ -120,14 +127,13 @@ export class JobOrchestratorService {
             console.log(`[VEO_ASSET_DOWNLOADED] ${sceneId} url=${rawResult.assetUrl || rawResult.video_url}`);
           }
 
-          normalizedAsset = defaultSceneAssetNormalizer.normalize(rawResult, scene, videoSpec);
+          normalizedAsset = defaultSceneAssetNormalizer.normalize(rawResult, scene, enrichedSpec);
           if (decision.selectedProvider === 'veo') {
             console.log(`[VEO_ASSET_SHA256] ${sceneId} sha256=${normalizedAsset.sha256}`);
           }
-          console.log(`[ASSET_SHA256] ${sceneId} sha256=${normalizedAsset.sha256}`);
-          console.log(`[SCENE_NORMALIZED] ${sceneId} duration=${normalizedAsset.duration}s requestedDuration=${normalizedAsset.requestedDuration}s providerDuration=${normalizedAsset.providerDuration}s`);
+          console.log(`[SCENE_NORMALIZED] ${sceneId} requestedTimelineDuration=${normalizedAsset.requestedTimelineDuration}s providerGenerationDuration=${normalizedAsset.providerGenerationDuration}s actualAssetDuration=${normalizedAsset.actualAssetDuration}s`);
 
-          validation = defaultSceneAssetValidator.validate(normalizedAsset, videoSpec);
+          validation = defaultSceneAssetValidator.validate(normalizedAsset, enrichedSpec);
           console.log(`[SCENE_VALIDATED] ${sceneId} status=${validation.valid ? 'valid' : 'invalid'}`);
 
           if (validation.valid) break;

@@ -26,8 +26,24 @@ export class SceneAssetValidator {
       warnings.push(`Aspect ratio mismatch: asset has ${sceneAsset.aspectRatio}, target is ${targetAspect}. FFmpeg pad/scale filter will auto-correct.`);
     }
 
-    if (!sceneAsset.duration || sceneAsset.duration <= 0) {
-      errors.push(`Invalid scene duration: ${sceneAsset.duration}s`);
+    const reqTimelineDur = Number(sceneAsset.requestedTimelineDuration || sceneAsset.duration || 0);
+    const provGenDur = Number(sceneAsset.providerGenerationDuration || sceneAsset.providerDuration || 0);
+    const actAssetDur = Number(sceneAsset.actualAssetDuration || provGenDur || 0);
+
+    if (reqTimelineDur <= 0) {
+      errors.push(`Invalid scene requested timeline duration: ${reqTimelineDur}s`);
+    }
+
+    if (provGenDur <= 0) {
+      errors.push(`Invalid scene provider generation duration: ${provGenDur}s`);
+    }
+
+    if (sceneAsset.provider === 'sora' && ![4, 8, 12].includes(provGenDur)) {
+      warnings.push(`Sora provider requested with non-standard generation duration: ${provGenDur}s (supported: 4, 8, 12)`);
+    }
+
+    if (actAssetDur <= 0) {
+      errors.push(`Invalid actual asset duration: ${actAssetDur}s`);
     }
 
     const isValid = errors.length === 0;
