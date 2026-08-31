@@ -115,7 +115,7 @@ Output strictly a JSON object with this exact schema:
     "logoUrl": "${resolvedBrandContext.logoUrl}"
   },
   "audioPlan": {
-    "voiceover": false,
+    "voiceover": true,
     "music": true,
     "soundEffects": true
   }
@@ -184,7 +184,7 @@ ${isBrandMode ? `BRAND PROFILE:\nBrand Name: ${resolvedBrandContext.brandName}\n
       mode,
       brandContext,
       audioPlan: {
-        voiceover: false,
+        voiceover: true,
         music: true,
         soundEffects: true,
       },

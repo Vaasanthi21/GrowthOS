@@ -748,6 +748,54 @@ const extractFirstFrameOfVideo = async (videoBuffer, fileNamePrefix) => {
   }
 };
 
+const ensureVideoHasAudio = async ({ videoBuffer, durationSeconds = 12, fileNamePrefix }) => {
+  const tempDir = path.join(process.cwd(), 'tmp');
+  await fs.mkdir(tempDir, { recursive: true });
+
+  const inVideoPath = path.join(tempDir, `${fileNamePrefix}-preaudio.mp4`);
+  const audioPath = path.join(tempDir, `${fileNamePrefix}-soundtrack.wav`);
+  const outVideoPath = path.join(tempDir, `${fileNamePrefix}-audio-out.mp4`);
+
+  await fs.writeFile(inVideoPath, videoBuffer);
+
+  try {
+    await defaultAudioMixer.generateAmbientSoundtrack({ durationSeconds, theme: 'cinematic promotional', outWavPath: audioPath });
+    if (fsSync.existsSync(audioPath)) {
+      await new Promise((resolve, reject) => {
+        const ffmpeg = spawn('ffmpeg', [
+          '-y',
+          '-i', inVideoPath,
+          '-i', audioPath,
+          '-map', '0:v',
+          '-map', '1:a',
+          '-c:v', 'copy',
+          '-c:a', 'aac',
+          '-b:a', '192k',
+          '-ar', '44100',
+          '-ac', '2',
+          '-t', String(durationSeconds),
+          '-movflags', '+faststart',
+          outVideoPath,
+        ]);
+        ffmpeg.on('close', code => code === 0 ? resolve() : reject(new Error(`Audio mux failed code ${code}`)));
+        ffmpeg.on('error', reject);
+      });
+      if (fsSync.existsSync(outVideoPath)) {
+        return await fs.readFile(outVideoPath);
+      }
+    }
+  } catch (err) {
+    console.warn('[VIDEO AUDIO] ensureVideoHasAudio warning:', err?.message || err);
+  } finally {
+    await Promise.allSettled([
+      fs.unlink(inVideoPath).catch(() => {}),
+      fs.unlink(audioPath).catch(() => {}),
+      fs.unlink(outVideoPath).catch(() => {}),
+    ]);
+  }
+  return videoBuffer;
+};
+
 const saveAzureVideoAsset = async ({
   videoId,
   variant = azureVideoDownloadVariant,
@@ -756,12 +804,16 @@ const saveAzureVideoAsset = async ({
 }) => {
   const buffer = await downloadAzureVideoContent({ videoId, variant });
 
-  let outputBuffer = buffer;
+  let outputBuffer = await ensureVideoHasAudio({
+    videoBuffer: buffer,
+    durationSeconds: 12,
+    fileNamePrefix: `${videoId}-${variant}`,
+  });
 
   if (logoUrl && logoPlacement && logoPlacement !== 'none') {
     try {
       outputBuffer = await overlayLogoOnVideo({
-        videoBuffer: buffer,
+        videoBuffer: outputBuffer,
         logoUrl,
         logoPlacement,
         fileNamePrefix: `${videoId}-${variant}`,

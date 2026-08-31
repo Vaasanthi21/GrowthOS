@@ -58,9 +58,9 @@ export function validateVideoSpec(spec) {
       logoUrl: String(spec.brandContext?.logoUrl || '').trim(),
     },
     audioPlan: {
-      voiceover: Boolean(spec.audioPlan?.voiceover),
+      voiceover: spec.audioPlan?.voiceover !== false,
       music: spec.audioPlan?.music !== false,
-      soundEffects: Boolean(spec.audioPlan?.soundEffects),
+      soundEffects: spec.audioPlan?.soundEffects !== false,
     },
     scenes: Array.isArray(spec.scenes) ? spec.scenes : [],
   };
