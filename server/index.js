@@ -3298,11 +3298,16 @@ const createMongoStore = (db) => ({
     const collection = db.collection('content_history');
 
     if (typeof filter === 'function') {
-      const rows = await collection.find({}, { allowDiskUse: true }).sort({ [sortField]: -1 }).skip(offset).limit(limit || 500).toArray();
+      const rows = await collection.find({}, { allowDiskUse: true }).sort({ updated_date: -1, [sortField]: -1, _id: -1 }).skip(offset).limit(limit || 500).toArray();
       return rows.filter(filter);
     }
 
-    const cursor = collection.find(filter || {}, { allowDiskUse: true }).sort({ [sortField]: -1 });
+    const query = { ...(filter || {}) };
+    if (query.user_id && typeof query.user_id === 'string') {
+      query.user_id = userQuery(query.user_id);
+    }
+
+    const cursor = collection.find(query, { allowDiskUse: true }).sort({ updated_date: -1, [sortField]: -1, _id: -1 });
     if (typeof offset === 'number' && Number.isFinite(offset) && offset > 0) {
       cursor.skip(offset);
     }
@@ -3316,13 +3321,17 @@ const createMongoStore = (db) => ({
     const collection = db.collection('content_history');
     const query = typeof filter === 'function' ? {} : { ...(filter || {}) };
 
+    if (query.user_id && typeof query.user_id === 'string') {
+      query.user_id = userQuery(query.user_id);
+    }
+
     if (beforeValue) {
       query[sortField] = { $lt: beforeValue };
     }
 
     const rows = await collection
       .find(query, { allowDiskUse: true })
-      .sort({ [sortField]: -1 })
+      .sort({ updated_date: -1, [sortField]: -1, _id: -1 })
       .limit(limit)
       .toArray();
 

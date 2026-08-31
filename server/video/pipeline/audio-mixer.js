@@ -6,34 +6,96 @@ import https from 'https';
 
 export class AudioMixer {
   /**
-   * Intelligently selects the optimal Azure Neural Voice based on brand context and tone.
+   * Intelligently selects the optimal Azure Neural Voice based on character gender, presenter identity, brand context, and tone.
    */
-  resolveVoiceName(brandContext = {}, theme = '') {
-    const combined = `${brandContext.voice || ''} ${brandContext.industry || ''} ${brandContext.tone || ''} ${theme}`.toLowerCase();
+  resolveVoiceName(optionsOrBrandContext = {}, theme = '') {
+    let brandContext = {};
+    let activeTheme = '';
+    let promptText = '';
+    let characterContext = {};
+    let scriptText = '';
 
+    if (typeof optionsOrBrandContext === 'object' && optionsOrBrandContext !== null) {
+      if (optionsOrBrandContext.brandContext || optionsOrBrandContext.characterContext || optionsOrBrandContext.promptText || optionsOrBrandContext.scriptText) {
+        brandContext = optionsOrBrandContext.brandContext || {};
+        activeTheme = optionsOrBrandContext.theme || '';
+        promptText = optionsOrBrandContext.promptText || '';
+        characterContext = optionsOrBrandContext.characterContext || {};
+        scriptText = optionsOrBrandContext.scriptText || '';
+      } else {
+        brandContext = optionsOrBrandContext;
+        activeTheme = theme || '';
+      }
+    }
+
+    const charStr = `${characterContext?.name || ''} ${characterContext?.role || ''} ${characterContext?.physicalIdentity || ''} ${characterContext?.anchorToken || ''} ${characterContext?.appearance || ''} ${characterContext?.wardrobe || ''}`;
+    const combined = `${promptText} ${charStr} ${brandContext.voice || ''} ${brandContext.industry || ''} ${brandContext.tone || ''} ${activeTheme} ${scriptText}`.toLowerCase();
+
+    // 1. Explicit Male Presenter / Character Detection
+    const isMale = /\b(boy|man|male|guy|gentleman|father|brother|son|husband|businessman|actor|he|his|him|mr|himself|male presenter|male voice|young man|schoolboy|college boy|deep voice)\b/i.test(
+      `${promptText} ${charStr} ${brandContext.voice || ''}`
+    );
+
+    // 2. Explicit Female Presenter / Character Detection
+    const isFemale = /\b(girl|woman|female|lady|mother|sister|daughter|wife|businesswoman|actress|she|her|hers|ms|mrs|miss|herself|female presenter|female voice|young woman|schoolgirl|college girl)\b/i.test(
+      `${promptText} ${charStr} ${brandContext.voice || ''}`
+    );
+
+    // Strict Gender Resolution: If character/presenter is male, strictly select from high-definition male neural voices
+    if (isMale && !isFemale) {
+      if (combined.includes('tech') || combined.includes('software') || combined.includes('innovation') || combined.includes('developer') || combined.includes('code')) {
+        return 'en-US-BrianNeural'; // Intelligent, modern, articulate male voice
+      }
+      if (combined.includes('luxury') || combined.includes('premium') || combined.includes('elegance') || combined.includes('cinematic') || combined.includes('authoritative')) {
+        return 'en-US-ChristopherNeural'; // Authoritative, rich, deep cinematic male voice
+      }
+      if (combined.includes('energetic') || combined.includes('fast') || combined.includes('action') || combined.includes('young') || combined.includes('casual')) {
+        return 'en-US-GuyNeural'; // Energetic, vibrant, casual commercial male voice
+      }
+      if (combined.includes('calm') || combined.includes('peaceful') || combined.includes('wellness') || combined.includes('meditation') || combined.includes('story')) {
+        return 'en-US-DavisNeural'; // Warm, calm, reassuring storyteller male voice
+      }
+      return 'en-US-AndrewNeural'; // Confident, warm, polished commercial presenter male voice
+    }
+
+    // Strict Gender Resolution: If character/presenter is female, strictly select from high-definition female neural voices
+    if (isFemale && !isMale) {
+      if (combined.includes('wellness') || combined.includes('health') || combined.includes('fitness') || combined.includes('calm') || combined.includes('supportive') || combined.includes('mindful')) {
+        return 'en-US-AvaNeural'; // Expressive, calm, warm female voice
+      }
+      if (combined.includes('energetic') || combined.includes('promotional') || combined.includes('marketing') || combined.includes('sales') || combined.includes('launch')) {
+        return 'en-US-AriaNeural'; // Crisp, broadcast-grade commercial female voice
+      }
+      if (combined.includes('friendly') || combined.includes('casual') || combined.includes('lifestyle') || combined.includes('culture')) {
+        return 'en-US-EmmaNeural'; // Friendly, vibrant, approachable female voice
+      }
+      return 'en-US-JennyNeural'; // Clear, confident, professional corporate female voice
+    }
+
+    // Gender-neutral / Unspecified Fallback: Match by archetype & tone
     if (combined.includes('wellness') || combined.includes('health') || combined.includes('fitness') || combined.includes('calm') || combined.includes('supportive')) {
-      return 'en-US-AvaNeural'; // Expressive, calm, warm female voice
+      return 'en-US-AvaNeural';
     }
     if (combined.includes('tech') || combined.includes('software') || combined.includes('innovation') || combined.includes('developer')) {
-      return 'en-US-BrianNeural'; // Engaging, intelligent, modern male voice
+      return 'en-US-BrianNeural';
     }
     if (combined.includes('luxury') || combined.includes('premium') || combined.includes('elegance') || combined.includes('fashion')) {
-      return 'en-US-ChristopherNeural'; // Authoritative, rich cinematic male voice
+      return 'en-US-ChristopherNeural';
     }
     if (combined.includes('energetic') || combined.includes('promotional') || combined.includes('marketing') || combined.includes('sales')) {
-      return 'en-US-AriaNeural'; // Crisp, broadcast-grade commercial female voice
+      return 'en-US-AndrewNeural';
     }
     if (combined.includes('friendly') || combined.includes('casual') || combined.includes('lifestyle')) {
-      return 'en-US-EmmaNeural'; // Friendly, vibrant, approachable female voice
+      return 'en-US-EmmaNeural';
     }
-    return 'en-US-AndrewNeural'; // Confident, warm, professional male voice
+    return 'en-US-AndrewNeural';
   }
 
   /**
    * Generates high-fidelity neural voiceover audio using Azure Cognitive Services Speech REST API.
    * Falls back gracefully to system synthesizer if offline.
    */
-  async generateVoiceoverAudio({ text, outWavPath, brandContext = {}, theme = '' }) {
+  async generateVoiceoverAudio({ text, outWavPath, brandContext = {}, theme = '', characterContext = {}, promptText = '' }) {
     const cleanText = String(text || '')
       .replace(/[\r\n]+/g, ' ')
       .trim()
@@ -46,7 +108,7 @@ export class AudioMixer {
     const parentDir = path.dirname(outWavPath);
     await fs.mkdir(parentDir, { recursive: true });
 
-    const voiceName = this.resolveVoiceName(brandContext, theme);
+    const voiceName = this.resolveVoiceName({ brandContext, theme, characterContext, promptText, scriptText: cleanText });
     const speechKey = process.env.AZURE_SPEECH_KEY || process.env.AZURE_OPENAI_IMAGE_API_KEY;
     const region = process.env.AZURE_SPEECH_REGION || 'swedencentral';
 
@@ -264,9 +326,19 @@ $synth.Dispose();
     let voiceSynthesisType = 'Neural AI';
     const shouldVoiceover = videoSpec.audioPlan?.voiceover !== false;
 
+    const characterContext = videoSpec.continuityContext?.characterBible || videoSpec.characterContext || videoSpec.character || {};
+    const promptText = `${videoSpec.objective || ''} ${videoSpec.continuityContext?.directives?.rawText || ''} ${videoSpec.visualStyle || ''}`;
+
     if (shouldVoiceover && scriptText) {
       try {
-        const vResult = await this.generateVoiceoverAudio({ text: scriptText, outWavPath: voiceWavPath, brandContext, theme });
+        const vResult = await this.generateVoiceoverAudio({
+          text: scriptText,
+          outWavPath: voiceWavPath,
+          brandContext,
+          theme,
+          characterContext,
+          promptText,
+        });
         voiceSynthesisType = vResult?.voiceType || voiceSynthesisType;
         hasVoice = true;
       } catch (voiceErr) {
