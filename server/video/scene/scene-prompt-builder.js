@@ -50,7 +50,7 @@ export class ScenePromptBuilder {
 
   /**
    * Builds an authoritative, high-continuity prompt for generating an individual scene clip.
-   * Employs a strict 5-tier architecture prioritizing user-critical directives,
+   * Employs a strict 5-tier architecture prioritizing company purpose / user-critical directives,
    * continuity bibles, scene-specific action, cinematic optics, and sequence continuity.
    */
   buildSceneGenerationPrompt(sceneCard = {}, videoSpec = {}, sceneIndex = 0, totalScenes = 1) {
@@ -61,65 +61,94 @@ export class ScenePromptBuilder {
     const visualStyleBible = continuity.visualStyle || continuity.visualStyleBible || {};
     const isSceneryOnly = continuity.isSceneryOnly;
 
-    // --- TIER 1: User-Critical Global Directives ---
-    // Primary subject and immutable user keywords (e.g. misty pine forest, morning dew, emerald moss, mountain stream)
-    const primarySubject = userDirectives.primarySubject || videoSpec.objective || '';
-    const naturalElementsStr = Array.isArray(userDirectives.naturalElements) && userDirectives.naturalElements.length > 0
-      ? userDirectives.naturalElements.join(', ')
-      : '';
-    const tier1Directives = [
-      primarySubject ? `[PRIMARY SUBJECT]: ${primarySubject}` : null,
-      naturalElementsStr ? `[CORE ELEMENTS]: ${naturalElementsStr}` : null,
-    ].filter(Boolean).join('. ');
+    const isBrand = videoSpec.mode === 'brand' || Boolean(videoSpec.brandContext?.brandName);
+    const brandContext = videoSpec.brandContext || {};
+    const brandName = brandContext.brandName || '';
+    const brandPurpose = brandContext.purpose || brandContext.productDescription || brandContext.tagline || '';
+    const productDesc = brandContext.productsServices || brandContext.productDescription || brandPurpose;
+    const valueProp = brandContext.valueProposition || brandContext.tagline || '';
+    const targetAudience = brandContext.audience || videoSpec.audience || 'Target Audience';
+    const brandTagline = brandContext.tagline || '';
 
-    // --- TIER 2: Character / Environment Continuity Context ---
-    let tier2Continuity = '';
-    if (!isSceneryOnly && characterBible.anchorToken) {
-      tier2Continuity = characterBible.anchorToken;
+    // --- TIER 1: Company Purpose / User-Critical Directives ---
+    let tier1Directives = '';
+    if (isBrand && brandName) {
+      tier1Directives = `[BRAND & PURPOSE]: ${brandName} — ${brandPurpose ? `${brandPurpose}` : `${brandTagline}`}`;
     } else {
-      const envSetting = sceneCard.environment || environmentBible.setting || userDirectives.environment || '';
-      tier2Continuity = envSetting ? `[ENVIRONMENT]: ${envSetting}` : '';
+      const primarySubject = userDirectives.primarySubject || videoSpec.objective || '';
+      const naturalElementsStr = Array.isArray(userDirectives.naturalElements) && userDirectives.naturalElements.length > 0
+        ? userDirectives.naturalElements.join(', ')
+        : '';
+      tier1Directives = [
+        primarySubject ? `[PRIMARY SUBJECT]: ${primarySubject}` : null,
+        naturalElementsStr ? `[CORE ELEMENTS]: ${naturalElementsStr}` : null,
+      ].filter(Boolean).join('. ');
     }
 
-    // --- TIER 3: Scene-Specific Action & Narrative Purpose ---
-    const shotType = sceneCard.shotType ? `[FRAMING: ${sceneCard.shotType}]` : '';
-    const visualDesc = String(sceneCard.visualDescription || sceneCard.visual || primarySubject).trim();
-    const actionDesc = sceneCard.action ? `Action: ${sceneCard.action}` : '';
-    const tier3Action = `${shotType} ${visualDesc}. ${actionDesc}`.trim();
+    // --- TIER 2: Campaign Objective & Continuity Context ---
+    let tier2Campaign = '';
+    if (isBrand) {
+      tier2Campaign = `[CAMPAIGN GOAL]: ${videoSpec.objective} | [SCENE ROLE: ${sceneCard.purpose || 'Promotional Showcase'}]`;
+    } else if (!isSceneryOnly && characterBible.anchorToken) {
+      tier2Campaign = characterBible.anchorToken;
+    } else {
+      const envSetting = sceneCard.environment || environmentBible.setting || userDirectives.environment || '';
+      tier2Campaign = envSetting ? `[ENVIRONMENT]: ${envSetting}` : '';
+    }
 
-    // --- TIER 4: Camera, Lighting & Cinematic Instructions ---
+    // --- TIER 3: Product / Service / Value Proposition & Character ---
+    let tier3ProductAndCharacter = '';
+    if (isBrand) {
+      const characterContext = !isSceneryOnly && characterBible.anchorToken ? characterBible.anchorToken : '';
+      const valueStr = valueProp ? ` Value proposition: ${valueProp}.` : '';
+      tier3ProductAndCharacter = `[PRODUCT & VALUE]: Demonstrating ${productDesc} tailored for ${targetAudience}.${valueStr}${characterContext ? ` ${characterContext}` : ''}`;
+    } else {
+      tier3ProductAndCharacter = !isSceneryOnly && characterBible.anchorToken ? characterBible.anchorToken : '';
+    }
+
+    // --- TIER 4: Scene-Specific Action & Narrative Purpose ---
+    const shotType = sceneCard.shotType ? `[FRAMING: ${sceneCard.shotType}]` : '';
+    const visualDesc = String(sceneCard.visualDescription || sceneCard.visual || userDirectives.primarySubject || videoSpec.objective).trim();
+    const actionDesc = sceneCard.action ? `Action: ${sceneCard.action}` : '';
+    const envSetting = sceneCard.environment || environmentBible.setting || userDirectives.environment || '';
+    const envStr = envSetting ? ` Setting: ${envSetting}.` : '';
+    const tier4Action = `[VISUAL ACTION]: ${shotType} ${visualDesc}. ${actionDesc}.${envStr}`.trim();
+
+    // --- TIER 5: Camera, Lighting, Brand Colors & Cinematics ---
     const cameraMotion = sceneCard.camera ? `Camera motion: ${sceneCard.camera}` : (userDirectives.cameraMovement ? `Camera: ${userDirectives.cameraMovement}` : 'Camera: smooth cinematic push-in');
     const lightingAnchor = sceneCard.lighting || environmentBible.lighting || userDirectives.lighting || 'Cinematic natural lighting';
     const visualStyle = visualStyleBible.aesthetic || videoSpec.visualStyle || 'Cinematic Hyper-Realism';
     const cinematography = visualStyleBible.cinematography || 'Photorealistic optical depth, 35mm anamorphic lens';
-    const colors = videoSpec.brandContext?.colors?.length
-      ? `Color palette: ${videoSpec.brandContext.colors.join(', ')}`
+    const colors = brandContext.colors?.length
+      ? `Color palette: ${brandContext.colors.join(', ')}`
       : (environmentBible.colorPalette?.length ? `Color palette: ${environmentBible.colorPalette.join(', ')}` : null);
 
-    const tier4Cinematics = [
-      cameraMotion,
-      `Lighting: ${lightingAnchor}`,
-      colors,
-      `Cinematic aesthetic: ${visualStyle}, ${cinematography}`,
-    ].filter(Boolean).join('. ');
-
-    // --- TIER 5: Scene Transition & Sequence Continuity Instructions ---
-    let tier5Continuity = '';
+    let tier5Sequence = '';
     if (totalScenes > 1) {
-      tier5Continuity = isSceneryOnly
+      tier5Sequence = isSceneryOnly
         ? `[SEQUENCE CONTINUITY]: Shot ${sceneIndex + 1} of ${totalScenes}. Maintain exact environmental lighting, atmosphere, color grade, and landscape coordinates.`
         : `[SEQUENCE CONTINUITY]: Shot ${sceneIndex + 1} of ${totalScenes}. Maintain exact character facial bone structure, hairstyle, wardrobe, lighting, and background consistency.`;
     }
 
+    const tier5Cinematics = [
+      `[CINEMATICS]: ${cameraMotion}`,
+      `Lighting: ${lightingAnchor}`,
+      colors,
+      `Aesthetic: ${visualStyle}, ${cinematography}`,
+      tier5Sequence || null,
+    ].filter(Boolean).join('. ');
+
     const promptTiers = [
       tier1Directives || null,
-      tier2Continuity || null,
-      tier3Action || null,
-      tier4Cinematics || null,
-      tier5Continuity || null,
+      tier2Campaign || null,
+      tier3ProductAndCharacter || null,
+      tier4Action || null,
+      tier5Cinematics || null,
     ];
 
-    return promptTiers.filter(Boolean).join('\n');
+    const finalScenePrompt = promptTiers.filter(Boolean).join('\n');
+    console.log(`[SCENE_PROMPT] Scene ${sceneIndex + 1}/${totalScenes} (${sceneCard.sceneId || 'scene_' + (sceneIndex + 1)}):\n${finalScenePrompt}`);
+    return finalScenePrompt;
   }
 }
 

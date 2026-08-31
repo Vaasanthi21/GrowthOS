@@ -8786,13 +8786,55 @@ app.post('/api/generate-video', authRequired, async (req, res) => {
     let resolvedPersona = null;
 
     if (mode === 'brand') {
-      resolvedPersona = req.body?.companyPersona || null;
       if (rawDb) {
         company = (await rawDb.collection('companies').findOne({ user_id: userQuery(userId) })) || {};
+        const personaId = req.body?.companyPersona?.id || req.body?.companyPersona?._id || req.body?.personaId;
+        if (personaId) {
+          try {
+            resolvedPersona = await rawDb.collection('company_personas').findOne({
+              _id: new ObjectId(personaId),
+              user_id: userQuery(userId),
+            });
+          } catch (err) {
+            resolvedPersona = null;
+          }
+        }
         if (!resolvedPersona) {
-          resolvedPersona = await rawDb.collection('company_personas').findOne({ user_id: userQuery(userId) });
+          resolvedPersona = (await rawDb.collection('company_personas').findOne({ user_id: userQuery(userId), isActive: true }))
+            || (await rawDb.collection('company_personas').findOne({ user_id: userQuery(userId) }));
         }
       }
+
+      const rawInputPersona = req.body?.companyPersona || {};
+      resolvedPersona = {
+        ...(resolvedPersona || {}),
+        ...rawInputPersona,
+        id: resolvedPersona?._id?.toString() || resolvedPersona?.id || rawInputPersona.id || rawInputPersona._id || company?._id?.toString() || 'brand_persona',
+        company: rawInputPersona.company || resolvedPersona?.company || company?.companyName || company?.name || resolvedPersona?.name || 'Brand',
+        tagline: rawInputPersona.tagline || resolvedPersona?.tagline || company?.tagline || '',
+        purpose: rawInputPersona.goals || rawInputPersona.notes || resolvedPersona?.goals || resolvedPersona?.notes || resolvedPersona?.description || company?.productDescription || company?.description || '',
+        goals: rawInputPersona.goals || resolvedPersona?.goals || company?.goals || '',
+        notes: rawInputPersona.notes || resolvedPersona?.notes || company?.notes || '',
+        productDescription: rawInputPersona.productDescription || resolvedPersona?.productDescription || resolvedPersona?.notes || resolvedPersona?.goals || company?.productDescription || '',
+        products_services: rawInputPersona.products_services || rawInputPersona.productsServices || resolvedPersona?.products_services || resolvedPersona?.productsServices || resolvedPersona?.productDescription || company?.productDescription || '',
+        productsServices: rawInputPersona.products_services || rawInputPersona.productsServices || resolvedPersona?.products_services || resolvedPersona?.productsServices || resolvedPersona?.productDescription || company?.productDescription || '',
+        value_proposition: rawInputPersona.value_proposition || rawInputPersona.valueProposition || resolvedPersona?.value_proposition || resolvedPersona?.valueProposition || resolvedPersona?.tagline || resolvedPersona?.goals || '',
+        valueProposition: rawInputPersona.value_proposition || rawInputPersona.valueProposition || resolvedPersona?.value_proposition || resolvedPersona?.valueProposition || resolvedPersona?.tagline || resolvedPersona?.goals || '',
+        industry: rawInputPersona.industry || resolvedPersona?.industry || company?.industry || 'Technology & Innovation',
+        voice: rawInputPersona.voice || resolvedPersona?.voice || company?.brandVoice || 'Authoritative, Inspiring, High-Tech',
+        audience: rawInputPersona.audience || resolvedPersona?.audience || company?.targetAudience || 'Enterprises, Recruiters, and Career Professionals',
+        brand_primary_color: rawInputPersona.brand_primary_color || resolvedPersona?.brand_primary_color || company?.brandPrimaryColor || '#22C55E',
+        brand_secondary_color: rawInputPersona.brand_secondary_color || resolvedPersona?.brand_secondary_color || company?.brandSecondaryColor || '#FFFFFF',
+        brand_accent_color: rawInputPersona.brand_accent_color || resolvedPersona?.brand_accent_color || company?.brandAccentColor || '#0F172A',
+        visual_style_instructions: rawInputPersona.visual_style_instructions || rawInputPersona.visualStyleInstructions || resolvedPersona?.visual_style_instructions || resolvedPersona?.visualStyleInstructions || company?.visualGuidelines || '',
+        visualStyleInstructions: rawInputPersona.visual_style_instructions || rawInputPersona.visualStyleInstructions || resolvedPersona?.visual_style_instructions || resolvedPersona?.visualStyleInstructions || company?.visualGuidelines || '',
+        tuning_prompt: rawInputPersona.tuning_prompt || rawInputPersona.tuningPrompt || resolvedPersona?.tuning_prompt || resolvedPersona?.tuningPrompt || '',
+        tuningPrompt: rawInputPersona.tuning_prompt || rawInputPersona.tuningPrompt || resolvedPersona?.tuning_prompt || resolvedPersona?.tuningPrompt || '',
+        learning_summary: resolvedPersona?.learning_summary || '',
+        analysis: resolvedPersona?.analysis || '',
+        logo_url: req.body?.logoUrl || rawInputPersona.logo_url || rawInputPersona.logoUrl || resolvedPersona?.logo_url || resolvedPersona?.logoUrl || company?.logo || '',
+        logoUrl: req.body?.logoUrl || rawInputPersona.logo_url || rawInputPersona.logoUrl || resolvedPersona?.logo_url || resolvedPersona?.logoUrl || company?.logo || '',
+      };
     }
 
     const platform = req.body?.platform || null;

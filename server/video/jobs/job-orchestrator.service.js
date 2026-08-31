@@ -79,12 +79,14 @@ export class JobOrchestratorService {
       const scene = storyboard[i];
       const sceneId = scene.sceneId || `scene_${i + 1}`;
 
-      console.log(`[SCENE_START] ${sceneId}`);
+      console.log(`[SCENE_START] sceneId=${sceneId} order=${scene.order || (i + 1)}`);
 
       let decision;
       try {
         decision = defaultMediaRouter.routeScene(scene, videoSpec);
-        console.log(`[ROUTER_DECISION] ${sceneId} provider=${decision.selectedProvider} model=${decision.selectedModel}`);
+        console.log(`[ROUTER_DECISION] sceneId=${sceneId} provider=${decision.selectedProvider} model=${decision.selectedModel}`);
+        console.log(`[PROVIDER_SELECTED] provider=${decision.selectedProvider} model=${decision.selectedModel}`);
+        console.log(`[PROVIDER_DURATION] requestedTimelineDuration=${scene.requestedTimelineDuration || scene.duration}s providerGenerationDuration=${scene.providerGenerationDuration}s`);
       } catch (routerErr) {
         console.warn(`[ROUTER ERROR] Scene ${sceneId} routing failed: ${routerErr.message}`);
         fallbackTriggered = routerErr.message;
@@ -118,13 +120,18 @@ export class JobOrchestratorService {
           };
 
           rawResult = await providerInstance.generateScene(scene, enrichedSpec);
+          const pJobId = rawResult.providerJobId || rawResult.jobId || `job_${Date.now()}`;
+          const aUrl = rawResult.assetUrl || rawResult.video_url || '';
+
+          console.log(`[PROVIDER_JOB_ID] jobId=${pJobId}`);
+          console.log(`[ASSET_URL] url=${aUrl}`);
 
           if (decision.selectedProvider === 'sora') {
-            console.log(`[SORA_COMPLETE] ${sceneId} providerJobId=${rawResult.providerJobId || rawResult.jobId}`);
-            console.log(`[ASSET_DOWNLOADED] ${sceneId} url=${rawResult.assetUrl || rawResult.video_url}`);
+            console.log(`[SORA_COMPLETE] ${sceneId} providerJobId=${pJobId}`);
+            console.log(`[ASSET_DOWNLOADED] ${sceneId} url=${aUrl}`);
           } else if (decision.selectedProvider === 'veo') {
-            console.log(`[VEO_COMPLETE] ${sceneId} providerJobId=${rawResult.providerJobId || rawResult.jobId}`);
-            console.log(`[VEO_ASSET_DOWNLOADED] ${sceneId} url=${rawResult.assetUrl || rawResult.video_url}`);
+            console.log(`[VEO_COMPLETE] ${sceneId} providerJobId=${pJobId}`);
+            console.log(`[VEO_ASSET_DOWNLOADED] ${sceneId} url=${aUrl}`);
           }
 
           normalizedAsset = defaultSceneAssetNormalizer.normalize(rawResult, scene, enrichedSpec);

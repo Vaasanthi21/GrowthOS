@@ -92,7 +92,7 @@ async function runComprehensiveTests() {
   assert(promoStoryboard.every(s => s.generationStrategy === 'GENERATIVE_VIDEO'), 'All promo scenes use GENERATIVE_VIDEO');
 
   const promoScenePrompt = defaultScenePromptBuilder.buildSceneGenerationPrompt(promoStoryboard[0], promoSpec, 0, 2);
-  assert(promoScenePrompt.includes('[PRIMARY SUBJECT]'), 'Promo scene prompt contains Tier 1 Primary Subject');
+  assert(promoScenePrompt.includes('[BRAND & PURPOSE]') || promoScenePrompt.includes('[PRIMARY SUBJECT]'), 'Promo scene prompt contains Tier 1 Directive');
   assert(promoScenePrompt.includes('[SEQUENCE CONTINUITY]'), 'Promo scene prompt contains Tier 5 Sequence Continuity');
 
   const promoResult = await defaultJobOrchestrator.executeSceneLevelPipeline({
@@ -238,6 +238,88 @@ async function runComprehensiveTests() {
   assert(result120.scenes.length === 12, '120s pipeline rendered 12 independent scene clips');
   const distinctJobs120 = new Set(result120.scenes.map(s => s.providerJobId));
   assert(distinctJobs120.size === 12, 'All 12 scenes generated with unique providerJobIds');
+
+  // --------------------------------------------------------------------------
+  // TEST 5: Brand Persona Mode 15-Second Promotional Video Grounded in Company Purpose
+  // --------------------------------------------------------------------------
+  console.log('\n------------------------------------------------------');
+  console.log(' TEST 5: Brand Persona Mode 15-Second Promotional Video');
+  console.log('------------------------------------------------------');
+
+  const brandCompany = {
+    _id: 'brand_123',
+    companyName: 'PulseFit Wellness',
+    tagline: 'Small habits. Stronger life.',
+    productDescription: 'Sustainable fitness coaching and daily wellness routines for busy professionals.',
+    industry: 'Health & Wellness',
+    targetAudience: 'Busy working professionals',
+    brandVoice: 'Encouraging, calm, and motivational',
+    brandPrimaryColor: '#22C55E',
+    brandSecondaryColor: '#FFF7ED',
+    brandAccentColor: '#F97316',
+    logo: 'https://res.cloudinary.com/dler14rdu/image/upload/v1778664345/creative-studio-os/logos/v6w6esbinzjbwwdklx1z.png',
+  };
+
+  const brandPersona = {
+    id: 'persona_123',
+    company: 'PulseFit Wellness',
+    name: 'Wellness Champion',
+    tagline: 'Small habits. Stronger life.',
+    goals: 'Empower working professionals to build sustainable daily wellness and fitness habits without burnout.',
+    notes: 'PulseFit Wellness promotes balance, realistic lifestyle improvement, and science-backed micro-habits.',
+    products_services: '1-on-1 wellness coaching, daily micro-habit routines, and personalized mental health tracking.',
+    value_proposition: 'Achieve lasting vitality and peak mental focus with effortless daily routines.',
+    industry: 'Health & Wellness',
+    audience: 'Busy working professionals seeking work-life wellness balance',
+    voice: 'Encouraging, calm, trustworthy, supportive',
+    brand_primary_color: '#22C55E',
+    brand_secondary_color: '#FFF7ED',
+    brand_accent_color: '#F97316',
+    visual_style_instructions: 'Clean wellness aesthetic, soft natural lighting, modern fitness lifestyle visuals, calm colors.',
+    tuning_prompt: 'Focus on consistency, mental wellness, realistic goals, and sustainable habits.',
+    logo_url: 'https://res.cloudinary.com/dler14rdu/image/upload/v1778664345/creative-studio-os/logos/v6w6esbinzjbwwdklx1z.png',
+    logo_placement: 'top-left',
+  };
+
+  const brandPrompt = 'Create a 15-second promotional video showcasing how we help professionals build healthy habits.';
+  const brandSpec = await defaultCreativeDirector.createVideoSpec({
+    prompt: brandPrompt,
+    platform: 'instagram',
+    aspectRatio: '9:16',
+    duration: 15,
+    mode: 'brand',
+    companyPersona: brandPersona,
+    company: brandCompany,
+    logoUrl: brandPersona.logo_url,
+    logoPlacement: brandPersona.logo_placement,
+  });
+
+  assert(brandSpec.mode === 'brand', 'VideoSpec mode is brand');
+  assert(brandSpec.brandContext.brandName === 'PulseFit Wellness', 'VideoSpec captures brand name PulseFit Wellness');
+  assert(brandSpec.brandContext.purpose.includes('Empower') || brandSpec.brandContext.purpose.includes('sustainable'), 'VideoSpec captures company purpose');
+  assert(brandSpec.brandContext.colors.length === 3, 'VideoSpec captures 3 brand colors');
+  assert(brandSpec.brandContext.logoRequired === true, 'Logo is required and configured');
+
+  const brandStoryboard = await defaultStoryboardService.generateStoryboard(brandSpec, brandPrompt);
+  assert(brandStoryboard.length === 2, `Brand Storyboard has 2 scenes for 15s budget (got ${brandStoryboard.length})`);
+  assert(brandStoryboard.every(s => [4, 8, 12].includes(s.providerGenerationDuration)), 'All brand scenes use valid Sora generation durations [4, 8, 12]');
+
+  const allBrandText = brandStoryboard.map(s => `${s.visualDescription} ${s.action} ${s.voiceover} ${s.title}`).join(' ');
+  assert(allBrandText.includes('PulseFit Wellness') || allBrandText.includes('wellness') || allBrandText.includes('professionals'), 'Storyboard explicitly promotes PulseFit Wellness and its company purpose');
+
+  const brandScenePrompt1 = defaultScenePromptBuilder.buildSceneGenerationPrompt(brandStoryboard[0], brandSpec, 0, 2);
+  const brandScenePrompt2 = defaultScenePromptBuilder.buildSceneGenerationPrompt(brandStoryboard[1], brandSpec, 1, 2);
+  assert(brandScenePrompt1.includes('[BRAND & PURPOSE]: PulseFit Wellness'), 'Scene 1 prompt starts with Tier 1 Brand & Purpose');
+  assert(brandScenePrompt1.includes('[PRODUCT & VALUE]'), 'Scene 1 prompt includes Tier 3 Product & Value Proposition');
+  assert(brandScenePrompt2.includes('#22C55E'), 'Scene 2 prompt includes brand primary color #22C55E');
+
+  const brandResult = await defaultJobOrchestrator.executeSceneLevelPipeline({
+    videoSpec: brandSpec,
+    storyboard: brandStoryboard,
+    jobId: 'brand_15s_promo_test',
+  });
+  assert(brandResult.fallbackToMaster === false, 'Brand pipeline executed successfully without master fallback');
+  assert(brandResult.scenes.length === 2, 'Brand pipeline rendered 2 independent scene clips');
 
   // Verify all Sora calls across all tests strictly used supported durations (4, 8, 12)
   assert(recordedSoraCalls.every(call => [4, 8, 12].includes(Number(call.durationSeconds))), 'CRITICAL: Every Sora generation request strictly used supported durations [4, 8, 12]');

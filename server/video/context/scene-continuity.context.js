@@ -227,16 +227,24 @@ export function createSceneContinuityContext(videoSpec = {}, rawTopic = '') {
     const brandPurpose = brandContext.purpose || brandContext.productDescription || brandContext.tagline || '';
 
     if (!characterRole) {
-      if (isBrand && (brandName.toLowerCase().includes('uden') || brandPurpose.toLowerCase().includes('talent') || brandPurpose.toLowerCase().includes('career'))) {
-        characterRole = `Lead Talent Innovation Strategist at ${brandName || 'UDEN'}`;
+      if (isBrand) {
+        const indLower = (brandContext.industry || '').toLowerCase();
+        const purpLower = (brandPurpose || '').toLowerCase();
+        if (indLower.includes('wellness') || indLower.includes('health') || indLower.includes('fitness') || purpLower.includes('fitness') || purpLower.includes('wellness')) {
+          characterRole = `Wellness & Performance Coach at ${brandName || 'Brand'}`;
+        } else if (brandName.toLowerCase().includes('uden') || purpLower.includes('talent') || purpLower.includes('career') || purpLower.includes('job')) {
+          characterRole = `Lead Talent Innovation Strategist at ${brandName || 'UDEN'}`;
+        } else if (indLower.includes('tech') || indLower.includes('software') || purpLower.includes('ai') || purpLower.includes('platform')) {
+          characterRole = `Lead Solutions Innovator at ${brandName || 'Brand'}`;
+        } else {
+          characterRole = `${brandName || 'Brand'} Strategic Ambassador`;
+        }
       } else if (classification === CONTENT_ARCHETYPES.EDUCATIONAL_MASTERCLASS) {
         characterRole = 'Masterclass Instructor and Industry Expert';
-      } else if (classification === CONTENT_ARCHETYPES.PROMOTIONAL_VIDEO && isBrand) {
-        characterRole = `${brandName || 'Brand'} Strategic Ambassador`;
       } else if (directives.rawText.toLowerCase().includes('architect') || directives.rawText.toLowerCase().includes('engineer')) {
         characterRole = 'Visionary Software Architect';
       } else {
-        characterRole = isBrand ? `${brandName || 'Brand'} Global Host` : 'Lead Presenter';
+        characterRole = 'Lead Presenter';
       }
     }
 
@@ -276,7 +284,12 @@ export function createSceneContinuityContext(videoSpec = {}, rawTopic = '') {
     if (classification === CONTENT_ARCHETYPES.CINEMATIC_NATURE_JOURNEY) {
       environmentSetting = directives.primarySubject || 'Pristine scenic natural landscape with photorealistic atmospheric depth';
     } else if (isBrand) {
-      environmentSetting = `High-end modern ${brandContext.brandName || 'Brand'} innovation studio with sleek architectural glass and ambient branding`;
+      const indLower = (brandContext.industry || '').toLowerCase();
+      if (indLower.includes('wellness') || indLower.includes('health') || indLower.includes('fitness')) {
+        environmentSetting = `Modern sunlit ${brandContext.brandName || 'Brand'} wellness and lifestyle studio with natural plants, clean minimalist architecture, and soft ambient lighting`;
+      } else {
+        environmentSetting = `High-end modern ${brandContext.brandName || 'Brand'} innovation studio with sleek architectural glass and ambient branding`;
+      }
     } else {
       environmentSetting = 'Contemporary architectural innovation space with floor-to-ceiling windows and refined interior design';
     }

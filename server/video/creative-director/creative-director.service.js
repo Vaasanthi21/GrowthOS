@@ -55,6 +55,8 @@ export class CreativeDirectorService {
           brandName: companyPersona?.company || companyPersona?.name || company?.companyName || company?.name || 'Brand',
           tagline: companyPersona?.tagline || company?.tagline || '',
           purpose: companyPersona?.goals || companyPersona?.notes || companyPersona?.description || company?.productDescription || company?.description || '',
+          productsServices: companyPersona?.products_services || companyPersona?.productsServices || companyPersona?.productDescription || company?.productDescription || '',
+          valueProposition: companyPersona?.value_proposition || companyPersona?.valueProposition || companyPersona?.tagline || companyPersona?.goals || '',
           industry: companyPersona?.industry || company?.industry || 'Technology & Innovation',
           colors: [
             companyPersona?.brand_primary_color || company?.brandPrimaryColor,
@@ -65,6 +67,7 @@ export class CreativeDirectorService {
           voice: companyPersona?.voice || company?.brandVoice || 'Authoritative, Inspiring, High-Tech',
           audience: companyPersona?.audience || company?.targetAudience || 'Enterprises, Recruiters, and Career Professionals',
           productDescription: companyPersona?.productDescription || companyPersona?.notes || companyPersona?.goals || company?.productDescription || '',
+          tuningPrompt: companyPersona?.tuning_prompt || companyPersona?.tuningPrompt || '',
           logoRequired: activeLogoPlacement !== 'none' && Boolean(activeLogoUrl),
           logoPlacement: activeLogoPlacement,
           logoUrl: activeLogoUrl,
@@ -74,24 +77,27 @@ export class CreativeDirectorService {
           brandName: '',
           tagline: '',
           purpose: '',
+          productsServices: '',
+          valueProposition: '',
           industry: '',
           colors: [],
           visualStyle: '',
           voice: '',
           audience: '',
           productDescription: '',
+          tuningPrompt: '',
           logoRequired: false,
           logoPlacement: 'none',
           logoUrl: '',
         };
 
     const systemPrompt = `You are an elite AI Creative Director specializing in social video advertising.
-Your task is to analyze the user's brief, extract creative intent, define a strategic video objective, target audience, emotional tone, and visual direction, and output a structured JSON VideoSpec.
+Your task is to analyze the user's brief, extract creative intent, define a strategic video objective grounded in company purpose and brand identity, target audience, emotional tone, and visual direction, and output a structured JSON VideoSpec.
 
 Output strictly a JSON object with this exact schema:
 {
   "version": "1.0",
-  "objective": "Clear commercial objective of the video",
+  "objective": "Clear commercial objective promoting the brand and its core purpose",
   "audience": "Primary target demographic and psychology",
   "tone": "Emotional tone and brand personality",
   "visualStyle": "Cinematic visual art direction, lighting, and camera motion style",
@@ -107,6 +113,9 @@ Output strictly a JSON object with this exact schema:
     "brandName": "${resolvedBrandContext.brandName}",
     "tagline": "${resolvedBrandContext.tagline}",
     "purpose": "${(resolvedBrandContext.purpose || '').replace(/"/g, "'")}",
+    "productsServices": "${(resolvedBrandContext.productsServices || '').replace(/"/g, "'")}",
+    "valueProposition": "${(resolvedBrandContext.valueProposition || '').replace(/"/g, "'")}",
+    "industry": "${resolvedBrandContext.industry}",
     "colors": ${JSON.stringify(resolvedBrandContext.colors)},
     "visualStyle": "${resolvedBrandContext.visualStyle}",
     "voice": "${resolvedBrandContext.voice}",
@@ -128,8 +137,20 @@ ASPECT RATIO: ${aspectRatio}
 TARGET DURATION: ${duration} seconds
 KEYWORDS: ${keywords}
 ${ragContext ? `FACTUAL BRAND KNOWLEDGE:\n${ragContext}` : ''}
-${isBrandMode ? `BRAND PROFILE:\nBrand Name: ${resolvedBrandContext.brandName}\nTagline: ${resolvedBrandContext.tagline}\nCore Brand Purpose / Mission: ${resolvedBrandContext.purpose}\nIndustry: ${resolvedBrandContext.industry}\nBrand Voice: ${resolvedBrandContext.voice}\nBrand Colors: ${resolvedBrandContext.colors.join(', ')}\nVisual Direction: ${resolvedBrandContext.visualStyle}` : 'MODE: Custom / Freeform Creative Mode'}`;
+${isBrandMode ? `BRAND PROFILE:
+Brand Name: ${resolvedBrandContext.brandName}
+Tagline: ${resolvedBrandContext.tagline}
+Core Brand Purpose / Mission: ${resolvedBrandContext.purpose}
+Products / Services: ${resolvedBrandContext.productsServices}
+Value Proposition: ${resolvedBrandContext.valueProposition}
+Industry: ${resolvedBrandContext.industry}
+Target Audience: ${resolvedBrandContext.audience}
+Brand Voice / Tone: ${resolvedBrandContext.voice}
+Brand Colors: ${resolvedBrandContext.colors.join(', ')}
+Visual Direction: ${resolvedBrandContext.visualStyle}
+Brand Style Directives: ${resolvedBrandContext.tuningPrompt}` : 'MODE: Custom / Freeform Creative Mode'}`;
 
+    let finalSpec;
     try {
       const llmResult = await this.llmProvider.generateJSON({
         systemPrompt,
@@ -138,14 +159,12 @@ ${isBrandMode ? `BRAND PROFILE:\nBrand Name: ${resolvedBrandContext.brandName}\n
       });
 
       const validation = validateVideoSpec(llmResult);
-      const finalSpec = validation.normalizedSpec;
-      finalSpec.continuityContext = createSceneContinuityContext(finalSpec, rawPrompt);
-      return finalSpec;
+      finalSpec = validation.normalizedSpec;
     } catch (err) {
       console.error('[CREATIVE DIRECTOR ERROR] Failed to generate VideoSpec via LLM:', err.message);
       
       // Fallback deterministic VideoSpec
-      const fallbackSpec = this.createFallbackVideoSpec({
+      finalSpec = this.createFallbackVideoSpec({
         prompt: rawPrompt,
         platform,
         aspectRatio,
@@ -153,9 +172,20 @@ ${isBrandMode ? `BRAND PROFILE:\nBrand Name: ${resolvedBrandContext.brandName}\n
         mode: isBrandMode ? 'brand' : 'custom',
         brandContext: resolvedBrandContext,
       });
-      fallbackSpec.continuityContext = createSceneContinuityContext(fallbackSpec, rawPrompt);
-      return fallbackSpec;
     }
+
+    finalSpec.continuityContext = createSceneContinuityContext(finalSpec, rawPrompt);
+
+    // Explicit Structured Diagnostic Logging
+    if (isBrandMode) {
+      console.log(`[BRAND_CONTEXT] brandName="${resolvedBrandContext.brandName}" industry="${resolvedBrandContext.industry}" audience="${resolvedBrandContext.audience}" voice="${resolvedBrandContext.voice}" colors=${JSON.stringify(resolvedBrandContext.colors)} logoPlacement="${resolvedBrandContext.logoPlacement}" logoUrl="${resolvedBrandContext.logoUrl}"`);
+      console.log(`[COMPANY_PURPOSE] "${resolvedBrandContext.purpose}"`);
+    }
+    console.log(`[VIDEO_OBJECTIVE] "${finalSpec.objective}"`);
+    console.log(`[CONTENT_ARCHETYPE] "${finalSpec.continuityContext?.contentClassification}"`);
+    console.log(`[VIDEO_SPEC] duration=${finalSpec.duration}s mode=${finalSpec.mode} visualStyle="${finalSpec.visualStyle}" voiceover=${finalSpec.audioPlan?.voiceover}`);
+
+    return finalSpec;
   }
 
   /**

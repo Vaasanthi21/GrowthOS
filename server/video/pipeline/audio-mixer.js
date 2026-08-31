@@ -10,8 +10,6 @@ export class AudioMixer {
   async generateVoiceoverAudio({ text, outWavPath }) {
     const cleanText = String(text || '')
       .replace(/[\r\n]+/g, ' ')
-      .replace(/[<>"]/g, '')
-      .replace(/'/g, "''")
       .trim()
       .slice(0, 2000);
 
@@ -22,13 +20,17 @@ export class AudioMixer {
     const parentDir = path.dirname(outWavPath);
     await fs.mkdir(parentDir, { recursive: true });
 
+    const scriptTxtPath = outWavPath.replace(/\.wav$/i, '_tts.txt');
+    await fs.writeFile(scriptTxtPath, cleanText, 'utf8');
+
     const psScript = `
 Add-Type -AssemblyName System.Speech;
 $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer;
 $synth.Rate = 0;
 $synth.Volume = 100;
+$txt = [System.IO.File]::ReadAllText('${scriptTxtPath.replace(/\\/g, '/')}');
 $synth.SetOutputToWaveFile('${outWavPath.replace(/\\/g, '/')}');
-$synth.Speak('${cleanText}');
+$synth.Speak($txt);
 $synth.Dispose();
     `;
 
@@ -36,7 +38,8 @@ $synth.Dispose();
       const ps = spawn('powershell', ['-NoProfile', '-Command', psScript]);
       let err = '';
       ps.stderr.on('data', d => err += d.toString());
-      ps.on('close', code => {
+      ps.on('close', async (code) => {
+        try { await fs.unlink(scriptTxtPath); } catch (_) {}
         if (code === 0 && fsSync.existsSync(outWavPath)) {
           resolve(outWavPath);
         } else {
@@ -48,11 +51,11 @@ $synth.Dispose();
   }
 
   /**
-   * Generates a rich procedural cinematic ambient soundtrack based on the video theme.
+   * Generates a rich procedural cinematic ambient soundtrack based on the video theme, industry, and brand personality.
    */
-  async generateAmbientSoundtrack({ durationSeconds = 15, theme = '', outWavPath }) {
+  async generateAmbientSoundtrack({ durationSeconds = 15, theme = '', brandContext = {}, outWavPath }) {
     const dur = Math.max(2, Number(durationSeconds) || 15);
-    const lower = String(theme || '').toLowerCase();
+    const combined = `${theme} ${brandContext.industry || ''} ${brandContext.voice || ''} ${brandContext.purpose || ''}`.toLowerCase();
 
     // Thematic harmonic chords (rich, audible frequencies across bass, mids, and treble)
     let f1 = '293.66'; // D4
@@ -60,19 +63,43 @@ $synth.Dispose();
     let f3 = '440.00'; // A4
     let f4 = '587.33'; // D5
     let f5 = '146.83'; // D3 (Bass)
+    let themeCategory = 'Technology & Innovation';
 
-    if (lower.includes('calm') || lower.includes('peaceful') || lower.includes('nature') || lower.includes('scenery') || lower.includes('sunset')) {
+    if (combined.includes('wellness') || combined.includes('health') || combined.includes('fitness') || combined.includes('lifestyle')) {
+      f1 = '329.63'; // E4
+      f2 = '415.30'; // G#4
+      f3 = '493.88'; // B4
+      f4 = '659.25'; // E5
+      f5 = '164.81'; // E3 (Bass)
+      themeCategory = 'Wellness & Lifestyle';
+    } else if (combined.includes('corporate') || combined.includes('enterprise') || combined.includes('professional') || combined.includes('recruitment')) {
+      f1 = '220.00'; // A3
+      f2 = '277.18'; // C#4
+      f3 = '329.63'; // E4
+      f4 = '440.00'; // A4
+      f5 = '110.00'; // A2 (Bass)
+      themeCategory = 'Corporate & Enterprise';
+    } else if (combined.includes('luxury') || combined.includes('premium') || combined.includes('elegance')) {
+      f1 = '220.00'; // A3
+      f2 = '261.63'; // C4
+      f3 = '329.63'; // E4
+      f4 = '440.00'; // A4
+      f5 = '110.00'; // A2 (Bass)
+      themeCategory = 'Luxury & Premium';
+    } else if (combined.includes('calm') || combined.includes('peaceful') || combined.includes('nature') || combined.includes('scenery') || combined.includes('forest')) {
       f1 = '261.63'; // C4
       f2 = '329.63'; // E4
       f3 = '392.00'; // G4
       f4 = '523.25'; // C5
       f5 = '130.81'; // C3 (Bass)
-    } else if (lower.includes('energetic') || lower.includes('fast') || lower.includes('action') || lower.includes('promotional') || lower.includes('marketing')) {
+      themeCategory = 'Nature & Serenity';
+    } else if (combined.includes('energetic') || combined.includes('action') || combined.includes('promotional') || combined.includes('marketing')) {
       f1 = '329.63'; // E4
       f2 = '392.00'; // G4
       f3 = '493.88'; // B4
       f4 = '659.25'; // E5
       f5 = '164.81'; // E3 (Bass)
+      themeCategory = 'High-Energy Promotional';
     }
 
     const parentDir = path.dirname(outWavPath);
@@ -101,7 +128,7 @@ $synth.Dispose();
       ffmpeg.stderr.on('data', d => err += d.toString());
       ffmpeg.on('close', code => {
         if (code === 0 && fsSync.existsSync(outWavPath)) {
-          resolve(outWavPath);
+          resolve({ outWavPath, themeCategory });
         } else {
           reject(new Error(err || `FFmpeg ambient generation failed with code ${code}`));
         }
@@ -116,6 +143,7 @@ $synth.Dispose();
   async createMasterAudioTrack({ storyboard = [], videoSpec = {}, durationSeconds = 15, sessionPrefix = 'mix', tempDir }) {
     const dur = Math.max(2, Number(durationSeconds) || 15);
     const theme = `${videoSpec.objective || ''} ${videoSpec.visualStyle || ''}`;
+    const brandContext = videoSpec.brandContext || {};
     
     // Extract script text from storyboard scene voiceovers or videoSpec
     const voiceoverLines = (storyboard || [])
@@ -141,8 +169,10 @@ $synth.Dispose();
       }
     }
 
+    let audioThemeCategory = 'Harmonic Bed';
     try {
-      await this.generateAmbientSoundtrack({ durationSeconds: dur, theme, outWavPath: bedWavPath });
+      const bedResult = await this.generateAmbientSoundtrack({ durationSeconds: dur, theme, brandContext, outWavPath: bedWavPath });
+      audioThemeCategory = bedResult?.themeCategory || audioThemeCategory;
     } catch (bedErr) {
       console.warn('[AUDIO MIXER] Ambient soundtrack warning:', bedErr.message);
     }
@@ -168,8 +198,10 @@ $synth.Dispose();
         ffmpeg.on('close', code => code === 0 ? resolve() : reject(new Error(err || `Audio mix failed with code ${code}`)));
         ffmpeg.on('error', reject);
       });
+      console.log(`[AUDIO_PIPELINE] Voiceover: SYNTHESIZED (System TTS) | Music Bed: SYNTHESIZED (${audioThemeCategory}) | Master: ${masterAacPath}`);
       return masterAacPath;
     } else if (hasVoice) {
+      console.log(`[AUDIO_PIPELINE] Voiceover: SYNTHESIZED (System TTS) | Music Bed: NONE | Master: ${voiceWavPath}`);
       return voiceWavPath;
     } else if (fsSync.existsSync(bedWavPath)) {
       await new Promise((resolve, reject) => {
@@ -186,6 +218,7 @@ $synth.Dispose();
         ffmpeg.on('close', code => code === 0 ? resolve() : reject(new Error(`Bed encode failed with code ${code}`)));
         ffmpeg.on('error', reject);
       });
+      console.log(`[AUDIO_PIPELINE] Voiceover: NOT_CONFIGURED | Music Bed: SYNTHESIZED (${audioThemeCategory}) | Master: ${masterAacPath}`);
       return masterAacPath;
     }
 

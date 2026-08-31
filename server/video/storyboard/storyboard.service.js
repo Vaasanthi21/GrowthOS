@@ -136,12 +136,16 @@ STRICT MANDATE: Forbid human presenters, corporate actors, and technical UI scre
 
       case CONTENT_ARCHETYPES.PROMOTIONAL_VIDEO:
         archetypeDirectives = `
-CONTENT ARCHETYPE: PROMOTIONAL VIDEO
+CONTENT ARCHETYPE: PROMOTIONAL VIDEO (BRAND-AWARE MARKETING BLUEPRINT)
 NARRATIVE BLUEPRINT:
-- Scene 1: High-Impact Attention Hook introducing the core proposition with dynamic energy
-- Middle Scenes: Feature / Service Value Highlight demonstrating tangible benefit and social proof
-- Final Scene: Strong, compelling Call-to-Action with confident brand lockup`;
-        shotTypeOptions = 'DYNAMIC_HERO_HOOK | MEDIUM_ACTION | VALUE_HIGHLIGHT | ORBITAL_REVEAL | HIGH_ENERGY_CTA';
+- Scene 1 [Attention / Hook]: Hook the target audience immediately with a compelling challenge or vision tied to the company's core mission.
+- Scene 2 [Problem / Opportunity]: Highlight the core customer pain point or inefficiency.
+- Scene 3 [Introduce Company & Solution]: Introduce the company and reveal how its purpose directly solves the challenge.
+- Scene 4 [Product / Service in Action]: Demonstrate the actual product or service in real-world application with high kinetic energy.
+- Scene 5 [Value Proposition & Benefits]: Highlight the tangible value proposition, speed, reliability, or lifestyle transformation.
+- Scene 6 [Trust & Outcomes]: Showcase user confidence, metrics, or transformative results.
+- Final Scene [Brand Payoff & Call-to-Action]: High-impact brand payoff with logo, tagline, and clear CTA.`;
+        shotTypeOptions = 'DYNAMIC_HERO_HOOK | MEDIUM_ACTION | ORBITAL_REVEAL | DYNAMIC_LIFESTYLE_USE | VALUE_HIGHLIGHT | HIGH_ENERGY_CTA';
         break;
 
       case CONTENT_ARCHETYPES.PRODUCT_ADVERTISEMENT:
@@ -251,6 +255,7 @@ LIGHTING ANCHOR: ${lightingDesc}
 ${!isSceneryOnly && characterDesc ? `CHARACTER ANCHOR: ${characterDesc}\nWARDROBE ANCHOR: ${wardrobeDesc}` : ''}
 TARGET SCENES: ${targetSceneCount} scenes with durations [${sceneDurations.join(', ')}] seconds totaling ${totalDuration}s.`;
 
+    let validatedScenes;
     try {
       const llmResult = await this.llmProvider.generateJSON({
         systemPrompt,
@@ -263,7 +268,7 @@ TARGET SCENES: ${targetSceneCount} scenes with durations [${sceneDurations.join(
         throw new Error('LLM generated zero storyboard scenes.');
       }
 
-      const validatedScenes = rawScenes.map((scene, idx) => {
+      validatedScenes = rawScenes.map((scene, idx) => {
         const { normalizedScene } = validateSceneCard(scene, idx);
         const sceneBudget = budget[idx] || {
           requestedTimelineDuration: sceneDurations[idx] || 10,
@@ -279,17 +284,21 @@ TARGET SCENES: ${targetSceneCount} scenes with durations [${sceneDurations.join(
         } else if ((!normalizedScene.characters || normalizedScene.characters.length === 0) && characterDesc) {
           normalizedScene.characters = [characterDesc];
         }
-        // Ensure all cinematic scenes use GENERATIVE_VIDEO
         normalizedScene.generationStrategy = 'GENERATIVE_VIDEO';
         return normalizedScene;
       });
-
-      return validatedScenes;
     } catch (err) {
       console.error('[STORYBOARD SERVICE ERROR] Failed to generate storyboard via LLM:', err.message);
       // Fallback deterministic storyboard tailored to the content classification & prompt directives
-      return this.createFallbackStoryboard(videoSpec, originalPrompt);
+      validatedScenes = this.createFallbackStoryboard(videoSpec, originalPrompt);
     }
+
+    console.log(`[STORYBOARD] ${validatedScenes.length} scenes generated (Total timeline: ${totalDuration}s, Generation durations: [${validatedScenes.map(s => s.providerGenerationDuration + 's').join(', ')}])`);
+    validatedScenes.forEach((s, i) => {
+      console.log(`[STORYBOARD_SCENE] ${i + 1}/${validatedScenes.length} id=${s.sceneId} purpose="${s.purpose}" timeline=${s.requestedTimelineDuration}s gen=${s.providerGenerationDuration}s voiceover="${(s.voiceover || '').slice(0, 50)}..."`);
+    });
+
+    return validatedScenes;
   }
 
   /**
@@ -310,8 +319,13 @@ TARGET SCENES: ${targetSceneCount} scenes with durations [${sceneDurations.join(
     const envDesc = continuity.environment?.setting || userDirectives.environment || userDirectives.primarySubject || 'Scenic landscape';
     const lightingDesc = continuity.environment?.lighting || userDirectives.lighting || 'Cinematic natural lighting with rich contrast';
 
-    const isBrand = videoSpec.mode === 'brand' && Boolean(videoSpec.brandContext?.brandName);
+    const isBrand = videoSpec.mode === 'brand' || Boolean(videoSpec.brandContext?.brandName);
     const brandName = isBrand ? (videoSpec.brandContext?.brandName || 'Brand') : '';
+    const brandPurpose = videoSpec.brandContext?.purpose || videoSpec.brandContext?.productDescription || 'delivering high-performance intelligent solutions';
+    const productDesc = videoSpec.brandContext?.productsServices || videoSpec.brandContext?.productDescription || brandPurpose;
+    const valueProp = videoSpec.brandContext?.valueProposition || videoSpec.brandContext?.tagline || 'measurable transformation and superior results';
+    const targetAudience = videoSpec.brandContext?.audience || 'modern professionals and forward-thinking teams';
+    const brandTagline = videoSpec.brandContext?.tagline || 'Leading the future';
     const topicClean = String(originalPrompt || videoSpec.objective || userDirectives.primarySubject || 'Cinematic Journey').trim();
 
     let milestonePool = [];
@@ -442,64 +456,64 @@ TARGET SCENES: ${targetSceneCount} scenes with durations [${sceneDurations.join(
     } else if (classification === CONTENT_ARCHETYPES.PROMOTIONAL_VIDEO || isBrand) {
       milestonePool = [
         {
-          purpose: 'hook_introduction',
+          purpose: 'hook_attention',
           shotType: 'DYNAMIC_HERO_HOOK',
           title: `${brandName || 'Brand'} Hero Hook`,
           camera: 'Dynamic forward tracking push-in with optical stabilization',
-          action: `${characterDesc ? `${characterDesc} introduces ` : 'Dynamic opening reveals '}${topicClean} with visionary focus and commanding energy.`,
-          visual: `High-impact opening shot in ${envDesc}: introducing ${topicClean} under ${lightingDesc}.`,
+          action: `${characterDesc ? `${characterDesc} introduces ` : 'Dynamic opening reveals '}how ${brandName || topicClean} empowers ${targetAudience} with visionary focus and commanding energy.`,
+          visual: `High-impact opening shot in ${envDesc}: presenting ${brandName || topicClean}'s mission to solve key industry hurdles for ${targetAudience} under ${lightingDesc}.`,
           objects: ['Brand flagship interface', 'Visual focal elements'],
-          voiceover: `Welcome to ${brandName || topicClean} — elevating performance and driving real growth.`,
+          voiceover: `Welcome to ${brandName || topicClean} — engineered to empower ${targetAudience}.`,
         },
         {
           purpose: 'problem_and_challenge',
           shotType: 'MEDIUM_ACTION',
-          title: 'Core Value Proposition',
+          title: 'Customer Challenge & Opportunity',
           camera: 'Medium tracking glide with shallow depth of field',
-          action: `Breaking down core industry challenges and showcasing immediate strategic advantage.`,
-          visual: `Focused medium shot in ${envDesc}: highlighting key benefits of ${topicClean}.`,
+          action: `Breaking down the key challenges ${targetAudience} face and illustrating the need for intelligent transformation.`,
+          visual: `Focused medium shot in ${envDesc}: highlighting the hurdles solved by ${brandName || topicClean}.`,
           objects: ['Performance analytics', 'Solution matrix'],
-          voiceover: `Transforming complexity into effortless competitive advantage.`,
+          voiceover: `Overcoming complexity requires a focused, purpose-driven approach.`,
         },
         {
-          purpose: 'core_architecture',
+          purpose: 'solution_introduction',
           shotType: 'ORBITAL_REVEAL',
-          title: 'Flagship Features & Precision',
+          title: `Introducing ${brandName || 'Solution'}`,
           camera: 'Smooth 180-degree orbital camera arc with optical depth',
-          action: `Demonstrating flagship capabilities, intelligent workflows, and measurable speed.`,
-          visual: `Cinematic orbital shot in ${envDesc}: demonstrating flagship features of ${topicClean}.`,
+          action: `Introducing ${brandName || 'our core solution'} and demonstrating how its purpose (${brandPurpose.slice(0, 80)}) provides immediate advantage.`,
+          visual: `Cinematic orbital shot in ${envDesc}: demonstrating core capabilities of ${brandName || topicClean}.`,
           objects: ['Core feature showcase', 'Interactive controls'],
-          voiceover: `Engineered for precision, speed, and uncompromising reliability.`,
+          voiceover: `Meet ${brandName || topicClean} — designed to ${brandPurpose.slice(0, 70)}.`,
         },
         {
-          purpose: 'tangible_results',
-          shotType: 'VALUE_HIGHLIGHT',
-          title: 'Measurable Outcomes & Impact',
-          camera: 'Fluid forward slider shot capturing high momentum',
-          action: `Showcasing tangible performance metrics and real-world outcomes.`,
-          visual: `Dynamic slider shot in ${envDesc}: highlighting measurable impact and results.`,
+          purpose: 'product_in_action',
+          shotType: 'DYNAMIC_LIFESTYLE_USE',
+          title: `${productDesc.slice(0, 30)} In Action`,
+          camera: 'Fluid forward slider shot capturing high kinetic momentum',
+          action: `Showcasing ${productDesc.slice(0, 70)} in active real-world use delivering measurable speed and accuracy.`,
+          visual: `Dynamic slider shot in ${envDesc}: highlighting ${productDesc.slice(0, 50)} delivering tangible performance.`,
           objects: ['Impact metrics', 'Outcome visualizer'],
-          voiceover: `Delivering measurable outcomes that accelerate your trajectory.`,
+          voiceover: `Experience ${productDesc.slice(0, 50)} delivering effortless results.`,
         },
         {
-          purpose: 'enterprise_scale',
-          shotType: 'COLLABORATIVE_ACTION',
-          title: 'Seamless Collaboration & Scale',
-          camera: 'Smooth tracking motion along contemporary architectural space',
-          action: `Demonstrating effortless teamwork, integration, and enterprise scaling.`,
-          visual: `Dynamic tracking shot in ${envDesc}: showcasing seamless team collaboration.`,
+          purpose: 'value_proposition_benefits',
+          shotType: 'VALUE_HIGHLIGHT',
+          title: 'Measurable Impact & Benefits',
+          camera: 'Smooth tracking motion with rich optical depth',
+          action: `Demonstrating real-world transformation, reliability, and value proposition: ${valueProp.slice(0, 80)}.`,
+          visual: `Dynamic tracking shot in ${envDesc}: highlighting transformative benefits of ${brandName || topicClean}.`,
           objects: ['Collaborative workspace', 'Team momentum'],
-          voiceover: `Built for ambitious teams ready to scale without limits.`,
+          voiceover: `Unlock ${valueProp.slice(0, 70)} and elevate your trajectory.`,
         },
         {
           purpose: 'closing_cta_payoff',
           shotType: 'HIGH_ENERGY_CTA',
-          title: 'High-Impact Call to Action',
-          camera: 'Sweeping wide pull-back shot with ambient illumination',
-          action: `Delivering a confident closing call-to-action as the scene culminates in inspiring illumination.`,
-          visual: `Grand closing payoff shot in ${envDesc}: celebrating ${brandName || topicClean} under ${lightingDesc}.`,
+          title: 'Brand Payoff & Call to Action',
+          camera: 'Sweeping wide pull-back shot with inspiring ambient illumination',
+          action: `Delivering a confident closing call-to-action celebrating ${brandName || topicClean} with ${brandTagline}.`,
+          visual: `Grand closing payoff shot in ${envDesc}: celebrating ${brandName || topicClean} (${brandTagline}) under ${lightingDesc}.`,
           objects: ['Brand lockup insignia', 'Inspiring focal horizon'],
-          voiceover: `Take the next step with ${brandName || topicClean} today.`,
+          voiceover: `${brandTagline ? `${brandTagline}. ` : ''}Get started with ${brandName || topicClean} today.`,
         },
       ];
     } else if (classification === CONTENT_ARCHETYPES.EDUCATIONAL_MASTERCLASS) {
