@@ -91,16 +91,17 @@ export class CreativeDirectorService {
           logoUrl: '',
         };
 
-    const systemPrompt = `You are an elite AI Creative Director specializing in social video advertising.
-Your task is to analyze the user's brief, extract creative intent, define a strategic video objective grounded in company purpose and brand identity, target audience, emotional tone, and visual direction, and output a structured JSON VideoSpec.
+    const systemPrompt = `You are an elite AI Creative Director specializing in high-impact social video advertising and promotional commercials.
+Your task is to analyze the user's brief, extract core brand intelligence (company purpose, products/services, target audience, and value proposition), define a compelling commercial video objective grounded in visual storytelling and user transformation, and output a structured JSON VideoSpec.
+IMPORTANT: For promotional commercials and brand ads, focus on dynamic visual storytelling, customer transformation, and hands-on product interaction. Do NOT default to a static talking-head presenter unless explicitly requested in the brief.
 
 Output strictly a JSON object with this exact schema:
 {
   "version": "1.0",
-  "objective": "Clear commercial objective promoting the brand and its core purpose",
-  "audience": "Primary target demographic and psychology",
-  "tone": "Emotional tone and brand personality",
-  "visualStyle": "Cinematic visual art direction, lighting, and camera motion style",
+  "objective": "Clear, compelling commercial objective showcasing the company purpose, real-world product experience, and customer value",
+  "audience": "Primary target demographic and mindset",
+  "tone": "Emotional tone, energy, and brand personality",
+  "visualStyle": "Cinematic visual art direction, lighting, camera movement, and aesthetic",
   "duration": ${reqDur},
   "requestedDuration": ${reqDur},
   "effectiveDuration": ${reqDur},
@@ -196,11 +197,13 @@ Brand Style Directives: ${resolvedBrandContext.tuningPrompt}` : 'MODE: Custom / 
     const isBrand = mode === 'brand' || Boolean(brandContext?.brandName);
     const brandName = brandContext?.brandName || 'Brand';
     const brandPurpose = brandContext?.purpose || brandContext?.productDescription || brandContext?.tagline || 'Next-generation intelligent solutions';
+    const productDesc = brandContext?.productsServices || brandContext?.productDescription || brandPurpose;
+    const valueProp = brandContext?.valueProposition || brandContext?.tagline || 'delivering verified results and measurable scale';
 
     const { normalizedSpec } = validateVideoSpec({
       version: '1.0',
       objective: isBrand
-        ? `Showcase ${brandName}'s core mission: ${brandPurpose.slice(0, 120)}`
+        ? `Showcase how ${brandName} achieves ${brandPurpose.slice(0, 100)} through ${productDesc.slice(0, 80)}, delivering ${valueProp.slice(0, 80)} for ${brandContext?.audience || 'modern professionals'}`
         : prompt,
       audience: brandContext?.audience || 'Target professional and social audience',
       tone: brandContext?.voice || 'Inspiring, authoritative, and forward-looking',

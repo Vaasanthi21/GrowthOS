@@ -78,6 +78,30 @@ export function isSceneryOrSubjectWithoutPresenter(text = '') {
 }
 
 /**
+ * Determines whether a dedicated, persistent presenter / talking-head character is strictly required.
+ * Returns true ONLY IF:
+ * 1. The prompt explicitly specifies an on-camera presenter, speaker, instructor, host, or actor talking to camera.
+ * 2. OR the content archetype is explicitly EDUCATIONAL_MASTERCLASS.
+ * Returns false for PROMOTIONAL_VIDEO, PRODUCT_ADVERTISEMENT, CINEMATIC_NATURE_JOURNEY, EXPLAINER, and general commercials.
+ */
+export function requiresPresenter(text = '', mode = 'custom', classification = null) {
+  const lower = String(text || '').toLowerCase();
+  
+  // Explicit presenter tokens
+  const explicitPresenterTokens = /\b(presenter|spokesperson|talking head|talking-head|host|instructor|speaker|anchor|on-camera presenter|on-camera speaker|monologue|speech by|addressing camera)\b/i;
+  if (explicitPresenterTokens.test(lower)) {
+    return true;
+  }
+
+  // Educational masterclasses structurally require an instructor
+  if (classification === CONTENT_ARCHETYPES.EDUCATIONAL_MASTERCLASS) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Extracts structured user directives directly from the prompt text.
  */
 export function extractUserDirectives(promptText = '', mode = 'custom', brandContext = {}) {
@@ -211,38 +235,26 @@ export function createSceneContinuityContext(videoSpec = {}, rawTopic = '') {
   const directives = extractUserDirectives(fullPromptText, mode, brandContext);
   const classification = directives.classification;
   const isSceneryOnly = directives.isSceneryOnly;
+  const isPresenterRequired = requiresPresenter(fullPromptText, mode, classification);
 
   const primaryColor = brandContext.primaryColor || brandContext.colors?.[0] || '#1A365D';
   const secondaryColor = brandContext.secondaryColor || brandContext.colors?.[1] || '#2B6CB0';
   const accentColor = brandContext.accentColor || brandContext.colors?.[2] || '#ED8936';
   const colorsList = brandContext.colors?.length ? brandContext.colors : [primaryColor, secondaryColor, accentColor].filter(Boolean);
 
-  // --- 1. CHARACTER BIBLE ---
+  // --- 1. CHARACTER BIBLE (CONDITIONAL: ONLY WHEN PRESENTER IS ACTUALLY REQUIRED) ---
   let characterBible = null;
   let characterIdentity = null;
 
-  if (!isSceneryOnly) {
+  if (isPresenterRequired && !isSceneryOnly) {
     let characterRole = directives.subjectRole;
     const brandName = brandContext.brandName || '';
-    const brandPurpose = brandContext.purpose || brandContext.productDescription || brandContext.tagline || '';
 
     if (!characterRole) {
-      if (isBrand) {
-        const indLower = (brandContext.industry || '').toLowerCase();
-        const purpLower = (brandPurpose || '').toLowerCase();
-        if (indLower.includes('wellness') || indLower.includes('health') || indLower.includes('fitness') || purpLower.includes('fitness') || purpLower.includes('wellness')) {
-          characterRole = `Wellness & Performance Coach at ${brandName || 'Brand'}`;
-        } else if (brandName.toLowerCase().includes('uden') || purpLower.includes('talent') || purpLower.includes('career') || purpLower.includes('job')) {
-          characterRole = `Lead Talent Innovation Strategist at ${brandName || 'UDEN'}`;
-        } else if (indLower.includes('tech') || indLower.includes('software') || purpLower.includes('ai') || purpLower.includes('platform')) {
-          characterRole = `Lead Solutions Innovator at ${brandName || 'Brand'}`;
-        } else {
-          characterRole = `${brandName || 'Brand'} Strategic Ambassador`;
-        }
-      } else if (classification === CONTENT_ARCHETYPES.EDUCATIONAL_MASTERCLASS) {
+      if (classification === CONTENT_ARCHETYPES.EDUCATIONAL_MASTERCLASS) {
         characterRole = 'Masterclass Instructor and Industry Expert';
-      } else if (directives.rawText.toLowerCase().includes('architect') || directives.rawText.toLowerCase().includes('engineer')) {
-        characterRole = 'Visionary Software Architect';
+      } else if (isBrand) {
+        characterRole = `${brandName || 'Brand'} Featured Presenter`;
       } else {
         characterRole = 'Lead Presenter';
       }
@@ -267,7 +279,7 @@ export function createSceneContinuityContext(videoSpec = {}, rawTopic = '') {
       wardrobe: wardrobeDescription,
       anchorToken: characterAnchorToken,
       demeanor: 'Articulate, confident, intellectually commanding, engaging presence',
-      referenceImages: brandContext.logoUrl ? [brandContext.logoUrl] : [],
+      referenceImages: [],
     };
 
     characterIdentity = {

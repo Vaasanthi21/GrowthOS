@@ -125,16 +125,23 @@ export class ScenePromptBuilder {
 
     let tier5Sequence = '';
     if (totalScenes > 1) {
-      tier5Sequence = isSceneryOnly
-        ? `[SEQUENCE CONTINUITY]: Shot ${sceneIndex + 1} of ${totalScenes}. Maintain exact environmental lighting, atmosphere, color grade, and landscape coordinates.`
-        : `[SEQUENCE CONTINUITY]: Shot ${sceneIndex + 1} of ${totalScenes}. Maintain exact character facial bone structure, hairstyle, wardrobe, lighting, and background consistency.`;
+      if (isSceneryOnly) {
+        tier5Sequence = `[SEQUENCE CONTINUITY]: Shot ${sceneIndex + 1} of ${totalScenes}. Maintain exact environmental lighting, atmosphere, color grade, and landscape coordinates.`;
+      } else if (characterBible?.anchorToken) {
+        tier5Sequence = `[SEQUENCE CONTINUITY]: Shot ${sceneIndex + 1} of ${totalScenes}. Maintain exact character facial bone structure, hairstyle, wardrobe, lighting, and background consistency.`;
+      } else {
+        tier5Sequence = `[SEQUENCE CONTINUITY]: Shot ${sceneIndex + 1} of ${totalScenes}. Maintain unified aesthetic lighting, environmental realism, and narrative momentum across cuts.`;
+      }
     }
+
+    const cleanFootageDirective = 'Clean cinematic live-action footage without embedded subtitles, typography, or watermarks.';
 
     const tier5Cinematics = [
       `[CINEMATICS]: ${cameraMotion}`,
       `Lighting: ${lightingAnchor}`,
       colors,
       `Aesthetic: ${visualStyle}, ${cinematography}`,
+      cleanFootageDirective,
       tier5Sequence || null,
     ].filter(Boolean).join('. ');
 

@@ -136,16 +136,17 @@ STRICT MANDATE: Forbid human presenters, corporate actors, and technical UI scre
 
       case CONTENT_ARCHETYPES.PROMOTIONAL_VIDEO:
         archetypeDirectives = `
-CONTENT ARCHETYPE: PROMOTIONAL VIDEO (BRAND-AWARE MARKETING BLUEPRINT)
+CONTENT ARCHETYPE: PROMOTIONAL VIDEO (COMMERCIAL ADVERTISING BLUEPRINT)
 NARRATIVE BLUEPRINT:
-- Scene 1 [Attention / Hook]: Hook the target audience immediately with a compelling challenge or vision tied to the company's core mission.
-- Scene 2 [Problem / Opportunity]: Highlight the core customer pain point or inefficiency.
-- Scene 3 [Introduce Company & Solution]: Introduce the company and reveal how its purpose directly solves the challenge.
-- Scene 4 [Product / Service in Action]: Demonstrate the actual product or service in real-world application with high kinetic energy.
-- Scene 5 [Value Proposition & Benefits]: Highlight the tangible value proposition, speed, reliability, or lifestyle transformation.
-- Scene 6 [Trust & Outcomes]: Showcase user confidence, metrics, or transformative results.
-- Final Scene [Brand Payoff & Call-to-Action]: High-impact brand payoff with logo, tagline, and clear CTA.`;
-        shotTypeOptions = 'DYNAMIC_HERO_HOOK | MEDIUM_ACTION | ORBITAL_REVEAL | DYNAMIC_LIFESTYLE_USE | VALUE_HIGHLIGHT | HIGH_ENERGY_CTA';
+- Scene 1 [Attention / Dynamic Hook]: Hook the target audience immediately with high-energy visual action illustrating an ambitious goal or critical industry friction.
+- Scene 2 [Problem / Struggle]: Over-the-shoulder or close-up perspective showing the friction of legacy methods and the need for a modern solution.
+- Scene 3 [Breakthrough / Solution Introduction]: Wide establishing reveal showing the company/platform entering the workflow with purposeful energy.
+- Scene 4 [Product & Service in Action]: Direct hands-on interaction showing the product/service in active real-world use with fast, fluid execution.
+- Scene 5 [Core Value & Verification]: Visualizing intelligent capabilities, automated accuracy, and skill verification in real time.
+- Scene 6 [Customer Transformation & Triumph]: Visible user achievement, confident smiles, breakthrough metrics, and celebratory momentum.
+- Final Scene [Brand Payoff & Call-to-Action]: High-impact commercial payoff with inspiring brand visual and decisive CTA.
+MANDATE: Depict real users/customers engaged in authentic real-world actions, using the product or service, solving hurdles, and achieving success. Do NOT default to an on-camera talking-head presenter standing in front of the camera. Focus on kinetic visuals, cinematic optics, and authentic human transformation.`;
+        shotTypeOptions = 'DYNAMIC_HERO_HOOK | WIDE_ESTABLISHING | HUMAN_ACTION | PRODUCT_INTERACTION | OVER_THE_SHOULDER | CLOSE_UP_DETAIL | ENVIRONMENT_TRACKING | CINEMATIC_ORBIT | UI_INTERACTION | OUTCOME_SUCCESS | BRAND_PAYOFF';
         break;
 
       case CONTENT_ARCHETYPES.PRODUCT_ADVERTISEMENT:
@@ -286,6 +287,26 @@ TARGET SCENES: ${targetSceneCount} scenes with durations [${sceneDurations.join(
         }
         normalizedScene.generationStrategy = 'GENERATIVE_VIDEO';
         return normalizedScene;
+      });
+
+      // Enrich with narrative handovers across sequential cuts
+      validatedScenes.forEach((scene, idx) => {
+        const prev = validatedScenes[idx - 1];
+        const next = validatedScenes[idx + 1];
+        if (prev) {
+          scene.previousSceneSummary = `Preceding shot established ${prev.purpose} (${prev.shotType}): ${(prev.visualDescription || '').slice(0, 80)}`;
+          scene.visualHandover = `Cut from ${prev.shotType} into ${scene.shotType}, maintaining lighting (${lightingDesc}) and color grade`;
+        } else {
+          scene.previousSceneSummary = 'Opening establishing sequence';
+          scene.visualHandover = `Dynamic initial entry with ${scene.shotType}`;
+        }
+        if (next) {
+          scene.nextSceneIntent = `Leads into ${next.purpose} (${next.shotType}): ${(next.visualDescription || '').slice(0, 80)}`;
+          scene.narrativeHandover = `Propels narrative momentum toward ${next.purpose}`;
+        } else {
+          scene.nextSceneIntent = 'Final commercial payoff and brand resolution';
+          scene.narrativeHandover = 'Resolves all narrative arcs into definitive brand conclusion';
+        }
       });
     } catch (err) {
       console.error('[STORYBOARD SERVICE ERROR] Failed to generate storyboard via LLM:', err.message);
@@ -456,64 +477,124 @@ TARGET SCENES: ${targetSceneCount} scenes with durations [${sceneDurations.join(
     } else if (classification === CONTENT_ARCHETYPES.PROMOTIONAL_VIDEO || isBrand) {
       milestonePool = [
         {
-          purpose: 'hook_attention',
+          purpose: 'hook_audience_aspiration',
           shotType: 'DYNAMIC_HERO_HOOK',
           title: `${brandName || 'Brand'} Hero Hook`,
-          camera: 'Dynamic forward tracking push-in with optical stabilization',
-          action: `${characterDesc ? `${characterDesc} introduces ` : 'Dynamic opening reveals '}how ${brandName || topicClean} empowers ${targetAudience} with visionary focus and commanding energy.`,
-          visual: `High-impact opening shot in ${envDesc}: presenting ${brandName || topicClean}'s mission to solve key industry hurdles for ${targetAudience} under ${lightingDesc}.`,
-          objects: ['Brand flagship interface', 'Visual focal elements'],
-          voiceover: `Welcome to ${brandName || topicClean} — engineered to empower ${targetAudience}.`,
+          camera: 'Dynamic forward tracking push-in with optical stabilization and cinematic parallax',
+          action: `High-energy visual sequence capturing the ambitious world of ${targetAudience}. Dynamic kinetic motion illustrates the challenge of complexity and the urgent demand for modern solutions.`,
+          visual: `A focused professional in ${envDesc} engaging with high-stakes challenges, framed with dynamic lighting and kinetic camera push-in under ${lightingDesc}.`,
+          objects: ['Flagship workspace elements', 'Dynamic ambient illumination'],
+          voiceover: `In a fast-moving landscape, ${targetAudience} need more than promises — they need results.`,
         },
         {
-          purpose: 'problem_and_challenge',
-          shotType: 'MEDIUM_ACTION',
-          title: 'Customer Challenge & Opportunity',
-          camera: 'Medium tracking glide with shallow depth of field',
-          action: `Breaking down the key challenges ${targetAudience} face and illustrating the need for intelligent transformation.`,
-          visual: `Focused medium shot in ${envDesc}: highlighting the hurdles solved by ${brandName || topicClean}.`,
-          objects: ['Performance analytics', 'Solution matrix'],
-          voiceover: `Overcoming complexity requires a focused, purpose-driven approach.`,
+          purpose: 'problem_and_inefficiency',
+          shotType: 'OVER_THE_SHOULDER',
+          title: 'Legacy Friction & Inefficiency',
+          camera: 'Over-the-shoulder tracking glide with shallow 35mm depth of field',
+          action: `Over-the-shoulder perspective capturing the friction of outdated manual workflows and the search for a smarter alternative.`,
+          visual: `Focused atmospheric framing in ${envDesc} as manual friction and fragmented tools slow down progress, setting the stage for transformation.`,
+          objects: ['Active workstation', 'Complex workflow cues'],
+          voiceover: `Too much time is lost to outdated tools, slow processes, and guesswork.`,
         },
         {
-          purpose: 'solution_introduction',
-          shotType: 'ORBITAL_REVEAL',
+          purpose: 'solution_breakthrough',
+          shotType: 'WIDE_ESTABLISHING',
           title: `Introducing ${brandName || 'Solution'}`,
-          camera: 'Smooth 180-degree orbital camera arc with optical depth',
-          action: `Introducing ${brandName || 'our core solution'} and demonstrating how its purpose (${brandPurpose.slice(0, 80)}) provides immediate advantage.`,
-          visual: `Cinematic orbital shot in ${envDesc}: demonstrating core capabilities of ${brandName || topicClean}.`,
-          objects: ['Core feature showcase', 'Interactive controls'],
-          voiceover: `Meet ${brandName || topicClean} — designed to ${brandPurpose.slice(0, 70)}.`,
+          camera: 'Expansive wide establishing glide with smooth horizontal drift',
+          action: `Expansive architectural shot as ${brandName || 'the platform'} enters the scene, igniting momentum with purposeful clarity and intelligence.`,
+          visual: `Sunlit innovation environment in ${envDesc} where modern teams transition into high-performance execution powered by ${brandName || topicClean}.`,
+          objects: ['Architectural glass', 'Collaborative technology environment'],
+          voiceover: `That’s why ${brandName || 'we'} engineered a better way: ${brandPurpose.slice(0, 80)}.`,
         },
         {
           purpose: 'product_in_action',
-          shotType: 'DYNAMIC_LIFESTYLE_USE',
+          shotType: 'PRODUCT_INTERACTION',
           title: `${productDesc.slice(0, 30)} In Action`,
           camera: 'Fluid forward slider shot capturing high kinetic momentum',
-          action: `Showcasing ${productDesc.slice(0, 70)} in active real-world use delivering measurable speed and accuracy.`,
-          visual: `Dynamic slider shot in ${envDesc}: highlighting ${productDesc.slice(0, 50)} delivering tangible performance.`,
-          objects: ['Impact metrics', 'Outcome visualizer'],
-          voiceover: `Experience ${productDesc.slice(0, 50)} delivering effortless results.`,
+          action: `Direct hands-on interaction demonstrating ${productDesc.slice(0, 70)} executing with fluid responsiveness, precision, and speed.`,
+          visual: `Close-up detail of user hands interacting with ${productDesc.slice(0, 50)} interface on sleek modern hardware with real-time feedback in ${envDesc}.`,
+          objects: ['Modern hardware interface', 'Real-time feedback elements'],
+          voiceover: `Experience ${productDesc.slice(0, 50)} built for seamless, intuitive execution.`,
         },
         {
-          purpose: 'value_proposition_benefits',
-          shotType: 'VALUE_HIGHLIGHT',
-          title: 'Measurable Impact & Benefits',
-          camera: 'Smooth tracking motion with rich optical depth',
-          action: `Demonstrating real-world transformation, reliability, and value proposition: ${valueProp.slice(0, 80)}.`,
-          visual: `Dynamic tracking shot in ${envDesc}: highlighting transformative benefits of ${brandName || topicClean}.`,
+          purpose: 'feature_deep_dive',
+          shotType: 'UI_INTERACTION',
+          title: 'Precision & Verification',
+          camera: 'Smooth lateral slider tracking across active workspace',
+          action: `Smooth lateral slider shot highlighting live benchmarking, automated precision, and validated accuracy in real time.`,
+          visual: `Clean, responsive workflow view in ${envDesc} showing verified milestones, intelligent automation, and live accuracy metrics locking in.`,
+          objects: ['Intelligent automation console', 'Live accuracy indicators'],
+          voiceover: `Every capability is verified with speed, accuracy, and total confidence.`,
+        },
+        {
+          purpose: 'value_proposition_acceleration',
+          shotType: 'HUMAN_ACTION',
+          title: 'Unlocking Value Proposition',
+          camera: 'Kinetic tracking motion with rich optical depth',
+          action: `Kinetic tracking shot of active users collaborating, accelerating turnaround times, and unlocking ${valueProp.slice(0, 70)}.`,
+          visual: `Empowered professionals in ${envDesc} working with energized focus in a contemporary collaborative space, operating at peak efficiency.`,
           objects: ['Collaborative workspace', 'Team momentum'],
-          voiceover: `Unlock ${valueProp.slice(0, 70)} and elevate your trajectory.`,
+          voiceover: `Unlocking ${valueProp.slice(0, 70)} to fast-track your success.`,
+        },
+        {
+          purpose: 'collaborative_momentum',
+          shotType: 'ENVIRONMENT_TRACKING',
+          title: 'Team Synergies & Speed',
+          camera: 'Fluid tracking shot skimming gracefully past active workspaces',
+          action: `Fluid tracking shot through a dynamic open workspace where cross-functional talent synchronizes efforts effortlessly.`,
+          visual: `Atmospheric glide past engaged team members in ${envDesc} celebrating real-time breakthroughs and milestone completions.`,
+          objects: ['Dynamic team environment', 'Milestone badges'],
+          voiceover: `Seamlessly connecting talent, technology, and strategic vision.`,
+        },
+        {
+          purpose: 'measurable_outcomes',
+          shotType: 'CLOSE_UP_DETAIL',
+          title: 'Surging Performance Metrics',
+          camera: 'Low-angle macro glide capturing crisp surface details',
+          action: `Intimate macro detail capturing upward surging performance indicators, verified completion badges, and triumphant growth curves.`,
+          visual: `Crisp optical detail focusing on verified growth milestones and breakthrough success outcomes in ${envDesc}.`,
+          objects: ['Surging performance indicators', 'Verified achievement markers'],
+          voiceover: `Delivering measurable impact, exceptional quality, and transformative scale.`,
+        },
+        {
+          purpose: 'customer_triumph',
+          shotType: 'OUTCOME_SUCCESS',
+          title: 'Customer Achievement & Triumph',
+          camera: 'Inspiring medium portrait arc bathed in warm natural light',
+          action: `A confident user or candidate smiles with genuine satisfaction after securing an exceptional outcome or breakthrough career milestone.`,
+          visual: `Inspiring medium portrait in ${envDesc} bathed in natural warm light under ${lightingDesc}, capturing authentic human achievement and professional elevation.`,
+          objects: ['Triumphant achievement moment', 'Warm ambient glow'],
+          voiceover: `Transforming potential into verified career and business achievements.`,
+        },
+        {
+          purpose: 'enterprise_ecosystem_trust',
+          shotType: 'CINEMATIC_ORBIT',
+          title: 'Ecosystem Reach & Trust',
+          camera: 'Dynamic 180-degree orbital camera arc with volumetric depth',
+          action: `Dynamic orbital camera arc showcasing multiple global teams connected across the platform in unified momentum.`,
+          visual: `Elevated cinematic orbit in ${envDesc} capturing the vast reach and reliability of the platform across modern industries.`,
+          objects: ['Ecosystem connectivity', 'Global reach markers'],
+          voiceover: `Trusted by industry leaders, growing enterprises, and ambitious professionals worldwide.`,
+        },
+        {
+          purpose: 'aspirational_horizon',
+          shotType: 'WIDE_ESTABLISHING',
+          title: 'Limitless Future Horizon',
+          camera: 'Expansive golden-hour skyline shot with gentle tilt-up',
+          action: `Expansive horizon shot symbolizing limitless growth, continuous innovation, and the future of work.`,
+          visual: `Panoramic horizon view with radiant warm lighting under ${lightingDesc}, projecting forward-thinking innovation and continuous ascent.`,
+          objects: ['Panoramic horizon', 'Radiant sunrise atmosphere'],
+          voiceover: `The future belongs to those who build with precision, intelligence, and ambition.`,
         },
         {
           purpose: 'closing_cta_payoff',
-          shotType: 'HIGH_ENERGY_CTA',
-          title: 'Brand Payoff & Call to Action',
-          camera: 'Sweeping wide pull-back shot with inspiring ambient illumination',
-          action: `Delivering a confident closing call-to-action celebrating ${brandName || topicClean} with ${brandTagline}.`,
-          visual: `Grand closing payoff shot in ${envDesc}: celebrating ${brandName || topicClean} (${brandTagline}) under ${lightingDesc}.`,
-          objects: ['Brand lockup insignia', 'Inspiring focal horizon'],
-          voiceover: `${brandTagline ? `${brandTagline}. ` : ''}Get started with ${brandName || topicClean} today.`,
+          shotType: 'BRAND_PAYOFF',
+          title: 'Definitive Brand Payoff & CTA',
+          camera: 'Grand cinematic pull-back shot resolving in clean commercial finish',
+          action: `Final high-energy commercial payoff resolving in a clean, inspiring commercial finish celebrating ${brandName || topicClean} with ${brandTagline || 'excellence'}.`,
+          visual: `Grand closing payoff composition in ${envDesc} celebrating ${brandName || topicClean} under ${lightingDesc}.`,
+          objects: ['Inspiring focal horizon', 'Brand payoff elements'],
+          voiceover: `${brandName || 'Join us today'}. ${brandTagline ? `${brandTagline}. ` : ''}Get started now.`,
         },
       ];
     } else if (classification === CONTENT_ARCHETYPES.EDUCATIONAL_MASTERCLASS) {

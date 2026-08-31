@@ -321,6 +321,124 @@ async function runComprehensiveTests() {
   assert(brandResult.fallbackToMaster === false, 'Brand pipeline executed successfully without master fallback');
   assert(brandResult.scenes.length === 2, 'Brand pipeline rendered 2 independent scene clips');
 
+  // --------------------------------------------------------------------------
+  // TEST 6: Brand Persona Mode 30-Second Promotional Video for UDEN.tech
+  // --------------------------------------------------------------------------
+  console.log('\n------------------------------------------------------');
+  console.log(' TEST 6: Brand Persona Mode 30-Second Promotional Video for UDEN.tech');
+  console.log('------------------------------------------------------');
+
+  const udenPersona = {
+    id: 'uden_001',
+    company: 'UDEN.tech',
+    tagline: 'Assess • Upskill • Recruit',
+    goals: 'Transform technical hiring and career acceleration through AI skill verification and unbiased talent matching.',
+    notes: 'UDEN connects ambitious talent with top tech companies through verified coding benchmarks and structured pathways.',
+    products_services: 'AI-proctored technical assessments, verified candidate competency profiles, and automated hiring pipelines.',
+    value_proposition: 'Hire verified 10x talent with zero bias and complete skill certainty.',
+    industry: 'HR Technology & Education',
+    audience: 'Software engineers, tech graduates, engineering leaders, and recruiters',
+    voice: 'Authoritative, inspiring, modern, high-tech',
+    brand_primary_color: '#1A365D',
+    brand_secondary_color: '#2B6CB0',
+    brand_accent_color: '#ED8936',
+    visual_style_instructions: 'Sleek architectural glass, modern coding environments, glowing data streams, collaborative tech teams, dynamic push-in cinematography.',
+    tuning_prompt: 'Show authentic developers coding, real-time score verification, and celebratory hiring outcomes.',
+    logo_url: 'https://creative-os-assets.s3.ap-south-1.amazonaws.com/logos/uden_official_platform_watermark.png',
+    logo_placement: 'top-left',
+  };
+
+  const uden30Prompt = 'Create a 30-second promotional ad for UDEN.tech showing how candidates get assessed and hired.';
+  const uden30Spec = await defaultCreativeDirector.createVideoSpec({
+    prompt: uden30Prompt,
+    platform: 'instagram',
+    aspectRatio: '9:16',
+    duration: 30,
+    mode: 'brand',
+    companyPersona: udenPersona,
+  });
+
+  assert(uden30Spec.duration === 30, 'UDEN 30s VideoSpec duration is 30s');
+  assert(uden30Spec.continuityContext.characterBible === null, 'Promotional video does NOT default to rigid talking-head presenter (characterBible is null)');
+
+  const uden30Storyboard = await defaultStoryboardService.generateStoryboard(uden30Spec, uden30Prompt);
+  assert(uden30Storyboard.length === 3, `UDEN 30s Storyboard has 3 scenes (got ${uden30Storyboard.length})`);
+  const uden30TimelineSum = uden30Storyboard.reduce((acc, s) => acc + (s.requestedTimelineDuration || s.duration), 0);
+  assert(uden30TimelineSum === 30, `UDEN 30s timeline sum is exactly 30s (got ${uden30TimelineSum}s)`);
+  assert(uden30Storyboard.every(s => [4, 8, 12].includes(s.providerGenerationDuration)), 'All UDEN 30s scenes use valid Sora generation durations [4, 8, 12]');
+
+  // Check shot variety across UDEN 30s scenes
+  const uden30ShotTypes = new Set(uden30Storyboard.map(s => s.shotType));
+  assert(uden30ShotTypes.size === 3, `UDEN 30s has 3 unique shot types across 3 scenes (${[...uden30ShotTypes].join(', ')})`);
+
+  const uden30Result = await defaultJobOrchestrator.executeSceneLevelPipeline({
+    videoSpec: uden30Spec,
+    storyboard: uden30Storyboard,
+    jobId: 'uden_30s_promo_test',
+  });
+  assert(uden30Result.fallbackToMaster === false, 'UDEN 30s pipeline executed successfully');
+  assert(uden30Result.scenes.length === 3, 'UDEN 30s rendered 3 independent scene clips');
+
+  // --------------------------------------------------------------------------
+  // TEST 7: Brand Persona Mode 60-Second Promotional Video for UDEN.tech
+  // --------------------------------------------------------------------------
+  console.log('\n------------------------------------------------------');
+  console.log(' TEST 7: Brand Persona Mode 60-Second Promotional Video for UDEN.tech');
+  console.log('------------------------------------------------------');
+
+  const uden60Prompt = 'A 60-second high-impact commercial demonstrating UDEN.tech Assess, Upskill, and Recruit ecosystem.';
+  const uden60Spec = await defaultCreativeDirector.createVideoSpec({
+    prompt: uden60Prompt,
+    platform: 'youtube',
+    aspectRatio: '16:9',
+    duration: 60,
+    mode: 'brand',
+    companyPersona: udenPersona,
+  });
+
+  assert(uden60Spec.duration === 60, 'UDEN 60s VideoSpec duration is 60s');
+  const uden60Storyboard = await defaultStoryboardService.generateStoryboard(uden60Spec, uden60Prompt);
+  assert(uden60Storyboard.length === 6, `UDEN 60s Storyboard has 6 scenes (got ${uden60Storyboard.length})`);
+  assert(uden60Storyboard.every(s => [4, 8, 12].includes(s.providerGenerationDuration)), 'All UDEN 60s scenes use valid Sora generation durations [4, 8, 12]');
+
+  const uden60Result = await defaultJobOrchestrator.executeSceneLevelPipeline({
+    videoSpec: uden60Spec,
+    storyboard: uden60Storyboard,
+    jobId: 'uden_60s_promo_test',
+  });
+  assert(uden60Result.fallbackToMaster === false, 'UDEN 60s pipeline executed successfully');
+  assert(uden60Result.scenes.length === 6, 'UDEN 60s rendered 6 independent scene clips');
+
+  // --------------------------------------------------------------------------
+  // TEST 8: Brand Persona Mode 120-Second Commercial for UDEN.tech
+  // --------------------------------------------------------------------------
+  console.log('\n------------------------------------------------------');
+  console.log(' TEST 8: Brand Persona Mode 120-Second Commercial for UDEN.tech');
+  console.log('------------------------------------------------------');
+
+  const uden120Prompt = 'A 120-second comprehensive promotional documentary on UDEN.tech transforming tech recruitment.';
+  const uden120Spec = await defaultCreativeDirector.createVideoSpec({
+    prompt: uden120Prompt,
+    platform: 'youtube',
+    aspectRatio: '16:9',
+    duration: 120,
+    mode: 'brand',
+    companyPersona: udenPersona,
+  });
+
+  assert(uden120Spec.duration === 120, 'UDEN 120s VideoSpec duration is 120s');
+  const uden120Storyboard = await defaultStoryboardService.generateStoryboard(uden120Spec, uden120Prompt);
+  assert(uden120Storyboard.length === 12, `UDEN 120s Storyboard has 12 scenes (got ${uden120Storyboard.length})`);
+  assert(uden120Storyboard.every(s => [4, 8, 12].includes(s.providerGenerationDuration)), 'All UDEN 120s scenes use valid Sora generation durations [4, 8, 12]');
+
+  const uden120Result = await defaultJobOrchestrator.executeSceneLevelPipeline({
+    videoSpec: uden120Spec,
+    storyboard: uden120Storyboard,
+    jobId: 'uden_120s_promo_test',
+  });
+  assert(uden120Result.fallbackToMaster === false, 'UDEN 120s pipeline executed successfully');
+  assert(uden120Result.scenes.length === 12, 'UDEN 120s rendered 12 independent scene clips');
+
   // Verify all Sora calls across all tests strictly used supported durations (4, 8, 12)
   assert(recordedSoraCalls.every(call => [4, 8, 12].includes(Number(call.durationSeconds))), 'CRITICAL: Every Sora generation request strictly used supported durations [4, 8, 12]');
 

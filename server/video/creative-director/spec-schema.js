@@ -112,6 +112,10 @@ export function validateSceneCard(scene, index = 0) {
     voiceover: String(scene.voiceover || '').trim(),
     soundEffects: Array.isArray(scene.soundEffects) ? scene.soundEffects.map(String) : [],
     transition: String(scene.transition || 'Cut').trim(),
+    previousSceneSummary: String(scene.previousSceneSummary || '').trim(),
+    visualHandover: String(scene.visualHandover || '').trim(),
+    narrativeHandover: String(scene.narrativeHandover || '').trim(),
+    nextSceneIntent: String(scene.nextSceneIntent || '').trim(),
     references: Array.isArray(scene.references) ? scene.references.map(String) : [],
     brandRequirements: Array.isArray(scene.brandRequirements) ? scene.brandRequirements.map(String) : [],
     generationStrategy: VALID_GENERATION_STRATEGIES.includes(scene.generationStrategy)
