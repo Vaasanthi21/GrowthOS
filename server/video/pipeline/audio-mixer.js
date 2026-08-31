@@ -14,14 +14,16 @@ export class AudioMixer {
     let promptText = '';
     let characterContext = {};
     let scriptText = '';
+    let storyboard = [];
 
     if (typeof optionsOrBrandContext === 'object' && optionsOrBrandContext !== null) {
-      if (optionsOrBrandContext.brandContext || optionsOrBrandContext.characterContext || optionsOrBrandContext.promptText || optionsOrBrandContext.scriptText) {
+      if (optionsOrBrandContext.brandContext || optionsOrBrandContext.characterContext || optionsOrBrandContext.promptText || optionsOrBrandContext.scriptText || optionsOrBrandContext.storyboard) {
         brandContext = optionsOrBrandContext.brandContext || {};
         activeTheme = optionsOrBrandContext.theme || '';
         promptText = optionsOrBrandContext.promptText || '';
         characterContext = optionsOrBrandContext.characterContext || {};
         scriptText = optionsOrBrandContext.scriptText || '';
+        storyboard = optionsOrBrandContext.storyboard || [];
       } else {
         brandContext = optionsOrBrandContext;
         activeTheme = theme || '';
@@ -29,73 +31,55 @@ export class AudioMixer {
     }
 
     const charStr = `${characterContext?.name || ''} ${characterContext?.role || ''} ${characterContext?.physicalIdentity || ''} ${characterContext?.anchorToken || ''} ${characterContext?.appearance || ''} ${characterContext?.wardrobe || ''}`;
-    const combined = `${promptText} ${charStr} ${brandContext.voice || ''} ${brandContext.industry || ''} ${brandContext.tone || ''} ${activeTheme} ${scriptText}`.toLowerCase();
+    const scenesStr = (storyboard || []).map(s => `${s.visualDescription || ''} ${s.action || ''} ${s.purpose || ''}`).join(' ');
+    const combined = `${promptText} ${charStr} ${scenesStr} ${brandContext.voice || ''} ${brandContext.industry || ''} ${brandContext.tone || ''} ${activeTheme} ${scriptText}`.toLowerCase();
 
-    // 1. Explicit Male Presenter / Character Detection
-    const isMale = /\b(boy|man|male|guy|gentleman|father|brother|son|husband|businessman|actor|he|his|him|mr|himself|male presenter|male voice|young man|schoolboy|college boy|deep voice)\b/i.test(
-      `${promptText} ${charStr} ${brandContext.voice || ''}`
+    // 1. Explicit Female Presenter / Character Detection (requires genuine female keywords)
+    const isFemale = /\b(girl|girls|woman|women|female|females|lady|ladies|mother|sister|daughter|wife|businesswoman|businesswomen|actress|actresses|she|her|hers|ms|mrs|miss|herself|female presenter|female voice|young woman|schoolgirl|college girl)\b/i.test(
+      `${promptText} ${charStr} ${scenesStr}`
     );
 
-    // 2. Explicit Female Presenter / Character Detection
-    const isFemale = /\b(girl|woman|female|lady|mother|sister|daughter|wife|businesswoman|actress|she|her|hers|ms|mrs|miss|herself|female presenter|female voice|young woman|schoolgirl|college girl)\b/i.test(
-      `${promptText} ${charStr} ${brandContext.voice || ''}`
+    // 2. Explicit Male Presenter / Character Detection (requires genuine male keywords)
+    const isMale = /\b(boy|boys|man|men|male|males|guy|guys|gentleman|gentlemen|father|brother|son|husband|businessman|businessmen|actor|actors|he|his|him|mr|himself|male presenter|male voice|young man|schoolboy|college boy|deep voice|dude|bro|sir|fellow|lad|gent)\b/i.test(
+      `${promptText} ${charStr} ${scenesStr}`
     );
 
-    // Strict Gender Resolution: If character/presenter is male, strictly select from high-definition male neural voices
-    if (isMale && !isFemale) {
-      if (combined.includes('tech') || combined.includes('software') || combined.includes('innovation') || combined.includes('developer') || combined.includes('code')) {
-        return 'en-US-BrianNeural'; // Intelligent, modern, articulate male voice
-      }
-      if (combined.includes('luxury') || combined.includes('premium') || combined.includes('elegance') || combined.includes('cinematic') || combined.includes('authoritative')) {
-        return 'en-US-ChristopherNeural'; // Authoritative, rich, deep cinematic male voice
-      }
-      if (combined.includes('energetic') || combined.includes('fast') || combined.includes('action') || combined.includes('young') || combined.includes('casual')) {
-        return 'en-US-GuyNeural'; // Energetic, vibrant, casual commercial male voice
-      }
-      if (combined.includes('calm') || combined.includes('peaceful') || combined.includes('wellness') || combined.includes('meditation') || combined.includes('story')) {
-        return 'en-US-DavisNeural'; // Warm, calm, reassuring storyteller male voice
-      }
-      return 'en-US-AndrewNeural'; // Confident, warm, polished commercial presenter male voice
-    }
-
-    // Strict Gender Resolution: If character/presenter is female, strictly select from high-definition female neural voices
+    // Strict Female Resolution
     if (isFemale && !isMale) {
-      if (combined.includes('wellness') || combined.includes('health') || combined.includes('fitness') || combined.includes('calm') || combined.includes('supportive') || combined.includes('mindful')) {
-        return 'en-US-AvaNeural'; // Expressive, calm, warm female voice
-      }
       if (combined.includes('energetic') || combined.includes('promotional') || combined.includes('marketing') || combined.includes('sales') || combined.includes('launch')) {
         return 'en-US-AriaNeural'; // Crisp, broadcast-grade commercial female voice
+      }
+      if (combined.includes('wellness') || combined.includes('health') || combined.includes('fitness') || combined.includes('calm') || combined.includes('mindful')) {
+        return 'en-US-AvaNeural'; // Expressive, calm, warm female voice
       }
       if (combined.includes('friendly') || combined.includes('casual') || combined.includes('lifestyle') || combined.includes('culture')) {
         return 'en-US-EmmaNeural'; // Friendly, vibrant, approachable female voice
       }
-      return 'en-US-JennyNeural'; // Clear, confident, professional corporate female voice
+      return 'en-US-JennyNeural'; // Clear, confident corporate female voice
     }
 
-    // Gender-neutral / Unspecified Fallback: Match by archetype & tone
-    if (combined.includes('wellness') || combined.includes('health') || combined.includes('fitness') || combined.includes('calm') || combined.includes('supportive')) {
-      return 'en-US-AvaNeural';
+    // Default to high-definition male presenter voices for male presenters, career/business topics, and professional tech demos
+    if (combined.includes('tech') || combined.includes('software') || combined.includes('innovation') || combined.includes('developer') || combined.includes('code') || combined.includes('platform')) {
+      return 'en-US-BrianNeural'; // Intelligent, modern, articulate male presenter voice
     }
-    if (combined.includes('tech') || combined.includes('software') || combined.includes('innovation') || combined.includes('developer')) {
-      return 'en-US-BrianNeural';
+    if (combined.includes('luxury') || combined.includes('premium') || combined.includes('elegance') || combined.includes('cinematic') || combined.includes('authoritative')) {
+      return 'en-US-ChristopherNeural'; // Authoritative, rich, deep cinematic male voice
     }
-    if (combined.includes('luxury') || combined.includes('premium') || combined.includes('elegance') || combined.includes('fashion')) {
-      return 'en-US-ChristopherNeural';
+    if (combined.includes('energetic') || combined.includes('fast') || combined.includes('action') || combined.includes('young') || combined.includes('casual')) {
+      return 'en-US-GuyNeural'; // Energetic, vibrant, casual commercial male voice
     }
-    if (combined.includes('energetic') || combined.includes('promotional') || combined.includes('marketing') || combined.includes('sales')) {
-      return 'en-US-AndrewNeural';
+    if (combined.includes('calm') || combined.includes('peaceful') || combined.includes('story') || combined.includes('meditation')) {
+      return 'en-US-DavisNeural'; // Warm, calm, reassuring storyteller male voice
     }
-    if (combined.includes('friendly') || combined.includes('casual') || combined.includes('lifestyle')) {
-      return 'en-US-EmmaNeural';
-    }
-    return 'en-US-AndrewNeural';
+
+    return 'en-US-BrianNeural'; // Top-tier versatile articulate male presenter voice
   }
 
   /**
    * Generates high-fidelity neural voiceover audio using Azure Cognitive Services Speech REST API.
    * Falls back gracefully to system synthesizer if offline.
    */
-  async generateVoiceoverAudio({ text, outWavPath, brandContext = {}, theme = '', characterContext = {}, promptText = '' }) {
+  async generateVoiceoverAudio({ text, outWavPath, brandContext = {}, theme = '', characterContext = {}, promptText = '', storyboard = [] }) {
     const cleanText = String(text || '')
       .replace(/[\r\n]+/g, ' ')
       .trim()
@@ -108,7 +92,7 @@ export class AudioMixer {
     const parentDir = path.dirname(outWavPath);
     await fs.mkdir(parentDir, { recursive: true });
 
-    const voiceName = this.resolveVoiceName({ brandContext, theme, characterContext, promptText, scriptText: cleanText });
+    const voiceName = this.resolveVoiceName({ brandContext, theme, characterContext, promptText, storyboard, scriptText: cleanText });
     const speechKey = process.env.AZURE_SPEECH_KEY || process.env.AZURE_OPENAI_IMAGE_API_KEY;
     const region = process.env.AZURE_SPEECH_REGION || 'swedencentral';
 
@@ -319,6 +303,9 @@ $synth.Dispose();
       scriptText = videoSpec.objective || 'A cinematic visual journey.';
     }
 
+    const characterContext = videoSpec.continuityContext?.characterBible || videoSpec.characterContext || videoSpec.character || {};
+    const promptText = `${videoSpec.objective || ''} ${videoSpec.continuityContext?.directives?.rawText || ''} ${videoSpec.visualStyle || ''}`;
+
     const voiceWavPath = path.join(tempDir, `${sessionPrefix}_voiceover.wav`);
     const bedWavPath = path.join(tempDir, `${sessionPrefix}_ambient_bed.wav`);
     const masterAacPath = path.join(tempDir, `${sessionPrefix}_master_audio.aac`);
@@ -326,23 +313,106 @@ $synth.Dispose();
     let voiceSynthesisType = 'Neural AI';
     const shouldVoiceover = videoSpec.audioPlan?.voiceover !== false;
 
-    const characterContext = videoSpec.continuityContext?.characterBible || videoSpec.characterContext || videoSpec.character || {};
-    const promptText = `${videoSpec.objective || ''} ${videoSpec.continuityContext?.directives?.rawText || ''} ${videoSpec.visualStyle || ''}`;
-
-    if (shouldVoiceover && scriptText) {
+    // 1. Scene-Synchronized Voice Narration: Synthesize each scene's script and delay it to match that scene's appearance on screen
+    if (shouldVoiceover && storyboard && storyboard.length > 0) {
       try {
-        const vResult = await this.generateVoiceoverAudio({
-          text: scriptText,
-          outWavPath: voiceWavPath,
-          brandContext,
-          theme,
-          characterContext,
-          promptText,
-        });
-        voiceSynthesisType = vResult?.voiceType || voiceSynthesisType;
-        hasVoice = true;
-      } catch (voiceErr) {
-        console.warn('[AUDIO MIXER] Voiceover generation warning (will use ambient music):', voiceErr.message);
+        const sceneAudioFiles = [];
+        let currentTimelineOffset = 0;
+
+        for (let i = 0; i < storyboard.length; i++) {
+          const scene = storyboard[i];
+          const sceneVoiceover = String(scene.voiceover || '').trim();
+          const sceneDuration = Number(scene.requestedTimelineDuration || scene.duration || (dur / storyboard.length)) || (dur / storyboard.length);
+
+          if (sceneVoiceover) {
+            const sceneWavPath = path.join(tempDir, `${sessionPrefix}_scene_${i + 1}_voice.wav`);
+            const vRes = await this.generateVoiceoverAudio({
+              text: sceneVoiceover,
+              outWavPath: sceneWavPath,
+              brandContext,
+              theme,
+              characterContext,
+              promptText,
+              storyboard,
+            });
+
+            if (fsSync.existsSync(sceneWavPath)) {
+              voiceSynthesisType = vRes?.voiceType || voiceSynthesisType;
+              sceneAudioFiles.push({
+                filePath: sceneWavPath,
+                offsetSeconds: currentTimelineOffset + 0.25, // 250ms natural breath into scene
+                sceneDuration,
+              });
+            }
+          }
+          currentTimelineOffset += sceneDuration;
+        }
+
+        if (sceneAudioFiles.length > 0) {
+          const ffmpegArgs = ['-y'];
+          const filterInputs = [];
+
+          sceneAudioFiles.forEach((item, idx) => {
+            ffmpegArgs.push('-i', item.filePath);
+            const delayMs = Math.max(0, Math.round(item.offsetSeconds * 1000));
+            filterInputs.push(`[${idx}:a]adelay=${delayMs}|${delayMs}[delayed_${idx}]`);
+          });
+
+          const delayedStreams = sceneAudioFiles.map((_, idx) => `[delayed_${idx}]`).join('');
+          const filterComplex = `${filterInputs.join(';')};${delayedStreams}amix=inputs=${sceneAudioFiles.length}:duration=longest:dropout_transition=2,apad=whole_dur=${dur}[voiceout]`;
+
+          ffmpegArgs.push(
+            '-filter_complex', filterComplex,
+            '-map', '[voiceout]',
+            '-ar', '44100',
+            '-ac', '2',
+            '-c:a', 'pcm_s16le',
+            '-t', String(dur),
+            voiceWavPath
+          );
+
+          await new Promise((resolve, reject) => {
+            const ff = spawn('ffmpeg', ffmpegArgs);
+            let err = '';
+            ff.stderr.on('data', d => err += d.toString());
+            ff.on('close', code => {
+              if (code === 0 && fsSync.existsSync(voiceWavPath)) {
+                hasVoice = true;
+                resolve();
+              } else {
+                reject(new Error(err || `Scene audio stitch failed code ${code}`));
+              }
+            });
+            ff.on('error', reject);
+          });
+        }
+      } catch (syncErr) {
+        console.warn('[AUDIO MIXER] Scene-synchronized voiceover stitch warning (will attempt linear fallback):', syncErr.message);
+      }
+    }
+
+    // 2. Linear Fallback if scene-level synthesis was not triggered
+    if (!hasVoice && shouldVoiceover) {
+      const voiceoverLines = (storyboard || [])
+        .map(s => String(s.voiceover || '').trim())
+        .filter(Boolean);
+      const scriptText = voiceoverLines.join('. ') || videoSpec.objective || 'A cinematic visual journey.';
+      if (scriptText) {
+        try {
+          const vResult = await this.generateVoiceoverAudio({
+            text: scriptText,
+            outWavPath: voiceWavPath,
+            brandContext,
+            theme,
+            characterContext,
+            promptText,
+            storyboard,
+          });
+          voiceSynthesisType = vResult?.voiceType || voiceSynthesisType;
+          hasVoice = true;
+        } catch (voiceErr) {
+          console.warn('[AUDIO MIXER] Voiceover generation warning (will use ambient music):', voiceErr.message);
+        }
       }
     }
 
