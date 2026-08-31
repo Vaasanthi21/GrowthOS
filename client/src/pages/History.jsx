@@ -397,9 +397,9 @@ export default function History() {
                         </Badge>
                       )}
                       <span className="text-[10px] text-muted-foreground">
-                        {entry.created_date
+                        {(entry.updated_date || entry.created_date)
                           ? format(
-                              new Date(entry.created_date),
+                              new Date(entry.updated_date || entry.created_date),
                               "MMM d, yyyy · h:mm a",
                             )
                           : ""}

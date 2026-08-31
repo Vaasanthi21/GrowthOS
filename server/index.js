@@ -2115,7 +2115,7 @@ const startVideoGenerationJob = ({
                     }],
                     status: 'completed',
                   }, userId);
-                  await store.upsertHistoryConversation(historyPayload);
+                  await store.insertHistory(historyPayload);
                   console.log(`[VIDEO JOB] Auto-saved completed video ${jobId} to content_history for user ${userId}`);
                 } catch (histErr) {
                   console.warn('[VIDEO JOB] Failed to auto-save to content history:', histErr.message);
@@ -2231,7 +2231,7 @@ const startVideoGenerationJob = ({
               }],
               status: 'completed',
             }, userId);
-            await store.upsertHistoryConversation(historyPayload);
+            await store.insertHistory(historyPayload);
             console.log(`[VIDEO JOB] Auto-saved master completed video ${jobId} to content_history for user ${userId}`);
           } catch (histErr) {
             console.warn('[VIDEO JOB] Failed to auto-save to content history:', histErr.message);
@@ -9814,7 +9814,8 @@ app.post('/api/history', authRequired, async (req, res) => {
     status: req.body.status || 'completed',
   }, userId);
 
-  const row = await store.upsertHistoryConversation(payload);
+  const isVideo = String(payload.content_type || '').toLowerCase().includes('video') || Boolean(payload.variants?.[0]?.video_url);
+  const row = isVideo ? await store.insertHistory(payload) : await store.upsertHistoryConversation(payload);
   res.status(201).json({ ...row, id: row.id || row._id?.toString?.() });
 });
 

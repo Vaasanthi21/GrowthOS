@@ -390,6 +390,16 @@ export default function VideoStudio() {
             };
             addHistoryEntry(videoEntry).catch(err => console.error("Failed to save video to history:", err));
 
+            try {
+              localStorage.setItem('growth_os_latest_video', JSON.stringify({
+                video_url: statusResponse.video_url,
+                thumbnail_url: statusResponse.thumbnail_url || null,
+                prompt: statusResponse.prompt || prompt,
+                platform: platform,
+                completedAt: Date.now(),
+              }));
+            } catch (e) {}
+
             setJob('video', {
               isPolling: false,
               stageStartedAt: null,
@@ -438,7 +448,7 @@ export default function VideoStudio() {
   }, [prompt, platform, setJob, queryClient]);
 
   // On mount: if a job was already in flight when the user navigated away, resume
-  // polling it here instead of starting fresh. Runs once per mount.
+  // polling it here instead of starting fresh. If finished, hydrate canvas from localStorage.
   useEffect(() => {
     if (hasResumedRef.current) return;
     hasResumedRef.current = true;
@@ -446,6 +456,22 @@ export default function VideoStudio() {
     const existing = videoJob;
     if (existing?.jobId && existing.isPolling && existing.pollingStatus !== 'completed' && existing.pollingStatus !== 'failed') {
       attachPoller(existing.jobId);
+    } else if (!existing?.generatedVideo) {
+      try {
+        const saved = JSON.parse(localStorage.getItem('growth_os_latest_video') || 'null');
+        if (saved?.video_url) {
+          setJob('video', {
+            generatedVideo: saved.video_url,
+            generatedThumbnail: saved.thumbnail_url || null,
+            pollingStatus: 'completed',
+            progress: 100,
+            isPolling: false,
+          });
+          if (saved.prompt && !prompt) {
+            setPrompt(saved.prompt);
+          }
+        }
+      } catch (e) {}
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -753,6 +779,9 @@ export default function VideoStudio() {
 
   const handleReset = () => {
     clearJob('video');
+    try {
+      localStorage.removeItem('growth_os_latest_video');
+    } catch (e) {}
     setPrompt('');
     setGeneratedCaption('');
     setIsPlaying(false);
