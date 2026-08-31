@@ -88,6 +88,7 @@ export class VeoVideoProvider extends BaseVideoProvider {
     }
 
     const sceneId = sceneCard.sceneId || 'scene_01';
+    const sceneOrder = Number(sceneCard.order || 1);
     const totalScenes = Array.isArray(videoSpec.scenes) && videoSpec.scenes.length > 0
       ? videoSpec.scenes.length
       : (videoSpec.targetSceneCount || (videoSpec.duration ? Math.ceil(Number(videoSpec.duration) / 10) : 3));
