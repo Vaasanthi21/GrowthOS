@@ -1815,6 +1815,11 @@ const getVideoJobStatusPayload = (job) => {
     error: job.error || null,
     thumbnail_url: job.result?.thumbnail_url || null,
     video_url: job.result?.video_url || null,
+    credits: {
+      charged: job.creditsCharged || 0,
+      deducted: Boolean(job.creditsDeducted),
+      balance_after: job.balanceAfter !== null && job.balanceAfter !== undefined ? job.balanceAfter : undefined,
+    },
   };
 };
 
@@ -1867,6 +1872,7 @@ const startVideoGenerationJob = ({
   prompt,
   aspectRatio = '9:16',
   duration = 15,
+  creditCost = 10,
   logoUrl = '',
   logoPlacement = 'none',
   mode = 'custom',
@@ -1884,6 +1890,7 @@ const startVideoGenerationJob = ({
   const startedAt = Date.now();
   const reqDuration = Math.min(120, Math.max(4, Number(duration) || 15));
   const estimatedTotalMs = Math.max(180000, (reqDuration / 10) * 45000 + 120000);
+  const normalizedCreditCost = normalizeGenerationCost(creditCost, 10);
 
   videoGenerationJobs.set(jobId, {
     id: jobId,
@@ -1900,6 +1907,10 @@ const startVideoGenerationJob = ({
     mode,
     duration: reqDuration,
     aspectRatio,
+    creditCost: normalizedCreditCost,
+    creditsDeducted: false,
+    creditsCharged: 0,
+    balanceAfter: null,
     completedAt: null,
     error: null,
     result: null,
@@ -1921,13 +1932,53 @@ const startVideoGenerationJob = ({
       mode,
       duration: reqDuration,
       aspect_ratio: aspectRatio,
+      credit_cost: normalizedCreditCost,
+      credits_deducted: false,
+      credits_charged: 0,
       created_at: new Date(startedAt).toISOString(),
     }).catch(err => console.error(`[VIDEO JOB DB] Failed to save startup metadata for ${jobId}:`, err.message));
   }
 
-  console.log(`[VIDEO JOB] queued ${jobId} duration=${reqDuration}s aspectRatio=${aspectRatio} prompt=${String(prompt).slice(0,80)}`);
+  console.log(`[VIDEO JOB] queued ${jobId} duration=${reqDuration}s aspectRatio=${aspectRatio} prompt=${String(prompt).slice(0,80)} (credits cost: ${normalizedCreditCost}, to be deducted only on completion)`);
 
   void (async () => {
+    const deductCreditsOnSuccess = async (reason = 'Scene Composition Engine') => {
+      const job = videoGenerationJobs.get(jobId);
+      if (!userId || !job || job.creditsDeducted) {
+        return;
+      }
+      const cost = Number(job.creditCost || normalizedCreditCost) || 10;
+      try {
+        const chargeResult = await chargeCreditsForGeneration({
+          userId,
+          amount: cost,
+          type: 'generation_video',
+          note: `Video generation charge (${cost} credit${cost === 1 ? '' : 's'})`,
+        });
+        const newBal = normalizeCreditValue(chargeResult?.user?.credits_balance);
+        job.creditsDeducted = true;
+        job.creditsCharged = cost;
+        job.balanceAfter = newBal;
+
+        updateVideoJob(jobId, {
+          creditsDeducted: true,
+          creditsCharged: cost,
+          balanceAfter: newBal,
+        });
+
+        if (rawDb) {
+          rawDb.collection('video_generations').updateOne(
+            { job_id: jobId },
+            { $set: { credits_deducted: true, credits_charged: cost, balance_after: newBal } }
+          ).catch(() => {});
+        }
+
+        console.log(`[VIDEO CREDITS] Successfully deducted ${cost} credits upon video completion (${reason}) for job ${jobId} (user: ${userId}). Remaining balance: ${newBal}`);
+      } catch (creditErr) {
+        console.error(`[VIDEO CREDITS ERROR] Failed to deduct credits on completion for job ${jobId}:`, creditErr.message);
+      }
+    };
+
     const onStatus = ({ status, phase, progress, videoId }) => {
       updateVideoJob(jobId, {
         status: status || 'processing',
@@ -1991,6 +2042,9 @@ const startVideoGenerationJob = ({
             const finalResult = scenePipelineResult.result;
             const completedAt = Date.now();
             pushVideoGenerationDuration(completedAt - startedAt);
+
+            // Deduct credits ONLY after video generation has succeeded completely
+            await deductCreditsOnSuccess('Scene Composition Engine');
 
             updateVideoJob(jobId, {
               videoSpec,
@@ -2127,6 +2181,11 @@ const startVideoGenerationJob = ({
       const completedAt = Date.now();
       pushVideoGenerationDuration(completedAt - startedAt);
       const isSuccess = video.status === 'completed' && video.video_url;
+
+      // Deduct credits ONLY after video generation has succeeded completely
+      if (isSuccess) {
+        await deductCreditsOnSuccess('Master Sora Pipeline');
+      }
 
       updateVideoJob(jobId, {
         status: isSuccess ? 'completed' : 'failed',
@@ -8772,15 +8831,18 @@ app.post('/api/generate-video', authRequired, async (req, res) => {
   const userId = req.user.id || req.user._id.toString();
   const settings = await store.getCreditSettings();
   const videoCost = normalizeGenerationCost(settings.video_generation_cost, 10);
-  let chargeResult = null;
 
   try {
-    chargeResult = await chargeCreditsForGeneration({
-      userId,
-      amount: videoCost,
-      type: 'generation_video',
-      note: `Video generation charge (${videoCost} credit${videoCost === 1 ? '' : 's'})`,
-    });
+    const user = await store.findUserById(userId);
+    const currentBalance = normalizeCreditValue(user?.credits_balance);
+    if (currentBalance < videoCost) {
+      return res.status(402).json({
+        message: `Insufficient credits. Video generation requires ${videoCost} credits, but your current balance is ${currentBalance}.`,
+        required: videoCost,
+        current_balance: currentBalance,
+      });
+    }
+
     const mode = String(req.body?.mode || '').toLowerCase() === 'brand' ? 'brand' : 'custom';
     let company = {};
     let resolvedPersona = null;
@@ -8908,6 +8970,7 @@ app.post('/api/generate-video', authRequired, async (req, res) => {
       prompt,
       aspectRatio,
       duration,
+      creditCost: videoCost,
       logoUrl: resolvedLogoUrl,
       logoPlacement: resolvedLogoPlacement,
       mode,
@@ -8918,14 +8981,6 @@ app.post('/api/generate-video', authRequired, async (req, res) => {
       company: mode === 'brand' ? company : null,
       ragContext,
       keywords,
-      onFailed: async ({ error }) => {
-        await refundGenerationCredits({
-          userId,
-          amount: videoCost,
-          type: 'generation_refund_video',
-          note: `Refund for failed video generation (${error?.message || 'unknown error'})`,
-        });
-      },
     });
 
     res.status(202).json({
@@ -8933,20 +8988,13 @@ app.post('/api/generate-video', authRequired, async (req, res) => {
       video_id: jobId,
       status: 'queued',
       credits: {
-        charged: videoCost,
-        balance_after: normalizeCreditValue(chargeResult?.user?.credits_balance, normalizeCreditValue(req.user.credits_balance)),
+        cost: videoCost,
+        current_balance: currentBalance,
+        deducted_upfront: false,
+        deduct_on_completion: true,
       }, 
     });
   } catch (error) {
-    if (chargeResult) {
-      await refundGenerationCredits({
-        userId,
-        amount: videoCost,
-        type: 'generation_refund_video',
-        note: 'Refund for failed video generation',
-      });
-    }
-
     console.error('Video generation failed:', error?.message || error);
     const message = error.message || 'Video generation failed';
     const status = /insufficient credits/i.test(message) ? 402 : 500;
@@ -8994,6 +9042,25 @@ app.get('/api/video-status/:id', authRequired, async (req, res) => {
                 logoPlacement: dbRecord.logoPlacement || 'none',
               });
 
+              let balanceAfter = dbRecord.balance_after;
+              if (!dbRecord.credits_deducted && dbRecord.user_id) {
+                try {
+                  const settings = await store.getCreditSettings();
+                  const videoCost = normalizeGenerationCost(settings.video_generation_cost, 10);
+                  const parsedUserId = String(dbRecord.user_id);
+                  const chargeResult = await chargeCreditsForGeneration({
+                    userId: parsedUserId,
+                    amount: videoCost,
+                    type: 'generation_video',
+                    note: `Video generation charge (${videoCost} credit${videoCost === 1 ? '' : 's'})`,
+                  });
+                  balanceAfter = normalizeCreditValue(chargeResult?.user?.credits_balance);
+                  console.log(`[VIDEO RESUME] Deducted ${videoCost} credits upon recovery completion for ${dbRecord.job_id} (user: ${parsedUserId}). Remaining: ${balanceAfter}`);
+                } catch (creditErr) {
+                  console.error(`[VIDEO RESUME] Credit deduction failed on recovery for ${dbRecord.job_id}:`, creditErr.message);
+                }
+              }
+
               await rawDb.collection('video_generations').updateOne(
                 { job_id: dbRecord.job_id },
                 { $set: {
@@ -9003,6 +9070,8 @@ app.get('/api/video-status/:id', authRequired, async (req, res) => {
                   video_url: assetResult.videoUrl,
                   thumbnail_url: assetResult.thumbnailUrl,
                   completed_at: new Date().toISOString(),
+                  credits_deducted: true,
+                  balance_after: balanceAfter,
                 }}
               );
 
